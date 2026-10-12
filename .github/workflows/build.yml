@@ -17,6 +17,8 @@ jobs:
         shell: bash
         run: |
           . /opt/esp/idf/export.sh
+          # The IDF container runs as a different user from the checkout owner.
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
           python scripts/check-publication.py
           python scripts/generate_languages.py --check
           export IDF_COMPONENT_MANAGER=0
