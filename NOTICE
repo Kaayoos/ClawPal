@@ -1,0 +1,15 @@
+ClawPal
+Created by MinimalPulse — https://minimalpulse.com/
+Copyright (c) 2026 MinimalPulse and contributors.
+Official project: https://github.com/Kaayoos/clawpal
+
+Original ClawPal code, documentation and original crab artwork are licensed
+under GNU GPL version 3 only. Additional platform linking permissions are in
+LICENSES/ESP-IDF-exception.txt (firmware) and LICENSES/Windows-SDK-exception.txt
+(companion). Third-party material retains its own licenses.
+See LICENSE, THIRD_PARTY_NOTICES.md and TRADEMARKS.md.
+
+This program comes with ABSOLUTELY NO WARRANTY, to the extent permitted by law.
+You may redistribute and modify it under the applicable licenses.
+Preserve copyright, license and origin notices. Modified versions must make
+their changes clear. Attribution does not imply endorsement of a derivative.

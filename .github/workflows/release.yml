@@ -1,0 +1,42 @@
+name: Publish ClawPal release
+on:
+  push:
+    tags: ['v*']
+permissions:
+  contents: read
+jobs:
+  build:
+    if: github.repository == 'Kaayoos/clawpal'
+    uses: ./.github/workflows/build.yml
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: ClawPal-release-files
+          path: dist
+      - uses: actions/download-artifact@v4
+        with:
+          name: ClawPal-sdk-source
+          path: dist/sources
+      - name: Publish complete release with curated notes
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          [[ "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          notes="docs/releases/${RELEASE_TAG#v}.md"
+          test -s "$notes"
+          test -s dist/ClawPal-source.zip
+          test -s dist/sources/esptool-v4.11.0.tar.gz
+          test -s dist/sources/esptool-legacy-flasher-stub-v1.11.1.tar.gz
+          test -s dist/sources/esp-idf-v5.5.2-with-submodules.tar.gz
+          sha256sum dist/sources/*.tar.gz > dist/sources/SHA256SUMS
+          gh release create "$RELEASE_TAG" --repo Kaayoos/clawpal --verify-tag --draft --title "ClawPal $RELEASE_TAG" --notes-file "$notes" dist/ClawPal-Setup.exe dist/ClawPal-Setup.exe.sha256 dist/ClawPal-licenses.zip dist/ClawPal-source.zip dist/clawpal-release.json dist/clawpal-*.bin dist/sources/*
+          gh release edit "$RELEASE_TAG" --repo Kaayoos/clawpal --draft=false --latest

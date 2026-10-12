@@ -1,0 +1,82 @@
+name: Build ClawPal
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+  workflow_call:
+permissions:
+  contents: read
+jobs:
+  firmware:
+    runs-on: ubuntu-latest
+    container: espressif/idf:v5.5.2
+    steps:
+      - uses: actions/checkout@v4
+      - name: Audit source and build display
+        shell: bash
+        run: |
+          . /opt/esp/idf/export.sh
+          python scripts/check-publication.py
+          python scripts/generate_languages.py --check
+          export IDF_COMPONENT_MANAGER=0
+          python scripts/build-firmware.py --all
+          python scripts/collect-sdk-licenses.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ClawPal-firmware-payload
+          path: payload/
+      - name: Archive exact SDK source with submodules
+        if: startsWith(github.ref, 'refs/tags/')
+        shell: bash
+        run: |
+          mkdir -p sdk-source
+          tar --exclude=.git --exclude=__pycache__ -czf sdk-source/esp-idf-v5.5.2-with-submodules.tar.gz -C /opt/esp idf
+      - uses: actions/upload-artifact@v4
+        if: startsWith(github.ref, 'refs/tags/')
+        with:
+          name: ClawPal-sdk-source
+          path: sdk-source/*.tar.gz
+  windows:
+    needs: firmware
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: ClawPal-firmware-payload
+          path: payload
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.425'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Test all three display layouts
+        shell: pwsh
+        run: |
+          python -m pip install ziglang==0.13.0
+          if ($LASTEXITCODE -ne 0) { throw 'Simulator compiler installation failed' }
+          ./scripts/test-ui.ps1
+      - name: Test and package
+        shell: pwsh
+        run: ./scripts/build.ps1
+      - name: Match release tag and package tool source
+        if: startsWith(github.ref, 'refs/tags/')
+        shell: pwsh
+        run: |
+          ./scripts/package-release.ps1 -Version $env:GITHUB_REF_NAME
+          ./scripts/fetch-tool-source.ps1
+          git archive --format=zip --output=dist/ClawPal-source.zip HEAD
+          if ($LASTEXITCODE -ne 0) { throw 'Source archive failed' }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ClawPal-release-files
+          path: |
+            dist/ClawPal-Setup.exe
+            dist/ClawPal-Setup.exe.sha256
+            dist/ClawPal-licenses.zip
+            dist/ClawPal-source.zip
+            dist/clawpal-release.json
+            dist/clawpal-*.bin
+            dist/sources/

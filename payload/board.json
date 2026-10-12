@@ -1,0 +1,39 @@
+{
+  "Id": "waveshare-esp32-s3-touch-lcd-4.3b",
+  "Name": "Waveshare ESP32-S3-Touch-LCD-4.3B",
+  "Chip": "esp32s3",
+  "Width": 800,
+  "Height": 480,
+  "FlashBytes": 16777216,
+  "Psram": "octal",
+  "Experimental": false,
+  "Driver": "waveshare-rgb",
+  "Layout": "ota-v1",
+  "MaxBytes": 4128768,
+  "AssetName": "clawpal-waveshare-4.3b.bin",
+  "Profile": 0,
+  "Version": "0.8.1",
+  "ToolSha256": "71B8C5E129A44E26851BD8E59DC8D299A1EB07BBD445A8E0A49ED64A0444ED1A",
+  "Parts": [
+    {
+      "File": "firmware/bootloader.bin",
+      "Offset": "0x0",
+      "Sha256": "73a366ae38960efc949d1f9b903ba375c511f6463c9d3a6becc5bbf3a1ffc694"
+    },
+    {
+      "File": "firmware/partition-table.bin",
+      "Offset": "0x8000",
+      "Sha256": "bc7cd0cf9f8716a3c90d54437ec5fea52ecd09fceb4d4d8dd735dccdbeb204a0"
+    },
+    {
+      "File": "firmware/clawpal.bin",
+      "Offset": "0x10000",
+      "Sha256": "d9c4521714b3677d62b51f81e0194cf1da5db0a7c93f00d632a53e0b31e1dfb3"
+    },
+    {
+      "File": "firmware/ota-data-initial.bin",
+      "Offset": "0x800000",
+      "Sha256": "7d2c7ac4888bfd75cd5f56e8d61f69595121183afc81556c876732fd3782c62f"
+    }
+  ]
+}

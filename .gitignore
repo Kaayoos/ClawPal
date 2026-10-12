@@ -1,0 +1,71 @@
+# Local builds, generated bundles and downloaded executables
+**/bin/
+**/obj/
+firmware/build*/
+firmware/sdkconfig
+firmware/sdkconfig.old
+firmware/managed_components/
+companion/Payload.zip
+payload/firmware/**/*.bin
+payload/firmware/*.bin
+# Per-board manifests carry generated hashes and are built by CI.
+payload/boards/
+# Desktop firmware simulator outputs
+.sim-output/
+payload/tools/**/*.exe
+payload/tools/*.exe
+payload/licenses/
+.downloads/
+.test-output/
+dist/
+node_modules/
+__pycache__/
+*.py[cod]
+
+# Personal data, provisioning, backup images and diagnostics
+.clawpal/
+.clawpal-work/
+.secrets/
+.env
+.env.*
+!.env.example
+backups/
+backup*.bin
+flash-backup*.bin
+provisioning*.bin
+config.local.json
+*.log
+*.dmp
+*.rgb565
+*.pem
+*.key
+*.pfx
+*.p12
+
+# Editor, assistant and local design context (not product source)
+.vs/
+.idea/
+.vscode/
+.agents/
+.codex/
+.impeccable/
+.tools/
+PRODUCT.md
+DESIGN.md
+docs/VERIFICATION.md
+*.user
+*.suo
+Thumbs.db
+.DS_Store
+
+# Private development/hardware acceptance reports
+companion/tests/validation-*.txt
+
+# Claude user configuration and local session bridge data
+.claude/
+.credentials.json
+*.session.json
+
+# Local promotional projects are not part of the app repository
+/promo-2d/
+/promo-video/

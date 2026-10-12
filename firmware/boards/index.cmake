@@ -1,0 +1,1 @@
+set(_clawpal_boards waveshare-esp32-s3-touch-lcd-4.3b waveshare-esp32-s3-touch-lcd-5 waveshare-esp32-s3-touch-lcd-7-16mb waveshare-esp32-s3-touch-lcd-7-8mb waveshare-esp32-s3-touch-lcd-2.8c guition-esp32-4848s040c-i m5stack-cores3)

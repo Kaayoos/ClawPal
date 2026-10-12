@@ -1,0 +1,78 @@
+{
+  "source": "User-supplied krabik_assets and additional project mascot sheets, 2026-10-06",
+  "layout": {
+    "frameWidth": 48,
+    "frameHeight": 48,
+    "columns": 8,
+    "rows": 6,
+    "frameOrder": "row-major",
+    "framesPerState": 48
+  },
+  "encoding": "LVGL 8 INDEXED_4BIT with exact BGRA palette; identical frame buffers shared",
+  "playback": {
+    "fps": 10,
+    "timing": "Implementation choice; source assets did not include timing metadata"
+  },
+  "sourceColorsIncludingTransparency": 16,
+  "uniqueEncodedFrames": 142,
+  "encodedPixelAndPaletteBytes": 172672,
+  "verifiedRoundtripPixels": 1437696,
+  "files": {
+    "crab_carrying_sheet.png": {
+      "sha256": "a658c580cf4fff457cdc57bb4ff89f135afe2b039aeb6a5de2a90b0a117d3f31",
+      "bytes": 5352
+    },
+    "crab_cloudy_sheet.png": {
+      "sha256": "6a2fd288aae3a5fde8ac3028dcbc11bc0cde68425eeff6d4d0e7c3c9a9b1a425",
+      "bytes": 5998
+    },
+    "crab_error_sheet.png": {
+      "sha256": "5d394ee15b174cd36e81ec9c3db0910c236e4c095564274351130941a01a8326",
+      "bytes": 4694
+    },
+    "crab_happy_sheet.png": {
+      "sha256": "1ae6ec4c1ec8cc7ff26feb5d7453021e3dd4776a50d46dc9a5f1acd52e9adcf9",
+      "bytes": 5739
+    },
+    "crab_idle_sheet.png": {
+      "sha256": "d6526487a8bb326603def10f4f221bb74d780e5a96d7cd84932d47ec1be7fdba",
+      "bytes": 4470
+    },
+    "crab_music_sheet.png": {
+      "sha256": "517651ff2d4ffbee5b112a8eb4c385ef094436e95fe4502b1ec46aefd99d3673",
+      "bytes": 7023
+    },
+    "crab_night_sheet.png": {
+      "sha256": "375decbe9b206a5347b6bfb884f076de4fddf8bfc535e8d60927a74432d7becf",
+      "bytes": 5528
+    },
+    "crab_rainy_sheet.png": {
+      "sha256": "94030a8bc1c7d922c54af71070bfc59801187fdef91c2416576bcd9203971daf",
+      "bytes": 8421
+    },
+    "crab_sleeping_sheet.png": {
+      "sha256": "f54882004a4f0cba7fd9888374e8e7f5ca54b96a1c50fab2a8b331a5365b35e8",
+      "bytes": 3973
+    },
+    "crab_sunny_sheet.png": {
+      "sha256": "e2c3c73e07cf097b487c72830571ad1f48668cd95191a0a2068a4c1d165e6a39",
+      "bytes": 6571
+    },
+    "crab_thinking_sheet.png": {
+      "sha256": "a38f629a5a8906ef3f36cbb41fecae2c09fc0805c56f13df0c95df91f7870466",
+      "bytes": 5048
+    },
+    "crab_typing_sheet.png": {
+      "sha256": "794af13df1a5f9d670435a712e37adc8b21fb89a85bff792f1ee5a85070bae45",
+      "bytes": 5445
+    },
+    "crab_working_sheet.png": {
+      "sha256": "4d0bcec0739905a8e47cea11d0885c96c56f6d122c8164c4e16120488a5dae43",
+      "bytes": 5654
+    },
+    "palette.json": {
+      "sha256": "1a3aa0468224e9f5c492134daeaa2fe0fd3dc7035990d50d522e3ee2791d7486",
+      "bytes": 179
+    }
+  }
+}

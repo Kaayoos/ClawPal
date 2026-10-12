@@ -1,0 +1,17 @@
+ClawPal ESP-IDF linking permission (additional permission under GPLv3 section 7)
+
+Copyright (c) 2026 MinimalPulse and contributors.
+
+If you modify ClawPal firmware, or any covered work, by linking or combining it
+with components distributed by Espressif as part of ESP-IDF (or modified versions
+of those components), the copyright holders of ClawPal grant you additional
+permission to convey the resulting work. You must comply with each component's
+own license and with GPLv3 for the ClawPal portions of the combined work.
+
+When conveying such a combined work, Corresponding Source for the ClawPal
+portions must be provided as required by GPLv3. This additional permission does
+not require source for components that Espressif distributes only as object code.
+It does not exempt modifications to ClawPal itself from GPLv3.
+
+You may remove this additional permission from your version as GPLv3 allows.
+This permission grants no trademark rights and creates no warranty.

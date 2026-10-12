@@ -1,0 +1,15 @@
+ClawPal Windows SDK linking permission (additional permission under GPLv3 section 7)
+
+Copyright (c) 2026 MinimalPulse and contributors.
+
+If you modify ClawPal, or any covered work, by linking or combining it with
+Microsoft's Windows SDK runtime/projection components, the copyright holders
+of ClawPal grant you additional permission to convey the resulting work.
+You must comply with Microsoft's terms for those components and with GPLv3
+for the ClawPal portions of the combined work.
+
+This permission does not require disclosure or relicensing of Microsoft's
+components, does not exempt modifications to ClawPal itself from GPLv3, and
+does not grant rights to Microsoft software beyond its own license terms.
+You may remove this additional permission from your version as GPLv3 allows.
+It grants no trademark rights and creates no warranty.

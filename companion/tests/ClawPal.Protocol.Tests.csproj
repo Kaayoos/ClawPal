@@ -1,0 +1,5 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup><OutputType>Exe</OutputType><TargetFramework>net8.0</TargetFramework><ImplicitUsings>enable</ImplicitUsings><Nullable>enable</Nullable></PropertyGroup>
+  <ItemGroup><Compile Include="../GameContract.cs" Link="GameContract.cs" /></ItemGroup>
+  <ItemGroup><Compile Include="../Protocol.cs" Link="Protocol.cs" /><Compile Include="../CodexContract.cs" Link="CodexContract.cs" /><Compile Include="../ActivityContract.cs" Link="ActivityContract.cs" /><Compile Include="../StartupContract.cs" Link="StartupContract.cs" /><Compile Include="../BuddyPaths.cs" Link="BuddyPaths.cs" /></ItemGroup>
+</Project>

@@ -1,0 +1,86 @@
+{
+  "Python.txt": {
+    "url": "https://raw.githubusercontent.com/python/cpython/v3.11.11/LICENSE",
+    "sha256": "3b2f81fe21d181c499c59a256c8e1968455d6689d269aa85373bfb6af41da3bf"
+  },
+  "PyInstaller.txt": {
+    "url": "https://raw.githubusercontent.com/pyinstaller/pyinstaller/v6.12.0/COPYING.txt",
+    "sha256": "dcf75fdb959db1e3b41c0f8505069d2ece781b5ec6b3d0a4d30975cfc6580245"
+  },
+  "bitarray.txt": {
+    "url": "https://raw.githubusercontent.com/ilanschnell/bitarray/3.0.0/LICENSE",
+    "sha256": "6b5e04f6e0462e1b97be833f9d65e66cd5eceb3283f4a6f532261087d0ab1233"
+  },
+  "cryptography-BSD.txt": {
+    "url": "https://raw.githubusercontent.com/pyca/cryptography/44.0.2/LICENSE.BSD",
+    "sha256": "602c4c7482de6479dd2e9793cda275e5e63d773dacd1eca689232ab7008fb4fb"
+  },
+  "cryptography-Apache.txt": {
+    "url": "https://raw.githubusercontent.com/pyca/cryptography/44.0.2/LICENSE.APACHE",
+    "sha256": "aac73b3148f6d1d7111dbca32099f68d26c644c6813ae1e4f05f6579aa2663fe"
+  },
+  "cryptography.txt": {
+    "url": "https://raw.githubusercontent.com/pyca/cryptography/44.0.2/LICENSE",
+    "sha256": "3e0c7c091a948b82533ba98fd7cbb40432d6f1a9acbf85f5922d2f99a93ae6bb"
+  },
+  "ecdsa.txt": {
+    "url": "https://raw.githubusercontent.com/tlsfuzzer/python-ecdsa/python-ecdsa-0.19.0/LICENSE",
+    "sha256": "3eca9845773d2e5b8cc9d8c119d345f00a4806e4bd660d4a3d6cdf9c0e9d8bb2"
+  },
+  "pyserial.txt": {
+    "url": "https://raw.githubusercontent.com/pyserial/pyserial/v3.5/LICENSE.txt",
+    "sha256": "f91cb9813de6a5b142b8f7f2dede630b5134160aedaeaf55f4d6a7e2593ca3f3"
+  },
+  "reedsolo.txt": {
+    "url": "https://raw.githubusercontent.com/tomerfiliba-org/reedsolomon/v1.7.0/LICENSE",
+    "sha256": "2da9536c23b72bac15603bb1f8dbf269dc68ecfbc35a75f8d0aa9cb209ba0934"
+  },
+  "PyYAML.txt": {
+    "url": "https://raw.githubusercontent.com/yaml/pyyaml/6.0.2/LICENSE",
+    "sha256": "8d3928f9dc4490fd635707cb88eb26bd764102a7282954307d3e5167a577e8a4"
+  },
+  "intelhex.txt": {
+    "url": "https://raw.githubusercontent.com/python-intelhex/intelhex/2.3.0/LICENSE.txt",
+    "sha256": "1b2eb032ab8a1b0266f7995c76e44509f89ca9c0e90ec507763b5e735aca7de4"
+  },
+  "cffi.txt": {
+    "url": "https://raw.githubusercontent.com/python-cffi/cffi/v1.17.1/LICENSE",
+    "sha256": "04b80f5b077bbed68808cfebadeb5e3523f2a8c9a96495c587bd96df1eac2a33"
+  },
+  "pycparser.txt": {
+    "url": "https://raw.githubusercontent.com/eliben/pycparser/release_v2.22/LICENSE",
+    "sha256": "0c846399369ea76ddd7b5c44fe6d16497415fcf015f5cbb508c24bf98b81c5b1"
+  },
+  "six.txt": {
+    "url": "https://raw.githubusercontent.com/benjaminp/six/1.17.0/LICENSE",
+    "sha256": "4375ba20e2b9c6c4e7cad2940a628fd90e95cc3d50ee92aae755715d8ba1fbd0"
+  },
+  "OpenSSL.txt": {
+    "url": "https://raw.githubusercontent.com/openssl/openssl/openssl-3.0.16/LICENSE.txt",
+    "sha256": "7d5450cb2d142651b8afa315b5f238efc805dad827d91ba367d8516bc9d49e7a"
+  },
+  "libffi.txt": {
+    "url": "https://raw.githubusercontent.com/libffi/libffi/v3.4.6/LICENSE",
+    "sha256": "67894089811f93fca47a76f85e017da6f8582d4ba0905963c6e0f1ad6df7a195"
+  },
+  "zlib.txt": {
+    "url": "https://raw.githubusercontent.com/madler/zlib/v1.3.1/LICENSE",
+    "sha256": "845efc77857d485d91fb3e0b884aaa929368c717ae8186b66fe1ed2495753243"
+  },
+  "stub-legacy-GPL.txt": {
+    "url": "https://raw.githubusercontent.com/espressif/esptool-legacy-flasher-stub/v1.11.1/LICENSE",
+    "sha256": "8177f97513213526df2cf6184d8ff986c675afb514d4e68a404010521b880643"
+  },
+  "stub-2-MIT.txt": {
+    "url": "https://raw.githubusercontent.com/espressif/esptool/v4.11.0/esptool/targets/stub_flasher/2/LICENSE-MIT",
+    "sha256": "0c36ae7b0588ad2fc7eb33247fcd509fba55bc40c441b81fccfe3af6acf779f5"
+  },
+  "stub-2-Apache.txt": {
+    "url": "https://raw.githubusercontent.com/espressif/esptool/v4.11.0/esptool/targets/stub_flasher/2/LICENSE-APACHE",
+    "sha256": "769f80b5bcb42ed0af4e4d2fd74e1ac9bf843cb80c5a29219d1ef3544428a6bb"
+  },
+  "bitstring.txt": {
+    "url": "https://raw.githubusercontent.com/scott-griffiths/bitstring/main/LICENSE",
+    "sha256": "4110041ff5b99a3b0f64d4aa0c426fb9bb4fb3de69cd4c847e634f8e99b2c6f0"
+  }
+}

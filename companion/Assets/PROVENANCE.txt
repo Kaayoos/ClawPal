@@ -1,0 +1,11 @@
+ClawPal companion icon
+
+Original artwork created and supplied by MinimalPulse.
+Source: assets/mascot/crab_idle_sheet.png and assets/mascot/palette.json.
+The icon uses the first 48 x 48 frame of the idle sheet. Painted pixels are
+centered by adjusting transparent padding and scaled with nearest-neighbor
+sampling. The original colors are retained.
+
+Regenerate: powershell -NoProfile -File companion/Assets/generate-icon.ps1
+Outputs: crab-tray.png and BuddyOS.ico (the legacy filename is internal).
+See NOTICE and LICENSE for copyright and redistribution terms.
