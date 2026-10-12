@@ -106,7 +106,9 @@ Commercial deployments need an appropriate provider arrangement.
 Third-party material keeps its own copyrights and licenses. Its authors are
 credited for their components; this is not an endorsement or a claim that
 integration providers contributed to ClawPal. Full licenses are bundled with
-ClawPal-Setup.exe and published as ClawPal-licenses.zip.
+ClawPal-Setup.exe. Local releases publish ClawPal-licenses.zip inside
+ClawPal-Source-and-Licenses.zip together with the matching source archives.
+Earlier releases publish these files separately.
 
 ## Claude Code integration
 

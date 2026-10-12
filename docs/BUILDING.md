@@ -41,7 +41,8 @@ Downloads are from the official esptool 4.11.0 and PresentMon 2.6.0 releases,
 with pinned SHA-256 checks. Their licenses are packaged for offline access.
 The output is dist/ClawPal-Setup.exe plus the release manifest, firmware images,
 checksum and license bundle. Every tool is packaged; no runtime download is
-needed to enable FPS collection. Source archives are a separate release step.
+needed to enable FPS collection. The local release command collects source and licenses into one ZIP automatically.
+See [local releases](UPDATES.md) for `./scripts/release.ps1 -Publish`.
 
 Run `python scripts/check-publication.py` before staging changes. This checks
 the files Git would publish, including already-tracked ignored files. It is a

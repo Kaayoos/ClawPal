@@ -32,6 +32,8 @@ foreach($model in $catalog.Boards){
 }
 Compress-Archive -Path "$payload/*" -DestinationPath (Join-Path $repo 'companion/Payload.zip') -Force
 if (-not $SkipTests) {
+    & $Python (Join-Path $repo "tests/test_local_release.py")
+    if ($LASTEXITCODE -ne 0) { throw "Release safety checks failed" }
     & $Python (Join-Path $repo "tests/test_languages.py")
     if ($LASTEXITCODE -ne 0) { throw "Language checks failed" }
     & $Dotnet run --project (Join-Path $repo 'companion/tests/ClawPal.Protocol.Tests.csproj') -c Release

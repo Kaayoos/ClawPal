@@ -28,17 +28,6 @@ jobs:
         with:
           name: ClawPal-firmware-payload
           path: payload/
-      - name: Archive exact SDK source with submodules
-        if: startsWith(github.ref, 'refs/tags/')
-        shell: bash
-        run: |
-          mkdir -p sdk-source
-          tar --exclude=.git --exclude=__pycache__ -czf sdk-source/esp-idf-v5.5.2-with-submodules.tar.gz -C /opt/esp idf
-      - uses: actions/upload-artifact@v4
-        if: startsWith(github.ref, 'refs/tags/')
-        with:
-          name: ClawPal-sdk-source
-          path: sdk-source/*.tar.gz
   windows:
     needs: firmware
     runs-on: windows-latest
@@ -63,14 +52,6 @@ jobs:
       - name: Test and package
         shell: pwsh
         run: ./scripts/build.ps1
-      - name: Match release tag and package tool source
-        if: startsWith(github.ref, 'refs/tags/')
-        shell: pwsh
-        run: |
-          ./scripts/package-release.ps1 -Version $env:GITHUB_REF_NAME
-          ./scripts/fetch-tool-source.ps1
-          git archive --format=zip --output=dist/ClawPal-source.zip HEAD
-          if ($LASTEXITCODE -ne 0) { throw 'Source archive failed' }
       - uses: actions/upload-artifact@v4
         with:
           name: ClawPal-release-files
@@ -78,7 +59,5 @@ jobs:
             dist/ClawPal-Setup.exe
             dist/ClawPal-Setup.exe.sha256
             dist/ClawPal-licenses.zip
-            dist/ClawPal-source.zip
             dist/clawpal-release.json
             dist/clawpal-*.bin
-            dist/sources/

@@ -131,7 +131,9 @@ passwords, local logs or device backups. See [architecture](docs/ARCHITECTURE.md
 
 Build from source with **ESP-IDF 5.5.2**, **.NET SDK 8.0.425** and Python 3.12.
 Firmware binaries and downloaded tools are intentionally excluded from Git.
-GitHub Actions builds firmware first, then tests and packages Windows.
+Run `./scripts/release.ps1 -Publish` to build, test, package and publish locally.
+GitHub Actions validates source changes independently; tag pushes do not publish releases.
+See the release guide for the one-time toolchain setup and recovery command.
 
 - [Build instructions](docs/BUILDING.md)
 - [Release format and publication commands](docs/UPDATES.md)
