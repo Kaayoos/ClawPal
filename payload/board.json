@@ -12,7 +12,7 @@
   "MaxBytes": 4128768,
   "AssetName": "clawpal-waveshare-4.3b.bin",
   "Profile": 0,
-  "Version": "0.8.1",
+  "Version": "0.9.0",
   "ToolSha256": "71B8C5E129A44E26851BD8E59DC8D299A1EB07BBD445A8E0A49ED64A0444ED1A",
   "Parts": [
     {

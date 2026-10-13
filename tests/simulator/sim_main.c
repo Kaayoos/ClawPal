@@ -27,7 +27,7 @@
 /* ---------- Stubbed platform services ---------- */
 static uint32_t rng = 0x9E3779B9u;
 uint32_t esp_random(void) { rng ^= rng << 13; rng ^= rng >> 17; rng ^= rng << 5; return rng; }
-static const esp_app_desc_t app_desc = { .version = "0.8.1" };
+static const esp_app_desc_t app_desc = { .version = "0.9.0" };
 const esp_app_desc_t *esp_app_get_description(void) { return &app_desc; }
 esp_err_t board_set_backlight(bool enabled) { (void)enabled; return ESP_OK; }
 

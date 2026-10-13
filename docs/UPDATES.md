@@ -29,11 +29,11 @@ still understood by the new companion. Update the PC companion to 0.8.0 first.
 An incompatible companion is offered as a PC update, while firmware installation
 stays disabled until the companion meets `min_companion`.
 
-Firmware that asks for on-screen approval (`POST /confirm`) refuses Wi-Fi and
-firmware changes from companions that do not ask for it. The first release
-containing it must raise `min_companion` in `scripts/package-release.ps1` (and
-the bundled value in `FirmwareUpdates.Install`) to that same release's version,
-so that companions update before their display does.
+Firmware 0.9.0 and later asks for on-screen approval (`POST /confirm`) and
+refuses Wi-Fi and firmware changes from companions that do not ask for it.
+Their `min_companion` is therefore 0.9.0 (`scripts/package-release.ps1` and the
+bundled value in `FirmwareUpdates.Install`), so companions update before their
+display does.
 
 ## First publication: commands for the maintainer
 
@@ -49,7 +49,7 @@ python scripts/check-publication.py
 if ($LASTEXITCODE -ne 0) { throw "Resolve publication findings first" }
 git add .
 git diff --cached --stat
-git commit -m "Release ClawPal 0.8.1"
+git commit -m "Release ClawPal 0.9.0"
 if ($LASTEXITCODE -ne 0) { throw "Commit failed" }
 git branch -M main
 $remote = git remote get-url origin 2>$null
@@ -57,9 +57,9 @@ if ($LASTEXITCODE -ne 0) { git remote add origin https://github.com/Kaayoos/claw
 elseif ($remote -ne "https://github.com/Kaayoos/clawpal.git" -and $remote -ne "git@github.com:Kaayoos/clawpal.git") { throw "Review the existing origin before publishing" }
 git push -u origin main
 if ($LASTEXITCODE -ne 0) { throw "Push failed; do not force push" }
-git tag -a v0.8.1 -m "ClawPal 0.8.1"
+git tag -a v0.9.0 -m "ClawPal 0.9.0"
 if ($LASTEXITCODE -ne 0) { throw "Tag already exists or could not be created" }
-git push origin v0.8.1
+git push origin v0.9.0
 ```
 
 Review the staged diff before the commit if you have made additional changes.
