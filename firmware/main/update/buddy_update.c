@@ -73,6 +73,17 @@ esp_err_t buddy_update_info(httpd_req_t *request)
     esp_err_t result=httpd_resp_sendstr(request,body);free(body);return result;
 }
 
+/* Wi-Fi updates never move backwards; older images stay installable over USB. */
+static bool older_than_running(const esp_app_desc_t *candidate)
+{
+    char version[sizeof(candidate->version)+1];
+    memcpy(version,candidate->version,sizeof(candidate->version));version[sizeof(candidate->version)]=0;
+    unsigned next[3],current[3];
+    if(sscanf(version,"%u.%u.%u",&next[0],&next[1],&next[2])!=3)return true;
+    if(sscanf(esp_app_get_description()->version,"%u.%u.%u",&current[0],&current[1],&current[2])!=3)return false;
+    for(int i=0;i<3;i++)if(next[i]!=current[i])return next[i]<current[i];
+    return false;
+}
 static void restart_task(void *unused){vTaskDelay(pdMS_TO_TICKS(1200));esp_restart();}
 static bool header_equals(httpd_req_t *request,const char *name,const char *expected)
 {
@@ -101,16 +112,18 @@ esp_err_t buddy_update_upload(httpd_req_t *request)
     if(image->magic!=ESP_IMAGE_HEADER_MAGIC || image->chip_id!=ESP_CHIP_ID_ESP32S3 || app->magic_word!=ESP_APP_DESC_MAGIC_WORD || strncmp(app->project_name,"clawpal",sizeof(app->project_name))!=0){
         free(buffer);return httpd_resp_send_err(request,HTTPD_400_BAD_REQUEST,"Not a ClawPal ESP32-S3 image");
     }
+    if(older_than_running(app)){free(buffer);return httpd_resp_send_err(request,HTTPD_400_BAD_REQUEST,"Older firmware is installed over USB only");}
     esp_ota_handle_t handle=0;
     esp_err_t result=esp_ota_begin(target,request->content_len,&handle);
     if(result!=ESP_OK){free(buffer);return httpd_resp_send_err(request,HTTPD_500_INTERNAL_SERVER_ERROR,"Could not prepare inactive firmware slot");}
     mbedtls_sha256_context sha;mbedtls_sha256_init(&sha);mbedtls_sha256_starts(&sha,0);
     size_t received=0;int64_t start=esp_timer_get_time();size_t count=first;
     while(result==ESP_OK){
-        mbedtls_sha256_update(&sha,buffer,count);result=esp_ota_write(handle,buffer,count);received+=count;
+        if(count){mbedtls_sha256_update(&sha,buffer,count);result=esp_ota_write(handle,buffer,count);received+=count;}
         if(result!=ESP_OK || received==(size_t)request->content_len)break;
         if(esp_timer_get_time()-start>180000000){result=ESP_ERR_TIMEOUT;break;}
         int n=httpd_req_recv(request,(char *)buffer,MIN(4096,request->content_len-received));
+        if(n==HTTPD_SOCK_ERR_TIMEOUT){count=0;continue;}
         if(n<=0){result=ESP_FAIL;break;}count=n;
     }
     uint8_t digest[32];mbedtls_sha256_finish(&sha,digest);mbedtls_sha256_free(&sha);free(buffer);

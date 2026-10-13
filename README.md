@@ -74,8 +74,10 @@ network settings. USB setup replaces existing firmware.
 - Use the Weather app for current conditions, the next 24 hours and five days.
   Clock keeps its minimal weather line. Tap your crab for a hello.
 
-Settings sync over authenticated local Wi-Fi. The PC may use Ethernet on the
-same reachable network. Offline changes wait until reconnection. Initial
+Settings sync over local Wi-Fi using the pairing token. That traffic is plain
+HTTP, not encrypted, so keep the display on a network you trust. A firmware
+update or Wi-Fi change sent from the PC waits until you tap **Allow** on the
+display. The PC may use Ethernet on the same reachable network. Offline changes wait until reconnection. Initial
 installation and backup/restore use USB; ordinary firmware updates use Wi-Fi
 and preserve settings. A future bootloader/partition change may require USB.
 
@@ -86,7 +88,8 @@ On the display, hold the version text on Home to find the same project attributi
 
 Native Windows Claude Code sessions have their own display app, usage windows,
 keyboard crab and recorded-session list. Enable Claude Code in Apps, then use
-**Companion → Connect / repair Claude Code** if it has not connected automatically.
+**Companion → Connect / repair Claude Code**. ClawPal edits Claude Code's
+settings only when you click it; **Disconnect Claude Code** restores them.
 Restart already-open Claude sessions once. New installations include a Home
 shortcut; upgrades preserve your existing shortcut order. Add Claude from Home
 settings if you want it pinned. Automatic navigation follows the shared preference.

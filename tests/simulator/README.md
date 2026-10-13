@@ -5,7 +5,7 @@ anonymous telemetry. It exercises all eight apps, scroll gestures, timer and mus
 buttons, the Apps footer and offline Clock fallback at 800x480, 480x480 and 320x240.
 It does not emulate the LCD, touch controller, power circuit or PSRAM hardware.
 
-Install Python 3.12 and `python -m pip install ziglang==0.13.0`, then run
+Install Python 3.12 and `python -m pip install --require-hashes -r tests/simulator/requirements.txt`, then run
 `./scripts/test-ui.ps1`. Pass `-Python <path>` when needed. Outputs and PPM snapshots
 are ignored under `.sim-output/`. CI runs the same checks on Windows. A successful
 simulation does not promote a board out of experimental status.

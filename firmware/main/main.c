@@ -13,6 +13,7 @@
 #include "buddy_weather.h"
 #include "buddy_settings.h"
 #include "buddy_update.h"
+#include "esp_app_desc.h"
 #include "esp_err.h"
 #include "esp_log.h"
 #include "esp_sntp.h"
@@ -25,11 +26,12 @@
 
 static const char *TAG = "buddyos";
 
-typedef enum { EVENT_STATE, EVENT_STATS } event_kind_t;
+typedef enum { EVENT_STATE, EVENT_STATS, EVENT_CONFIRM } event_kind_t;
 typedef struct {
     event_kind_t kind;
     union {
         buddy_stats_t stats;
+        buddy_confirm_action_t confirm;
         struct {
             buddy_connection_state_t state;
             char ssid[33];
@@ -56,6 +58,14 @@ static void on_stats(const buddy_stats_t *stats)
 {
     ui_event_t event = {.kind = EVENT_STATS};
     event.data.stats = *stats;
+    xQueueSend(ui_events, &event, 0);
+}
+
+static void on_confirm(buddy_confirm_action_t action)
+{
+    /* Dropped prompts are harmless: the companion repeats the request while it waits. */
+    ui_event_t event = {.kind = EVENT_CONFIRM};
+    event.data.confirm = action;
     xQueueSend(ui_events, &event, 0);
 }
 
@@ -86,7 +96,7 @@ static void update_clock(void)
 
 void app_main(void)
 {
-    ESP_LOGI(TAG, "ClawPal 0.7.0 starting: hourly and daily weather");
+    ESP_LOGI(TAG, "ClawPal %s starting", esp_app_get_description()->version);
     buddy_update_boot_guard();
     esp_err_t err = nvs_flash_init();
     if (err != ESP_OK) {
@@ -108,11 +118,12 @@ void app_main(void)
     board_lvgl_lock(-1);
     buddy_ui_init();
     buddy_ui_set_music_control_callback(buddy_network_music_control);
+    buddy_ui_set_confirm_callback(buddy_network_confirm_result);
     buddy_ui_set_connection(BUDDY_WIFI_CONNECTING, "", "", BT(BT_STARTING_WI_FI));
     update_clock();
     board_lvgl_unlock();
 
-    const buddy_network_callbacks_t callbacks = {.on_state = on_state, .on_stats = on_stats};
+    const buddy_network_callbacks_t callbacks = {.on_state = on_state, .on_stats = on_stats, .on_confirm = on_confirm};
     err = buddy_network_start(&callbacks);
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "Network startup failed: %s", esp_err_to_name(err));
@@ -150,6 +161,8 @@ void app_main(void)
             if (received && event.kind == EVENT_STATE) {
                 buddy_ui_set_connection(event.data.connection.state,
                     event.data.connection.ssid, event.data.connection.ip, event.data.connection.detail);
+            } else if (received && event.kind == EVENT_CONFIRM) {
+                buddy_ui_request_confirmation(event.data.confirm);
             } else if (received) {
                 buddy_ui_update_stats(&event.data.stats);
                 if (last_log_us == 0 || now_us - last_log_us >= 60000000) {

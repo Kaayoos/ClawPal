@@ -9,6 +9,7 @@
 #include <stdio.h>
 #include "nvs.h"
 #include <time.h>
+#include "esp_app_desc.h"
 #include "esp_crt_bundle.h"
 #include "esp_http_client.h"
 #include "esp_log.h"
@@ -55,6 +56,8 @@ static bool fetch_weather(buddy_weather_t *result, fetch_diagnostic_t *diagnosti
     /* Forecast bodies do not need scarce internal RAM used by TLS and DMA. */
     char *body = heap_caps_calloc(1, RESPONSE_CAPACITY, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
     if (!body) { diagnostic->error = ESP_ERR_NO_MEM; return false; }
+    char user_agent[64];
+    snprintf(user_agent, sizeof(user_agent), "ClawPal/%s (desk weather)", esp_app_get_description()->version);
     const esp_http_client_config_t config = {
         .url = weather_url,
         .crt_bundle_attach = esp_crt_bundle_attach,
@@ -62,7 +65,7 @@ static bool fetch_weather(buddy_weather_t *result, fetch_diagnostic_t *diagnosti
         .buffer_size = 1024,
         .buffer_size_tx = 1024,
         .disable_auto_redirect = true,
-        .user_agent = "ClawPal/0.7.0 (desk weather)",
+        .user_agent = user_agent,
     };
     diagnostic->state = "init";
     esp_http_client_handle_t client = esp_http_client_init(&config);

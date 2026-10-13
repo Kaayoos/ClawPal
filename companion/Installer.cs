@@ -263,6 +263,13 @@ public sealed class Installer
         await Tool(board,port,verify.ToArray());
         progress.Report(L.Text("wi_fi_updates_enabled_pairing_and_settings_preserved"));
     }
+    // Provisioning images hold the Wi-Fi password and pairing token; remove any left behind by an interrupted installation.
+    public static void DeleteStaleProvisioningImages()
+    {
+        if (!Directory.Exists(Configuration.DirectoryPath)) return;
+        foreach (var file in Directory.GetFiles(Configuration.DirectoryPath, "provision-*.bin"))
+            try { File.Delete(file); } catch (IOException) { } catch (UnauthorizedAccessException) { }
+    }
     public async Task Restore(string port, string metadataPath, string boardId = BoardCatalog.DefaultId)
     {
         var board = PreparePayload(boardId);

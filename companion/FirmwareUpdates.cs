@@ -170,7 +170,7 @@ public sealed class FirmwareUpdates(Configuration config,DeviceSettingsClient se
         Checking=true;
         try {
             ReleaseStatus=L.Text("checking_github_releases");offer=await GithubFirmware.Check(token,boardId:config.BoardId);
-            try{await ReadDevice(token);}catch(IOException){}
+            try{await ReadDevice(token);}catch(Exception e) when(e is IOException or HttpRequestException or JsonException or KeyNotFoundException){}
             ReleaseStatus=AvailableCompanionVersion is { } pc?L.Text("companion_update_available",pc):AvailableVersion is { } version?L.Text("firmware_available", version):Device is null?L.Text("firmware_latest", offer.Release.Version):L.Text("your_display_is_up_to_date");
         }catch(OperationCanceledException){ReleaseStatus=L.Text("update_check_timed_out_or_was_cancelled_try_again");if(token.IsCancellationRequested)throw;}catch(Exception e){offer=null;ReleaseStatus=e.Message;}
         finally{config.LastUpdateCheckUtc=DateTimeOffset.UtcNow;config.Save();Checking=false;gate.Release();}
@@ -204,6 +204,8 @@ public sealed class FirmwareUpdates(Configuration config,DeviceSettingsClient se
             if(FirmwareRelease.ParseVersion(release.Version)<FirmwareRelease.ParseVersion(before.Version))throw new IOException(L.Text("clawpal_does_not_install_older_firmware_automatically"));
             if(config.SettingsPending && (await settings.ReadAsync(token)).ProtocolSchema>=DeviceSettings.CurrentSchema)await settings.SyncAsync(token);
             var preferences=(await settings.ReadAsync(token)).Settings;
+            var (confirmHttp,confirmUrl)=await Open(token);
+            using(confirmHttp)await DeviceSettingsClient.ConfirmOnDisplayAsync(confirmHttp,confirmUrl,"firmware",()=>Status=L.Text("tap_allow_on_your_clawpal_display_to_continue"),token);
             settings.Suspended=true;maintenance(true);Status=L.Text("sending_firmware_over_wi_fi");
             var (http,url)=await Open(token);
             try { using(http){using var request=new HttpRequestMessage(HttpMethod.Post,url);

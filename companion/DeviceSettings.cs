@@ -71,7 +71,7 @@ public sealed record DeviceSettings
         if (NightStart is < 0 or > 23 || NightEnd is < 0 or > 23 || NightStart==NightEnd)
             throw new ArgumentException(L.Text("night_hours_must_have_different_start_and_end_times"));
         if (OfflineApp is < 0 or > 7) throw new ArgumentException(L.Text("choose_an_available_offline_app"));
-        if (string.IsNullOrWhiteSpace(City) || Encoding.UTF8.GetByteCount(City) > 73 || City.Contains('\0')) throw new ArgumentException(L.Text("choose_a_location_with_a_name_shorter_than_64"));
+        if (string.IsNullOrWhiteSpace(City) || Encoding.UTF8.GetByteCount(City) > 63 || City.Contains('\0')) throw new ArgumentException(L.Text("choose_a_location_with_a_name_shorter_than_64"));
         if (!double.IsFinite(Latitude) || !double.IsFinite(Longitude) || Math.Abs(Latitude)>90 || Math.Abs(Longitude)>180) throw new ArgumentException(L.Text("choose_a_valid_weather_location"));
         if (!Regex.IsMatch(Timezone ?? "", "^[A-Za-z0-9+,.:/<>-]{3,127}$")) throw new ArgumentException(L.Text("choose_a_supported_time_zone"));
     }
@@ -92,6 +92,26 @@ public sealed class DeviceSettingsClient(Configuration config)
         var body=new ByteArrayContent(JsonSerializer.SerializeToUtf8Bytes(value,Json));
         body.Headers.ContentType=new MediaTypeHeaderValue("application/json");
         return body;
+    }
+    // Newer firmware asks for a tap on the display before firmware or Wi-Fi changes. Firmware without /confirm returns 404.
+    internal static async Task ConfirmOnDisplayAsync(HttpClient client, Uri address, string action, Action waiting, CancellationToken token)
+    {
+        var deadline=DateTimeOffset.UtcNow.AddSeconds(55);bool notified=false;
+        while(true){
+            using(var body=JsonBody(new { action }))
+            using(var response=await client.PostAsync(new Uri(address,"/confirm"),body,token)){
+                if(response.StatusCode is HttpStatusCode.NotFound or HttpStatusCode.MethodNotAllowed)return;
+                response.EnsureSuccessStatusCode();
+                using var json=JsonDocument.Parse(await response.Content.ReadAsStringAsync(token));
+                var state=json.RootElement.TryGetProperty("state",out var value)&&value.ValueKind==JsonValueKind.String?value.GetString():null;
+                if(state=="approved")return;
+                if(state=="denied")throw new IOException(L.Text("the_change_was_declined_on_the_display"));
+                if(state!="pending")throw new IOException(L.Text("the_change_was_not_confirmed_on_the_display_in_time"));
+            }
+            if(!notified){waiting();notified=true;}
+            if(DateTimeOffset.UtcNow>=deadline)throw new IOException(L.Text("the_change_was_not_confirmed_on_the_display_in_time"));
+            await Task.Delay(1500,token);
+        }
     }
     internal static bool Equivalent(DeviceSettings a,DeviceSettings b) =>
         a.Schema==b.Schema && a.Language==b.Language && a.EnabledApps==b.EnabledApps && a.HomeOrder.SequenceEqual(b.HomeOrder) &&
@@ -175,7 +195,7 @@ public sealed class DeviceSettingsClient(Configuration config)
         } catch(NotSupportedException e) { NeedsFirmwareUpdate=true;Status=e.Message;throw; }
         finally { gate.Release(); }
     }
-    public async Task ChangeWifiAsync(string ssid, string password, CancellationToken token)
+    public async Task ChangeWifiAsync(string ssid, string password, Action<string> progress, CancellationToken token)
     {
         new SetupOptions("COM1",ssid,password,"Weather",0,0,"UTC0",false,false,false).Validate();
         await gate.WaitAsync(token);
@@ -183,6 +203,7 @@ public sealed class DeviceSettingsClient(Configuration config)
             var (client,address)=await Open(token);
             using(client) {
                 await Read(client,address,token);
+                await ConfirmOnDisplayAsync(client,address,"wifi",()=>progress(L.Text("tap_allow_on_your_clawpal_display_to_continue")),token);
                 using var body=JsonBody(new { ssid,password });
                 using var response=await client.PostAsync(new Uri(address,"wifi"),body,token);
                 response.EnsureSuccessStatusCode();
