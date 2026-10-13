@@ -62,7 +62,7 @@ internal static class GithubFirmware
     internal static async Task<byte[]> Download(Uri address,int maximum,CancellationToken token)
     {
         using var http=new HttpClient(new HttpClientHandler{AllowAutoRedirect=false}){Timeout=TimeSpan.FromMinutes(2)};
-        http.DefaultRequestHeaders.UserAgent.ParseAdd("ClawPal/0.8.1");
+        http.DefaultRequestHeaders.UserAgent.ParseAdd("ClawPal/"+(typeof(GithubFirmware).Assembly.GetName().Version?.ToString(3)??"0.0.0"));
         for(int redirects=0;redirects<6;redirects++) {
             using var response=await http.GetAsync(address,HttpCompletionOption.ResponseHeadersRead,token);
             if((int)response.StatusCode is 301 or 302 or 303 or 307 or 308) {
@@ -195,7 +195,7 @@ public sealed class FirmwareUpdates(Configuration config,DeviceSettingsClient se
             FirmwareRelease release;byte[] bytes;
             if(bundled){var board=await Task.Run(()=>Installer.PreparePayload(before.Board),token);var part=board.Parts.Single(p=>p.File.EndsWith("/clawpal.bin",StringComparison.Ordinal));
                 bytes=await File.ReadAllBytesAsync(Path.Combine(Installer.PayloadPath,part.File),token);
-                release=new(1,board.Version,board.Id,model.Layout,"0.8.0",new(model.AssetName,bytes.Length,part.Sha256));}
+                release=new(1,board.Version,board.Id,model.Layout,"0.9.0",new(model.AssetName,bytes.Length,part.Sha256));}
             else{var found=offer??throw new IOException(L.Text("check_github_for_an_update_first"));release=found.Release;Status=L.Text("downloading_firmware_from_github");bytes=await GithubFirmware.Download(found.Download,model.MaxBytes,token);}
             release.CheckImage(bytes);
             if(release.Board!=before.Board || bytes.Length>before.MaxBytes)throw new IOException(L.Text("this_firmware_release_is_not_compatible_with_your_display"));

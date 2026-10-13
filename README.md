@@ -135,7 +135,7 @@ GitHub Actions builds firmware first, then tests and packages Windows.
 - [Contributing](CONTRIBUTING.md)
 - [Screen and weather settings](docs/SCREEN-AND-WEATHER.md)
 
-The prepared release is **0.8.1**. The Windows executable is unsigned.
+The prepared release is **0.9.0**. The Windows executable is unsigned.
 The original 4.3B's main workflows have been exercised during development;
 backup restoration and broader Windows/hardware acceptance still need testing.
 
