@@ -284,6 +284,8 @@ internal sealed class SettingsForm : ClawWindow
         var claudeStatus=Put(p,preview?L.Text("claude_link_ready"):ClaudeBridge.Status,0,592,p.Width,9,false,55);
         var claudeLink=new ClawButton(){Text=L.Text("claude_link_button"),Location=new(0,546),Width=245};p.Controls.Add(claudeLink);
         claudeLink.Click+=(_,_)=>{try{if(!preview)ClaudeBridge.Install();claudeStatus.Text=L.Text("claude_link_ready");crab.State="happy";}catch(Exception error){claudeStatus.Text=error.Message;crab.State="error";}};
+        var claudeUnlink=new ClawButton(){Text=L.Text("claude_link_disconnect"),Location=new(257,546),Width=230};p.Controls.Add(claudeUnlink);
+        claudeUnlink.Click+=(_,_)=>{try{if(!preview)ClaudeBridge.Uninstall();claudeStatus.Text=L.Text("claude_link_removed");crab.State="idle";}catch(Exception error){claudeStatus.Text=error.Message;crab.State="error";}};
         Switch(p,L.Text("pause_pc_monitoring"),paused,324,value=>{paused=value;Dirty(false);});Put(p,L.Text("wireless_settings_remain_available_while_telemetry_is_paused"),0,370,p.Width,9);
     }
     private void DevicePage()
@@ -306,7 +308,7 @@ internal sealed class SettingsForm : ClawWindow
         var reveal=new ClawSwitch(){Text=L.Text("show_password"),Width=250,Location=new(0,268),Height=34};reveal.CheckedChanged+=(_,_)=>password.UseSystemPasswordChar=!reveal.Checked;p.Controls.Add(reveal);
         change.Click+=async(_,_)=>{
             change.Enabled=false;crab.State="working";
-            try{using var timeout=new CancellationTokenSource(TimeSpan.FromSeconds(18));await wireless.ChangeWifiAsync(ssid.Text,password.Text,timeout.Token);password.Clear();status.Text=L.Text("network_saved_the_display_is_reconnecting");crab.State="happy";}
+            try{using var timeout=new CancellationTokenSource(TimeSpan.FromSeconds(90));await wireless.ChangeWifiAsync(ssid.Text,password.Text,message=>status.Text=message,timeout.Token);password.Clear();status.Text=L.Text("network_saved_the_display_is_reconnecting");crab.State="happy";}
             catch(Exception e){status.Text=e.Message;crab.State="error";}finally{if(!change.IsDisposed)change.Enabled=true;}
         };
         Put(p,L.Text("maintenance"),0,397,p.Width,12,true);

@@ -58,8 +58,10 @@ public sealed class Metrics : IDisposable
         previousNetwork.Clear();
         foreach (var item in current) previousNetwork.Add(item.Key, item.Value);
         previousTime = now;
+        // The display rejects a whole frame when a name fills its 96-byte buffer.
+        var gpuStats = gpu.Sample();
         return new("pc.stats", 1, seq, Environment.MachineName, DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
-            new(usage, null, cpuName), gpu.Sample(),
+            new(usage, null, MusicContract.LimitText(cpuName, 95)), gpuStats with { Name = MusicContract.LimitText(gpuStats.Name, 95) },
             new(Math.Round(usedMb, 1), Math.Round(totalMb, 1), Math.Round(totalMb > 0 ? usedMb / totalMb * 100 : 0, 1)),
             new(Math.Round(rx, 1), Math.Round(tx, 1)), Environment.TickCount64 / 1000);
     }

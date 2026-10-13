@@ -412,10 +412,6 @@
     "no_match_try_a_nearby_town_or_different_spelling": "Brak wyników. Spróbuj pobliskiej miejscowości lub innej pisowni.",
     "choose_your_location_and_check_its_time_zone": "Wybierz lokalizację i sprawdź jej strefę czasową.",
     "location_search": "Wyszukiwanie miejsca: ",
-    "choose_a_weather_location_in_make_it_yours_first": "Najpierw wybierz lokalizację pogody w kroku Po swojemu.",
-    "clawpal_is_offline_connect_it_to_the_same_network": "ClawPal jest offline. Najpierw połącz go z tą samą siecią.",
-    "location_saved_the_display_is_restarting_to_apply_it": "Lokalizacja zapisana. Ekran uruchamia się ponownie, aby ją zastosować.",
-    "could_not_update_location": "Nie zmieniono lokalizacji: ",
     "connect_and_check_your_display_then_confirm_the_board": "Najpierw podłącz i sprawdź ekran, a następnie potwierdź płytkę.",
     "choose_backup_json": "Wybierz backup.json",
     "clawpal_backup_metadata_backup_json": "Metadane kopii ClawPal|backup.json",
@@ -476,7 +472,7 @@
     "claude_link_description": "Limity CLI pochodzą z paska stanu, a Desktop - z lokalnej historii użycia wraz z wiekiem odczytu. Istniejące hooki i treść paska stanu są zachowane.",
     "claude_link_button": "Połącz / napraw Claude Code",
     "claude_link_ready": "Połączenie gotowe. Uruchom ponownie otwarte sesje Claude Code.",
-    "claude_link_missing": "Połącz Claude tutaj, a potem otwórz Claude Code. Obsługiwane są sesje natywne Windows.",
+    "claude_link_missing": "Nie połączono. ClawPal zmienia ustawienia Claude Code dopiero po kliknięciu „Połącz”. Obsługiwane są sesje natywne Windows.",
     "claude_install_first": "Najpierw zainstaluj ClawPal na tym PC, potem połącz Claude Code.",
     "claude_settings_invalid": "Nie można bezpiecznie odczytać ustawień Claude. Sprawdź settings.json i spróbuj ponownie.",
     "claude_settings_changed": "Ustawienia Claude zmieniły się podczas konfiguracji. Spróbuj ponownie.",
@@ -489,7 +485,12 @@
     "usb_migration_original_only": "Ta migracja USB jest dostępna tylko dla oryginalnej 4.3B. Inne modele obsługują aktualizacje Wi-Fi od pierwszej instalacji.",
     "invalid_board_release": "Wydanie zawiera niespójne informacje o płytkach.",
     "release_board_missing": "To wydanie nie zawiera firmware dla Twojego modelu wyświetlacza.",
-    "your_display_dimensions": "Twój wyświetlacz · {0} × {1}"
+    "your_display_dimensions": "Twój wyświetlacz · {0} × {1}",
+    "tap_allow_on_your_clawpal_display_to_continue": "Stuknij „Zezwól” na wyświetlaczu ClawPal, aby kontynuować.",
+    "the_change_was_declined_on_the_display": "Zmiana została odrzucona na wyświetlaczu.",
+    "the_change_was_not_confirmed_on_the_display_in_time": "Zmiana nie została potwierdzona na wyświetlaczu na czas. Spróbuj ponownie.",
+    "claude_link_disconnect": "Odłącz Claude Code",
+    "claude_link_removed": "Przywrócono ustawienia Claude Code. Uruchom ponownie otwarte sesje Claude Code."
   },
   "display": {
     "waiting_for_time": "Czekam na czas",
@@ -861,6 +862,13 @@
     "reading_your_claude_account_on_the_pc_your_limits": "Wyślij wiadomość w Claude Code. Limity pojawią się po pierwszej odpowiedzi, jeśli Twój plan je udostępnia.",
     "claude_no_limits": "Wyślij wiadomość w Claude Code. Limity pojawią się po pierwszej odpowiedzi, jeśli Twój plan je udostępnia.",
     "waiting_for_you": "Czeka na Ciebie",
-    "experimental_hardware": "Sprzęt eksperymentalny - bez testów na tej płytce"
+    "experimental_hardware": "Sprzęt eksperymentalny - bez testów na tej płytce",
+    "confirm_firmware_title": "Zainstalować aktualizację?",
+    "confirm_firmware_body": "Komputer chce zainstalować nowe oprogramowanie wyświetlacza przez Wi-Fi. Zezwól tylko, jeśli aktualizacja została uruchomiona przez Ciebie.",
+    "confirm_wifi_title": "Zmienić sieć Wi-Fi?",
+    "confirm_wifi_body": "Komputer chce przenieść ten wyświetlacz do innej sieci Wi-Fi. Zezwól tylko, jeśli ta zmiana została zlecona przez Ciebie.",
+    "confirm_allow": "Zezwól",
+    "confirm_deny": "Odmów",
+    "confirm_on_display_first": "Najpierw potwierdź tę zmianę na wyświetlaczu"
   }
 }

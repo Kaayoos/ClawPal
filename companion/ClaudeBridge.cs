@@ -62,6 +62,39 @@ internal static class ClaudeBridge
         if(File.Exists(path)&&File.ReadAllText(path)!=original)throw new IOException(L.Text("claude_settings_changed"));
         AtomicWrite(path,updated);
     }
+    internal static void Uninstall()=>UninstallAt(ClaudeDirectory,DirectoryPath);
+    // Restores the status line saved by InstallAt and removes only ClawPal's hook entries.
+    internal static void UninstallAt(string claudeDirectory,string bridgeDirectory)
+    {
+        string path=Path.Combine(claudeDirectory,"settings.json"),previousPath=Path.Combine(bridgeDirectory,"previous-statusline.json");
+        if(File.Exists(path)) {
+            string original=File.ReadAllText(path);
+            if(original.Length>1_048_576)throw new IOException(L.Text("claude_settings_invalid"));
+            var settings=JsonNode.Parse(original) as JsonObject??throw new IOException(L.Text("claude_settings_invalid"));
+            if(settings["statusLine"] is JsonObject status&&status["command"] is JsonValue command&&command.TryGetValue<string>(out var text)&&text.Contains("--claude-statusline",StringComparison.Ordinal)) {
+                settings.Remove("statusLine");
+                if((File.Exists(previousPath)?JsonNode.Parse(File.ReadAllText(previousPath)):null) is JsonObject previous)settings["statusLine"]=previous;
+            }
+            if(settings["hooks"] is JsonObject hooks) {
+                foreach(string name in Events) {
+                    if(hooks[name] is not JsonArray entries)continue;
+                    for(int i=entries.Count-1;i>=0;i--)if(entries[i]?["hooks"] is JsonArray actions) {
+                        for(int j=actions.Count-1;j>=0;j--)if(actions[j]?["command"]?.GetValue<string>()?.Contains("--claude-event",StringComparison.Ordinal)==true)actions.RemoveAt(j);
+                        if(actions.Count==0)entries.RemoveAt(i);
+                    }
+                    if(entries.Count==0)hooks.Remove(name);
+                }
+                if(hooks.Count==0)settings.Remove("hooks");
+            }
+            string updated=settings.ToJsonString(new JsonSerializerOptions{WriteIndented=true});
+            if(updated!=original) {
+                // Refuse to overwrite a concurrent settings edit.
+                if(File.ReadAllText(path)!=original)throw new IOException(L.Text("claude_settings_changed"));
+                AtomicWrite(path,updated);
+            }
+        }
+        if(File.Exists(previousPath))File.Delete(previousPath);
+    }
     internal static int Receive(bool statusLine)
     {
         string input="";
@@ -178,13 +211,10 @@ internal sealed class ClaudeUsage
     }
     internal async Task RunAsync(CancellationToken cancellation)
     {
-        bool installAttempted=false;
+        // Claude Code's settings change only when the user clicks Connect in Settings.
         while(!cancellation.IsCancellationRequested){
             try {
                 if(Enabled()){
-                    if(!installAttempted&&Directory.Exists(ClaudeBridge.ClaudeDirectory)){
-                        installAttempted=true;if(!ClaudeBridge.Installed)ClaudeBridge.Install();
-                    }
                     Volatile.Write(ref snapshot,Refresh());
                 } else {desktopReading=null;desktopSession=null;nextDesktopRead=default;Volatile.Write(ref snapshot,CodexStats.Empty(false,"closed"));}
             } catch(Exception e) when(e is not OperationCanceledException){Log.Write("Claude monitor unavailable: "+e.GetType().Name);Volatile.Write(ref snapshot,CodexStats.Empty(false,"error"));}

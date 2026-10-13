@@ -17,6 +17,7 @@ typedef enum {
 } buddy_app_t;
 
 typedef bool (*buddy_music_control_callback_t)(const char *action);
+typedef void (*buddy_confirm_callback_t)(buddy_confirm_action_t action, bool approved);
 
 typedef struct {
     uint32_t active_app;
@@ -70,6 +71,10 @@ void buddy_ui_set_clock(const char *time_text, const char *date_text, bool night
 void buddy_ui_set_weather(const buddy_weather_t *weather);
 /* Callback must queue immediately; true means queued, not playback confirmed. */
 void buddy_ui_set_music_control_callback(buddy_music_control_callback_t callback);
+/* Shows an Allow/Deny prompt over every app; repeated requests for the same action are ignored.
+ * The callback receives the answer, or a denial when the prompt times out. */
+void buddy_ui_set_confirm_callback(buddy_confirm_callback_t callback);
+void buddy_ui_request_confirmation(buddy_confirm_action_t action);
 
 /* Explicit/manual selection. Only Monitor is available while provisioning. */
 bool buddy_ui_select_app(buddy_app_t app);

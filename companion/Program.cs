@@ -74,11 +74,13 @@ internal static class Program
             if (Value(args, "--pair-token-file") is { } tokenFile) config.Pair(tokenFile, Value(args, "--device-id") ?? throw new ArgumentException("--device-id is required when pairing."));
             if (args.Contains("--set-startup")) Startup.Set(true);
             if (args.Contains("--remove-startup")) Startup.Set(false);
+            if (args.Contains("--disconnect-claude")) { ClaudeBridge.Uninstall(); return 0; }
             if (args.Contains("--create-start-menu")) Startup.CreateStartMenuShortcut();
             if (args.Contains("--configure-only")) return 0;
             if (Value(args, "--test-connection") is { } connectionPath) { TestConnection(config, connectionPath).GetAwaiter().GetResult(); return 0; }
             using var singleton = new Mutex(true, @"Local\ClawPal.Companion", out var firstInstance);
             if (!firstInstance) { using var signal = new EventWaitHandle(false, EventResetMode.AutoReset, @"Local\ClawPal.Show"); signal.Set(); return 0; }
+            Installer.DeleteStaleProvisioningImages();
             ApplicationConfiguration.Initialize();
             Application.SetUnhandledExceptionMode(UnhandledExceptionMode.CatchException);
             Application.ThreadException += (_, e) => Log.Write($"UI error: {e.Exception.GetType().Name}: {e.Exception.Message}");

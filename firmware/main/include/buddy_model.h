@@ -11,6 +11,13 @@ typedef enum {
     BUDDY_PROVISIONING,
 } buddy_connection_state_t;
 
+/* Remote changes that need approval on the touch screen before they are accepted. */
+typedef enum {
+    BUDDY_CONFIRM_NONE,
+    BUDDY_CONFIRM_FIRMWARE,
+    BUDDY_CONFIRM_WIFI,
+} buddy_confirm_action_t;
+
 typedef struct {
     bool running;
     bool available;

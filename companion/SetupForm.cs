@@ -2,7 +2,6 @@ using System.Diagnostics;
 using System.Drawing.Drawing2D;
 using System.Drawing.Imaging;
 using System.Net.Http.Headers;
-using System.Net.Http.Json;
 using System.Text.Json;
 
 namespace ClawPal.Companion;
@@ -317,20 +316,6 @@ internal sealed class SetupForm : ClawWindow
             status.Text=places.Items.Count==0?L.Text("no_match_try_a_nearby_town_or_different_spelling"):L.Text("choose_your_location_and_check_its_time_zone");
             crab.State=places.Items.Count==0?"error":"idle";
         } catch(Exception e) { crab.State="error"; status.Text=L.Text("location_search")+e.Message; } finally { button.Enabled=true; }
-    }
-    private async Task SaveLocation()
-    {
-        if(selected is null) { status.Text=L.Text("choose_a_weather_location_in_make_it_yours_first"); return; }
-        try {
-            using var timeout=new CancellationTokenSource(TimeSpan.FromSeconds(15));
-            var endpoint=await Connection.DiscoverAsync(config,timeout.Token)??throw new IOException(L.Text("clawpal_is_offline_connect_it_to_the_same_network"));
-            using var http=new HttpClient(new HttpClientHandler { UseProxy=false }) { Timeout=TimeSpan.FromSeconds(10) };
-            http.DefaultRequestHeaders.Authorization=new AuthenticationHeaderValue("Bearer",config.Token);
-            var tz=Timezones[zones.SelectedIndex].Posix;
-            using var response=await http.PostAsJsonAsync($"http://{endpoint.Address}:{Protocol.MonitorPort}/settings",new { city=selected.Name,latitude=selected.Latitude,longitude=selected.Longitude,timezone=tz },timeout.Token);
-            response.EnsureSuccessStatusCode(); config.City=selected.Name;config.Latitude=selected.Latitude;config.Longitude=selected.Longitude;config.Timezone=tz;config.Save();
-            status.Text=L.Text("location_saved_the_display_is_restarting_to_apply_it");
-        } catch(Exception e) { crab.State="error"; status.Text=L.Text("could_not_update_location")+e.Message; }
     }
     private async Task Restore()
     {

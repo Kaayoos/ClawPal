@@ -60,6 +60,13 @@ static const char text_0_codex_account_limits[] = "Codex account limits";
 static const char text_0_codex_update_needed[] = "Codex update needed";
 static const char text_0_completed[] = "Completed";
 static const char text_0_conditions[] = "Conditions";
+static const char text_0_confirm_allow[] = "Allow";
+static const char text_0_confirm_deny[] = "Deny";
+static const char text_0_confirm_firmware_body[] = "Your PC companion wants to install new display firmware over Wi-Fi. Allow it only if you started this update.";
+static const char text_0_confirm_firmware_title[] = "Install a firmware update?";
+static const char text_0_confirm_on_display_first[] = "Confirm this change on the display first";
+static const char text_0_confirm_wifi_body[] = "Your PC companion wants to move this display to a different Wi-Fi network. Allow it only if you requested this change.";
+static const char text_0_confirm_wifi_title[] = "Change the Wi-Fi network?";
 static const char text_0_connect_clawpal[] = "Connect ClawPal";
 static const char text_0_connected[] = "Connected";
 static const char text_0_connected_to_your_pc[] = "Connected to your PC";
@@ -430,6 +437,13 @@ static const char text_1_codex_account_limits[] = "Limity konta Codex";
 static const char text_1_codex_update_needed[] = "Zaktualizuj Codex";
 static const char text_1_completed[] = "Ukończono";
 static const char text_1_conditions[] = "Warunki";
+static const char text_1_confirm_allow[] = "Zezwól";
+static const char text_1_confirm_deny[] = "Odmów";
+static const char text_1_confirm_firmware_body[] = "Komputer chce zainstalować nowe oprogramowanie wyświetlacza przez Wi-Fi. Zezwól tylko, jeśli aktualizacja została uruchomiona przez Ciebie.";
+static const char text_1_confirm_firmware_title[] = "Zainstalować aktualizację?";
+static const char text_1_confirm_on_display_first[] = "Najpierw potwierdź tę zmianę na wyświetlaczu";
+static const char text_1_confirm_wifi_body[] = "Komputer chce przenieść ten wyświetlacz do innej sieci Wi-Fi. Zezwól tylko, jeśli ta zmiana została zlecona przez Ciebie.";
+static const char text_1_confirm_wifi_title[] = "Zmienić sieć Wi-Fi?";
 static const char text_1_connect_clawpal[] = "Połącz ClawPal";
 static const char text_1_connected[] = "Połączono";
 static const char text_1_connected_to_your_pc[] = "Połączono z Twoim PC";
@@ -802,6 +816,13 @@ const char *const buddy_language_texts[][BT_COUNT] = {
         text_0_codex_update_needed,
         text_0_completed,
         text_0_conditions,
+        text_0_confirm_allow,
+        text_0_confirm_deny,
+        text_0_confirm_firmware_body,
+        text_0_confirm_firmware_title,
+        text_0_confirm_on_display_first,
+        text_0_confirm_wifi_body,
+        text_0_confirm_wifi_title,
         text_0_connect_clawpal,
         text_0_connected,
         text_0_connected_to_your_pc,
@@ -1174,6 +1195,13 @@ const char *const buddy_language_texts[][BT_COUNT] = {
         text_1_codex_update_needed,
         text_1_completed,
         text_1_conditions,
+        text_1_confirm_allow,
+        text_1_confirm_deny,
+        text_1_confirm_firmware_body,
+        text_1_confirm_firmware_title,
+        text_1_confirm_on_display_first,
+        text_1_confirm_wifi_body,
+        text_1_confirm_wifi_title,
         text_1_connect_clawpal,
         text_1_connected,
         text_1_connected_to_your_pc,

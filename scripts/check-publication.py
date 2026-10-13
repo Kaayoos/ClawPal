@@ -9,11 +9,15 @@ files=sorted(set(p.decode('utf-8') for p in raw.split(b'\0') if p));fail=[]
 publish_dirs={'.github','assets','boards','companion','docs','firmware','languages','LICENSES','payload','scripts','tests','vendor'}
 publish_files={'.gitattributes','.gitignore','AUTHORS.md','CONTRIBUTING.md','LICENSE','NOTICE','README.md','THIRD_PARTY_NOTICES.md','TRADEMARKS.md','global.json'}
 
+# Upstream LVGL bundles demo fonts whose licenses forbid redistribution. ClawPal
+# never uses them; keep them out when the vendored copy is refreshed.
+restricted={'vendor/components/lvgl__lvgl/src/extra/libs/freetype/arial.ttf','vendor/components/lvgl__lvgl/src/font/korean.ttf','vendor/components/lvgl__lvgl/scripts/built_in_font/SimSun.woff'}
 secret=re.compile(rb'(?:gh[pousr]_[A-Za-z0-9]{30,}|github_pat_[A-Za-z0-9_]{40,}|sk-(?:proj-)?[A-Za-z0-9_-]{32,}|-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----)')
 private=re.compile(rb'(?:[A-Z]:[\\/]+Users[\\/]+(?!Public(?:[\\/]|$)|<)[A-Za-z0-9_.-]+|/home/(?!runner/|user/)[A-Za-z0-9_.-]+/)',re.I)
 for name in files:
  if ('/' in name and name.split('/',1)[0] not in publish_dirs) or ('/' not in name and name not in publish_files):
   fail.append((name,'outside the app publication boundary'));continue
+ if name in restricted:fail.append((name,'font licensed against redistribution'));continue
  p=root/name
  if not p.is_file():continue
  if p.suffix.lower() in ('.exe','.dll','.pdb','.bin','.log','.rgb565','.pfx','.key') or p.stat().st_size>40*1024*1024:fail.append((name,'unexpected binary/build/private file'));continue

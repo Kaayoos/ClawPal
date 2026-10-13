@@ -25,9 +25,9 @@ other fields are discarded. They remain on the PC. An unrelated CLI session
 cannot inherit Desktop’s account limits. When multiple sources are active, the
 most recently reporting live session selects whether the Desktop adapter applies.
 
-When Claude is enabled, the companion connects an existing Claude configuration
-automatically. Companion settings also offer Connect / repair. Close and reopen
-existing Claude sessions after first setup. Project-level settings, managed
+ClawPal changes Claude Code's user settings only when you click
+**Connect / repair Claude Code** in Companion settings; enabling the Claude app
+alone does not. Close and reopen existing Claude sessions after connecting. Project-level settings, managed
 policies or disabled hooks can override user-level configuration; those sessions
 will not report data. CLAUDE_CONFIG_DIR is respected when present in the companion’s
 environment. WSL, remote sessions and ordinary Desktop Chat activity are not handled by this native Windows bridge.
@@ -50,9 +50,12 @@ their reset time passes. Desktop percentages follow the separate cache policy ab
 
 Disabling the Claude app stops collection and transmission. The lightweight hook
 entry points remain installed so existing status-line output still works. To
-remove the bridge completely, remove only commands containing --claude-event
-from Claude settings.json and restore statusLine from previous-statusline.json
-(remove the property if the saved value is null). Keep any unrelated edits.
+remove the bridge completely, click **Disconnect Claude Code** in Companion
+settings, or run the companion with `--disconnect-claude`. It removes only
+commands containing --claude-event, restores the saved status line (or removes
+it when none existed) and keeps any unrelated edits. Do this before deleting
+%USERPROFILE%/.clawpal, because Claude Code would otherwise keep calling the
+missing executable.
 
 Schema 6 adds stable app ID 7, keeping all earlier IDs and preferences. The
 companion sends Claude data only to firmware 0.7.0 or newer. The bounded telemetry

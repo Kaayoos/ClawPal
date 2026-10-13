@@ -38,6 +38,26 @@ internal static class SettingsChecks
         using(var body=DeviceSettingsClient.JsonBody(new {ssid="Wi-Fi Łódź",password="password123"}))
             Check(body.Headers.ContentLength==body.ReadAsByteArrayAsync().GetAwaiter().GetResult().Length,"Wi-Fi change body has an explicit byte length");
         Check(DeviceSettingsClient.Equivalent(settings,settings with{Latitude=settings.Latitude+1e-12}),"firmware float formatting does not leave settings pending");
+        // The display stores at most 63 city bytes; setup and later settings must agree on that limit.
+        var setup=new SetupOptions("COM4","Test network","password123","x",52.1,20.9,"UTC0",false,false,false);
+        foreach(int bytes in new[]{63,64,73}) {
+            string city=new string('a',bytes);bool settingsOk=true,setupOk=true;
+            try{(settings with{City=city}).Validate();}catch(ArgumentException){settingsOk=false;}
+            try{(setup with{City=city}).Validate();}catch(ArgumentException){setupOk=false;}
+            Check(settingsOk==setupOk && settingsOk==(bytes<=63),$"{bytes}-byte city handled like the firmware");
+        }
+        string Confirm(params string[] replies){
+            var handler=new ScriptedHandler(replies);int waits=0;
+            using var client=new HttpClient(handler);
+            try{DeviceSettingsClient.ConfirmOnDisplayAsync(client,new Uri("http://192.0.2.1:42171/firmware"),"firmware",()=>waits++,CancellationToken.None).GetAwaiter().GetResult();}
+            catch(IOException){return "rejected:"+waits;}
+            Check(handler.Paths.All(path=>path=="/confirm"),"confirmation polls the display's /confirm endpoint");
+            return "ok:"+waits;
+        }
+        Check(Confirm("approved")=="ok:0","approved change proceeds immediately");
+        Check(Confirm("pending","approved")=="ok:1","pending change asks the user to tap the display once");
+        Check(Confirm("pending","denied")=="rejected:1","declined change is not sent");
+        Check(Confirm("404")=="ok:0","firmware without confirmation support keeps working");
         Check(!DeviceSettingsClient.Equivalent(settings,settings.Move(0,1)),"settings confirmation still checks shortcut order");
         Check(DeviceSettingsClient.FailureMessage(new HttpRequestException("rejected",null,System.Net.HttpStatusCode.BadRequest)).Contains("rejected"),"request rejection is not reported as an offline display");
         Check(settings.Enabled(6) && DisplayApps.Get(1).Name=="Clock" && DisplayApps.Get(6).Name=="Weather","Weather and Clock have distinct stable app identities");
@@ -112,5 +132,18 @@ internal static class SettingsChecks
             }catch(Exception e){failure=e;}
         });thread.SetApartmentState(ApartmentState.STA);thread.Start();thread.Join();if(failure is not null)throw failure;
         return passed;
+    }
+}
+
+internal sealed class ScriptedHandler(string[] replies) : HttpMessageHandler
+{
+    private int next;
+    public List<string> Paths { get; } = [];
+    protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken token)
+    {
+        Paths.Add(request.RequestUri!.AbsolutePath);
+        string reply=replies[Math.Min(next++,replies.Length-1)];
+        return Task.FromResult(reply=="404"?new HttpResponseMessage(System.Net.HttpStatusCode.NotFound):
+            new HttpResponseMessage(System.Net.HttpStatusCode.OK){Content=new StringContent("{\"state\":\""+reply+"\"}")});
     }
 }

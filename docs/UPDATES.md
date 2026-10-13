@@ -29,6 +29,12 @@ still understood by the new companion. Update the PC companion to 0.8.0 first.
 An incompatible companion is offered as a PC update, while firmware installation
 stays disabled until the companion meets `min_companion`.
 
+Firmware that asks for on-screen approval (`POST /confirm`) refuses Wi-Fi and
+firmware changes from companions that do not ask for it. The first release
+containing it must raise `min_companion` in `scripts/package-release.ps1` (and
+the bundled value in `FirmwareUpdates.Install`) to that same release's version,
+so that companions update before their display does.
+
 ## First publication: commands for the maintainer
 
 Create an empty **Kaayoos/clawpal** repository on GitHub first if it does not

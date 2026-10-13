@@ -391,6 +391,15 @@ static void tap_label(const char *text){
     int x=(area.x1+area.x2)/2,y=(area.y1+area.y2)/2;
     if(x<0||x>=W||y<0||y>=H-44){fprintf(stderr,"Unreachable control %s at %d,%d\n",text,x,y);exit(21);}tap(x,y,90);live(180);
 }
+/* Full-screen overlays cover the app footer, so their controls may sit at the bottom edge. */
+static void tap_overlay_label(const char *text){
+    lv_obj_t *label=find_label(lv_scr_act(),text);if(!label){fprintf(stderr,"Missing control %s\n",text);exit(20);}
+    lv_obj_t *button=lv_obj_get_parent(label);lv_area_t area;lv_obj_get_coords(button,&area);
+    int x=(area.x1+area.x2)/2,y=(area.y1+area.y2)/2;
+    if(x<0||x>=W||y<0||y>=H){fprintf(stderr,"Unreachable control %s at %d,%d\n",text,x,y);exit(21);}tap(x,y,90);live(180);
+}
+static int confirm_answers;static buddy_confirm_action_t confirm_last;static bool confirm_approved;
+static void confirm_result(buddy_confirm_action_t action,bool approved){++confirm_answers;confirm_last=action;confirm_approved=approved;}
 static void scroll_page(void){
     touch_x=W/2;touch_y=H-62;touch_state=LV_INDEV_STATE_PRESSED;step(60);
     for(int y=H-62;y>30;y-=6){touch_y=y;step(12);}touch_state=LV_INDEV_STATE_RELEASED;step(600);
@@ -411,8 +420,18 @@ int main(int argc,char **argv){
     buddy_ui_select_app(BUDDY_APP_HOME);live(600);tap(46,H-22,90);live(500);if(!buddy_ui_get_state().menu_open)return 5;save_frame("apps");
     if(W<800){for(int i=0;i<4;++i)scroll_page();save_frame("apps-scrolled");}
     tap(46,H-22,90);live(400);if(buddy_ui_get_state().menu_open)return 6;
+    // Remote firmware and Wi-Fi changes wait for a tap on the display; silence counts as a denial.
+    buddy_ui_set_confirm_callback(confirm_result);
+    buddy_ui_request_confirmation(BUDDY_CONFIRM_FIRMWARE);live(300);buddy_ui_request_confirmation(BUDDY_CONFIRM_FIRMWARE);live(300);
+    if(!find_label(lv_scr_act(),BT(BT_CONFIRM_FIRMWARE_TITLE))||confirm_answers)return 8;save_frame("confirm-firmware");
+    tap_overlay_label(BT(BT_CONFIRM_ALLOW));if(confirm_answers!=1||confirm_last!=BUDDY_CONFIRM_FIRMWARE||!confirm_approved)return 9;
+    if(find_label(lv_scr_act(),BT(BT_CONFIRM_FIRMWARE_TITLE)))return 10;
+    buddy_ui_request_confirmation(BUDDY_CONFIRM_WIFI);live(300);save_frame("confirm-wifi");
+    tap_overlay_label(BT(BT_CONFIRM_DENY));if(confirm_answers!=2||confirm_last!=BUDDY_CONFIRM_WIFI||confirm_approved)return 11;
+    buddy_ui_request_confirmation(BUDDY_CONFIRM_WIFI);wait_ms(61000);
+    if(confirm_answers!=3||confirm_approved||find_label(lv_scr_act(),BT(BT_CONFIRM_WIFI_TITLE)))return 12;
     // All size classes retain the same offline fallback and wake/dim policy.
     buddy_ui_set_connection(BUDDY_PC_OFFLINE,"Home Wi-Fi","192.168.1.40","");wait_ms(61000);update_clock();
     if(buddy_ui_get_state().active_app!=BUDDY_APP_CLOCK)return 7;
-    printf("PASS %dx%d: all apps, footer navigation, offline fallback\n",W,H);return 0;
+    printf("PASS %dx%d: all apps, footer navigation, remote-change confirmation, offline fallback\n",W,H);return 0;
 }

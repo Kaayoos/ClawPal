@@ -17,7 +17,7 @@ other revisions with different wiring may need a separate profile.
 
 | Adapter | Display / touch | Backlight / power | Source |
 | --- | --- | --- | --- |
-| Original 4.3B | RGB / GT911 | CH422G | Existing Waveshare demo; vendor/SOURCES.md |
+| Original 4.3B | RGB / GT911 | CH422G | Existing Waveshare demo; see THIRD_PARTY_NOTICES.md |
 | Waveshare 5 and 7 | ST7262 RGB / GT911 | CH422G; EXIO5 low for USB | [Espressif board definitions](https://github.com/esp-arduino-libs/ESP32_Display_Panel/tree/92b790ed6d24b0678e2f45b1fc85f0abd2d41b33/src/board/supported/waveshare) |
 | Waveshare 2.8C | ST7701 RGB / GT911 | TCA9554 reset/CS; GPIO6 backlight | Same pinned upstream |
 | Guition C_I | ST7701 RGB / GT911 | GPIO38 backlight; USB-UART for programming | [Espressif Guition/Jingcai definition](https://github.com/esp-arduino-libs/ESP32_Display_Panel/blob/92b790ed6d24b0678e2f45b1fc85f0abd2d41b33/src/board/supported/jingcai/BOARD_JINGCAI_ESP32_4848S040C_I_Y_3.h) |
