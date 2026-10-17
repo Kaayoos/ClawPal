@@ -1,155 +1,134 @@
-# ClawPal
+<p align="center">
+  <img src="assets/crab_happy.gif" width="160" alt="ClawPal's pixel crab">
+</p>
 
-A little company for your desk. An animated pixel crab brings PC statistics,
-Spotify controls, Codex and Claude Code usage, weather, a clock and a timer to a Wi-Fi display.
+<h1 align="center">ClawPal</h1>
 
-**Created by [MinimalPulse](https://minimalpulse.com/).**
-Official source and updates: **[Kaayoos/clawpal](https://github.com/Kaayoos/clawpal)**.
-ClawPal is independent of Spotify, OpenAI, Anthropic, Intel, Espressif and Waveshare.
+<p align="center">
+  A little company for your desk.<br>
+  An animated pixel crab that shows PC stats, Spotify controls, Codex and Claude Code usage,
+  weather, a clock and a timer on a Wi-Fi touch display.
+</p>
 
-## Case
+<p align="center">
+  <a href="https://github.com/Kaayoos/clawpal/releases/latest"><img src="https://img.shields.io/github/v/release/Kaayoos/clawpal?label=release&color=e8673a" alt="Latest release"></a>
+  <img src="https://img.shields.io/badge/Windows-x64-0078d4" alt="Windows x64">
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-GPLv3-blue" alt="License: GPLv3"></a>
+</p>
 
-ClawPal comes with a ready 3D Printable case, which you can find on [MakerWorld](https://makerworld.com/en/models/3430625-esp32-clawpal-your-desk-pc-buddy-for-daily-use#profileId-3911176)
+<p align="center">
+  <a href="https://github.com/Kaayoos/clawpal/releases/latest"><b>Download</b></a>
+  &nbsp;·&nbsp;
+  <a href="https://makerworld.com/en/models/3430625-esp32-clawpal-your-desk-pc-buddy-for-daily-use#profileId-3911176">3D-printable case</a>
+  &nbsp;·&nbsp;
+  <a href="#hardware">Supported boards</a>
+  &nbsp;·&nbsp;
+  <a href="docs/BUILDING.md">Build from source</a>
+  <br>
+  <sub>Made by <a href="https://minimalpulse.com/">MinimalPulse</a></sub>
+</p>
 
-## Hardware support
+<p align="center">
+  <img src="assets/05_black_and_orange_cover.png" alt="ClawPal's Home screen on displays in a black and an orange 3D-printed case">
+</p>
 
-Only the original **Waveshare 4.3B** has been exercised on physical hardware.
-All other profiles below are **EXPERIMENTAL - NOT HARDWARE TESTED**. They may
-fail to boot, display an image, read touch or wake correctly. Compilation and
-desktop UI simulation cannot establish electrical or hardware compatibility.
-They are offered for users willing to test and report the exact board revision.
+## What it does
 
-| Exact touch display | Resolution | Flash / PSRAM | Status |
-| --- | --- | --- | --- |
-| Waveshare ESP32-S3-Touch-LCD-4.3B | 800 × 480 | 16 MB / 8 MB octal | Existing hardware-tested target |
-| Waveshare ESP32-S3-Touch-LCD-5, standard 800 × 480 model | 800 × 480 | 16 MB / 8 MB octal | **Experimental; untested** |
-| Waveshare ESP32-S3-Touch-LCD-7, 16 MB variant | 800 × 480 | 16 MB / 8 MB octal | **Experimental; untested** |
-| Waveshare ESP32-S3-Touch-LCD-7, 8 MB variant | 800 × 480 | 8 MB / 8 MB octal | **Experimental; untested** |
-| Waveshare ESP32-S3-Touch-LCD-2.8C | 480 × 480 | 16 MB / 8 MB octal | **Experimental; untested** |
-| Guition ESP32-4848S040C_I (capacitive touch) | 480 × 480 | 16 MB / 8 MB octal | **Experimental; untested** |
-| M5Stack CoreS3 | 320 × 240 | 16 MB / 8 MB quad | **Experimental; untested** |
+The crab lives on the Home screen next to a clock and shortcuts to your apps:
 
-Choose the exact model printed on your board in setup. Do not select a board
-because it has the same ESP32 chip or screen size. In particular, Waveshare
-5B/1024 × 600, non-B 4.3-inch boards, resistive-touch Guition versions and
-Core/Core2 are different hardware and are not included. The 7-inch flash-size
-selection must match the USB chip check. See [board profiles](boards/README.md)
-for sources, revisions, layout behavior and recovery.
+- Live PC stats, with optional in-game FPS
+- Spotify playback controls
+- Codex and Claude Code usage
+- Weather now, for the next 24 hours and for five days
+- A clock and a timer
 
-Square and compact displays keep all apps, using vertically scrollable content
-and a fixed Apps/Home footer. Swipe up to reach additional Home shortcuts,
-forecast rows, task details or timer settings.
+Spotify, Codex and Claude Code can open their apps on the display automatically, or you can keep Home on screen. Tap your crab for a hello.
+
+<p align="center">
+  <img src="assets/ClawPal-promo.gif" alt="ClawPal promo animation">
+</p>
+
+## Hardware
+
+Only the Waveshare 4.3B has been tested on real hardware. Its main features were exercised during development, but backup restore and wider Windows and hardware testing still need doing. The other boards are experimental: they may fail to boot, show an image, read touch or wake up. If you try one, please report your exact board revision.
+
+| Board | Screen | Status |
+| --- | --- | --- |
+| Waveshare ESP32-S3-Touch-LCD-4.3B | 800 × 480 | Tested |
+| Waveshare ESP32-S3-Touch-LCD-5 (standard 800 × 480 model) | 800 × 480 | Experimental |
+| Waveshare ESP32-S3-Touch-LCD-7, 16 MB flash | 800 × 480 | Experimental |
+| Waveshare ESP32-S3-Touch-LCD-7, 8 MB flash | 800 × 480 | Experimental |
+| Waveshare ESP32-S3-Touch-LCD-2.8C | 480 × 480 | Experimental |
+| Guition ESP32-4848S040C_I (capacitive touch) | 480 × 480 | Experimental |
+| M5Stack CoreS3 | 320 × 240 | Experimental |
+
+Pick the exact model printed on your board, not one with the same chip or screen size. The Waveshare 5B (1024 × 600), non-B 4.3-inch boards, resistive-touch Guition boards and M5Stack Core/Core2 are different hardware and aren't supported. For the 7-inch board, choose the flash size the installer's USB check reports. [Board profiles](boards/README.md) lists sources, revisions, layout behavior and recovery steps.
+
+On square and smaller screens all apps still work. Content scrolls vertically above a fixed Apps/Home footer; swipe up for more Home shortcuts, forecast rows, task details or timer settings.
+
+ClawPal has a ready-made 3D-printable case on [MakerWorld](https://makerworld.com/en/models/3430625-esp32-clawpal-your-desk-pc-buddy-for-daily-use#profileId-3911176).
 
 ## Install
 
-Download **ClawPal-Setup.exe** from the [latest release](https://github.com/Kaayoos/clawpal/releases/latest).
-No separate Python, .NET, PresentMon or ESP-IDF installation is needed.
+Download `ClawPal-Setup.exe` from the [latest release](https://github.com/Kaayoos/clawpal/releases/latest). It bundles everything it needs, so you don't have to install Python, .NET, PresentMon or ESP-IDF.
 
-1. Connect a display from the hardware table using its USB data connection.
-2. Confirm the detected device and board model. Choose 2.4 GHz Wi-Fi, location,
-   time zone, and separate languages for your PC and display.
-3. Choose Windows startup, optional game FPS tracking and automatic app navigation.
-4. Leave **Save a full device backup** enabled (recommended), then install.
-   The full 8 or 16 MB backup can take several minutes. Keep the cable connected.
+1. Plug the display into your PC with a USB data cable.
+2. Confirm the detected device and board model. Choose a 2.4 GHz Wi-Fi network, your location and time zone, and a language for the PC and one for the display.
+3. Choose whether ClawPal starts with Windows, tracks game FPS and switches display apps automatically.
+4. Leave **Save a full device backup** on and install. The 8 or 16 MB backup can take several minutes, so keep the cable connected.
 
-Backups are optional and enabled by default. When enabled, an unsuccessful or
-unverified backup stops installation. The installer checks the chip, flash size
-and firmware before writing; USB detection cannot identify the LCD wiring, so
-the exact board-model confirmation matters. Only the listed profiles are included.
+Setup replaces the firmware on the board. The installer checks the chip, flash size and firmware before it writes anything, but USB can't tell which screen is wired to the chip, so confirming the board model matters. If the backup fails or can't be verified, installation stops.
 
-The Windows x64 app includes its runtime and installs per user. After setup it
-opens a configuration window; Windows startup stays in the tray. Close the
-window to leave the companion running. Backups and configuration are stored
-under `%USERPROFILE%\.clawpal`; keep them private because backups may contain
-network settings. USB setup replaces existing firmware.
+The companion is a Windows x64 app. It installs per user, ships with its own runtime and isn't code signed. After setup it opens its settings window; when it starts with Windows it stays in the tray, and closing the window leaves it running there. Backups and settings live in `%USERPROFILE%\.clawpal`. Keep that folder private, because backups can contain network settings.
 
-## Make it yours
+After the first install, settings and firmware updates go over Wi-Fi, and firmware updates keep your settings. The display asks you to tap **Allow** before it accepts a firmware update or Wi-Fi change from the PC. Changes made while the display is offline are sent when it reconnects. The PC can use Ethernet as long as it's on the same network. Backup and restore still use USB, and a future bootloader or partition change may too.
 
-- Drag Home shortcuts into your preferred order and choose which apps appear.
-- Set English or Polish independently on the PC and display, 12/24-hour time,
-  Celsius or Fahrenheit, location and weather preferences.
-- Configure idle dimming, brightness, night hours and the app shown offline.
-- Keep Home visible or allow Spotify/Codex/Claude Code to open their display apps automatically.
-- Enable optional FPS/game detection, Windows startup or pause PC monitoring.
-- Use the Weather app for current conditions, the next 24 hours and five days.
-  Clock keeps its minimal weather line. Tap your crab for a hello.
+## Settings
 
-Settings sync over local Wi-Fi using the pairing token. That traffic is plain
-HTTP, not encrypted, so keep the display on a network you trust. A firmware
-update or Wi-Fi change sent from the PC waits until you tap **Allow** on the
-display. The PC may use Ethernet on the same reachable network. Offline changes wait until reconnection. Initial
-installation and backup/restore use USB; ordinary firmware updates use Wi-Fi
-and preserve settings. A future bootloader/partition change may require USB.
+In the companion you can:
 
-Click the companion's version label for **About**, credits and offline licenses.
-On the display, hold the version text on Home to find the same project attribution.
+- Reorder Home shortcuts and choose which apps appear
+- Set English or Polish separately on the PC and the display
+- Switch between 12- and 24-hour time and Celsius or Fahrenheit, and set your location and weather preferences
+- Set idle dimming, brightness, night hours and the app shown while the PC is offline
+- Turn on FPS tracking or Windows startup, or pause PC monitoring
 
 ## Claude Code
 
-Native Windows Claude Code sessions have their own display app, usage windows,
-keyboard crab and recorded-session list. Enable Claude Code in Apps, then use
-**Companion → Connect / repair Claude Code**. ClawPal edits Claude Code's
-settings only when you click it; **Disconnect Claude Code** restores them.
-Restart already-open Claude sessions once. New installations include a Home
-shortcut; upgrades preserve your existing shortcut order. Add Claude from Home
-settings if you want it pinned. Automatic navigation follows the shared preference.
+Native Windows Claude Code sessions get their own display app, with usage windows, a keyboard crab and a list of recorded sessions.
 
-CLI usage arrives through Claude’s supported status line after its first response.
-The five-hour and seven-day windows appear only when Claude reports them for
-your subscription. Missing or expired windows stay unavailable; API billing and
-context-window usage are not treated as subscription limits. Desktop Code sessions
-use the local plan-usage history: percentages are marked cached with their age,
-and reset times remain unavailable. Desktop controls the refresh cadence; readings
-older than 30 minutes are hidden. No login credentials are decrypted or used, and
-no cookies or conversation transcripts are inspected. Prompts and tool arguments in hook input are
-discarded rather than stored or sent to the display.
+To connect it, enable Claude Code under Apps, click **Companion → Connect / repair Claude Code**, then restart any Claude sessions that were already open. If you upgraded from an older version, add the Claude shortcut in Home settings.
 
-ClawPal merges its own hooks and wraps an existing status line, preserving its
-output and other settings. A backup and the prior status-line configuration live
-in `%USERPROFILE%/.clawpal/claude`. Task names and project folder names travel only
-over your paired local connection. WSL, remote sessions and ordinary Desktop Chat
-activity are not supported by this Windows bridge. See [integration details](docs/CLAUDE.md).
+ClawPal changes Claude Code's settings only when you click that button. It adds its own hooks, wraps your existing status line without losing its output, and saves a backup in `%USERPROFILE%/.clawpal/claude`. **Disconnect Claude Code** restores your original settings.
 
-## FPS and privacy
+The CLI reports usage through Claude's status line after its first response. The five-hour and seven-day windows appear only if Claude reports them for your subscription. Desktop Code sessions read the local plan-usage history instead, so percentages are marked as cached with their age, reset times aren't shown, and readings older than 30 minutes are hidden.
 
-FPS collection uses the bundled Intel PresentMon console helper and Windows ETW
-events. It does not change game executables or inject an overlay. Results and
-overhead depend on Windows permissions and the game; unavailable FPS stays blank.
-There is no promise about every game's anti-cheat policy. Tracking is optional.
+ClawPal doesn't decrypt or use login credentials, and it doesn't read cookies or conversation transcripts. Prompts and tool arguments from hook input are discarded. Task and project folder names travel only over your paired local connection. WSL, remote sessions and regular Desktop chat aren't supported. See [Claude Code integration](docs/CLAUDE.md) for the details.
 
-PC telemetry and pairing travel on the local network. Location coordinates are
-sent to Open-Meteo to request forecasts; location searches use its geocoding API.
-Update checks contact GitHub. Codex data comes from the local Codex installation;
-compatibility may change with that app. Do not publish pairing tokens, network
-passwords, local logs or device backups. See [architecture](docs/ARCHITECTURE.md).
+## Privacy
 
-## Development and releases
+The PC and the display talk over your local network using plain HTTP and a pairing token. That traffic isn't encrypted, so keep the display on a network you trust.
 
-Build from source with **ESP-IDF 5.5.2**, **.NET SDK 8.0.425** and Python 3.12.
-Firmware binaries and downloaded tools are intentionally excluded from Git.
-GitHub Actions builds firmware first, then tests and packages Windows.
+Two things leave your network: your location coordinates go to Open-Meteo for forecasts (location search uses its geocoding API too), and update checks contact GitHub. Codex data comes from your local Codex installation and may stop working if Codex changes.
+
+FPS tracking is optional. It uses the bundled Intel PresentMon console helper and Windows ETW events, and it doesn't modify games or inject an overlay. Results and overhead depend on the game and your Windows permissions; when FPS isn't available, the field stays blank. There's no promise about how any game's anti-cheat treats it.
+
+Don't publish your pairing token, network passwords, local logs or device backups. [Architecture](docs/ARCHITECTURE.md) covers how all of this works.
+
+## Building from source
+
+You need ESP-IDF 5.5.2, .NET SDK 8.0.425 and Python 3.12. Firmware binaries and downloaded tools aren't kept in Git. GitHub Actions builds the firmware first, then tests and packages the Windows app.
 
 - [Build instructions](docs/BUILDING.md)
-- [Release format and publication commands](docs/UPDATES.md)
+- [Release format and publishing](docs/UPDATES.md)
 - [Translations](languages/README.md)
-- [Contributing](CONTRIBUTING.md)
 - [Screen and weather settings](docs/SCREEN-AND-WEATHER.md)
-
-The prepared release is **0.9.0**. The Windows executable is unsigned.
-The original 4.3B's main workflows have been exercised during development;
-backup restoration and broader Windows/hardware acceptance still need testing.
+- [Contributing](CONTRIBUTING.md)
 
 ## License and credits
 
-Original ClawPal code, documentation and crab artwork are **GPLv3**; firmware
-has an [ESP-IDF linking permission](LICENSES/ESP-IDF-exception.txt), and the
-companion has a [Windows SDK linking permission](LICENSES/Windows-SDK-exception.txt). Forks and
-renamed versions are allowed under the license, with copyright/license notices
-preserved and corresponding source supplied when required. See [LICENSE](LICENSE),
-[NOTICE](NOTICE), [branding policy](TRADEMARKS.md) and [credits](THIRD_PARTY_NOTICES.md).
+ClawPal's code, documentation and crab artwork are GPLv3. The firmware has an [ESP-IDF linking permission](LICENSES/ESP-IDF-exception.txt) and the companion a [Windows SDK linking permission](LICENSES/Windows-SDK-exception.txt). You can fork and rename ClawPal under the license, as long as you keep the copyright and license notices and supply the source when the license requires it. See [LICENSE](LICENSE), [NOTICE](NOTICE), the [branding policy](TRADEMARKS.md) and [third-party credits](THIRD_PARTY_NOTICES.md). Credits and licenses are also in the companion (click the version label) and on the display (hold the version text on Home).
 
-PresentMon is MIT licensed. Weather data is from [Open-Meteo](https://open-meteo.com/)
-under [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/), with GeoNames
-location data. Forecast values are summarized, rounded and optionally converted
-to Fahrenheit. The free hosted weather API has separate noncommercial-use terms.
-Spotify, OpenAI/Codex and Anthropic/Claude marks retain their respective ownership and brand terms.
+PresentMon is MIT licensed. Weather data comes from [Open-Meteo](https://open-meteo.com/) under [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/), with GeoNames location data. Forecast values are summarized, rounded and optionally converted to Fahrenheit. Open-Meteo's free hosted API has its own noncommercial-use terms.
+
+The official source and updates are at [Kaayoos/clawpal](https://github.com/Kaayoos/clawpal). ClawPal is independent of Spotify, OpenAI, Anthropic, Intel, Espressif and Waveshare. Spotify, OpenAI/Codex and Anthropic/Claude marks belong to their owners and keep their own brand terms.
