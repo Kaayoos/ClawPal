@@ -35,6 +35,7 @@ def main():
     with tempfile.TemporaryDirectory() as out:
         exe = pathlib.Path(out) / "firmware_parsers"
         command = [*compiler(), "-std=gnu17", "-O1", "-Wall", "-fsanitize=undefined", "-fno-sanitize-recover=all",
+                   "-include", str(HERE / "shim/host_string.h"),
                    *[f"-I{p}" for p in includes], *map(str, sources), "-lm", "-o", str(exe)]
         if subprocess.run(command).returncode:
             # Some toolchains lack the sanitizer runtime; the checks still matter without it.
