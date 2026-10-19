@@ -6,7 +6,7 @@ root = Path(__file__).resolve().parents[1]
 out = root / "firmware/main/assets"
 source = ['/* Derived from owner-supplied assets/logos PNGs. See scripts/generate-home-logos.py. */', '#include "buddy_home_logos.h"']
 header = ['#pragma once', '#include "lvgl.h"']
-for name, filename in [('spotify', 'SpotifyLogo.png'), ('codex', 'CodexLogo.png'), ('claude', 'ClaudeLogo.png')]:
+for name, filename in [('spotify', 'SpotifyLogo.png'), ('codex', 'CodexLogo.png'), ('claude', 'ClaudeLogo2.png')]:
     image = Image.open(root / 'assets/logos' / filename).convert('RGBA')
     image = ImageOps.contain(image.crop(image.getbbox()), (56, 56), Image.Resampling.LANCZOS)
     canvas = Image.new('RGBA', (56, 56))

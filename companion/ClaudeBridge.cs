@@ -188,6 +188,9 @@ internal static class ClaudeBridge
 internal sealed class ClaudeUsage
 {
     internal Func<bool> Enabled {get;init;}=()=>true;
+    internal Func<bool> LiveUsageEnabled {get;init;}=()=>false;
+    private readonly ClaudeLiveLimits live = new();
+    private ClaudeSession? latestSession;
     private CodexStats snapshot=CodexStats.Empty(false,"closed");
     internal CodexStats Snapshot=>Volatile.Read(ref snapshot);
     private ClaudeDesktopReading? desktopReading;
@@ -202,12 +205,22 @@ internal sealed class ClaudeUsage
             if(file.LastWriteTimeUtc<DateTime.UtcNow.AddDays(-2)){file.Delete();continue;}
             try{var s=JsonSerializer.Deserialize<ClaudeSession>(File.ReadAllText(file.FullName));if(s is not null)rows.Add(s);}catch(JsonException){}catch(IOException){}
         }
-        string? latest=ClaudeDesktop.LatestLive(rows,now,ClaudeBridge.IsAlive)?.Id;
+        latestSession=ClaudeDesktop.LatestLive(rows,now,ClaudeBridge.IsAlive);
+        string? latest=latestSession?.Id;
         if(latest!=desktopSession||now>=nextDesktopRead){
             desktopReading=ClaudeDesktop.Read(rows,now,ClaudeBridge.IsAlive);
             desktopSession=latest;nextDesktopRead=now.AddSeconds(10);
         }
         return ClaudeDesktop.Merge(ClaudeContract.Snapshot(rows,now,ClaudeBridge.IsAlive),desktopReading,now);
+    }
+    internal async Task<CodexStats> RefreshAsync(CancellationToken cancellation)
+    {
+        if(!Enabled()){live.Reset();return CodexStats.Empty(false,"closed");}
+        var local=Refresh();
+        if(!LiveUsageEnabled()){live.Reset();return local;}
+        var result=await live.RefreshAsync(local,latestSession,DateTimeOffset.UtcNow,cancellation);
+        if(!LiveUsageEnabled()){live.Reset();return local;}
+        return result;
     }
     internal async Task RunAsync(CancellationToken cancellation)
     {
@@ -215,8 +228,9 @@ internal sealed class ClaudeUsage
         while(!cancellation.IsCancellationRequested){
             try {
                 if(Enabled()){
-                    Volatile.Write(ref snapshot,Refresh());
-                } else {desktopReading=null;desktopSession=null;nextDesktopRead=default;Volatile.Write(ref snapshot,CodexStats.Empty(false,"closed"));}
+                    var value=await RefreshAsync(cancellation);
+                    Volatile.Write(ref snapshot,Enabled()?value:CodexStats.Empty(false,"closed"));
+                } else {live.Reset();latestSession=null;desktopReading=null;desktopSession=null;nextDesktopRead=default;Volatile.Write(ref snapshot,CodexStats.Empty(false,"closed"));}
             } catch(Exception e) when(e is not OperationCanceledException){Log.Write("Claude monitor unavailable: "+e.GetType().Name);Volatile.Write(ref snapshot,CodexStats.Empty(false,"error"));}
             try{await Task.Delay(2000,cancellation);}catch(OperationCanceledException){break;}
         }

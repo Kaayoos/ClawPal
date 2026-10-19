@@ -8,7 +8,7 @@ internal static class AppArtwork
     private static Dictionary<int,Bitmap> Load()
     {
         var result=new Dictionary<int,Bitmap>();var assembly=typeof(AppArtwork).Assembly;
-        foreach(var (id,name) in new[]{(2,"SpotifyLogo.png"),(4,"CodexLogo.png"),(7,"ClaudeLogo.png")}){
+        foreach(var (id,name) in new[]{(2,"SpotifyLogo.png"),(4,"CodexLogo.png"),(7,"ClaudeLogo2.png")}){
             var resource=assembly.GetManifestResourceNames().FirstOrDefault(s=>s.EndsWith(name));
             if(resource is null)continue;using var stream=assembly.GetManifestResourceStream(resource)!;using var bitmap=new Bitmap(stream);result[id]=new Bitmap(bitmap);
         }

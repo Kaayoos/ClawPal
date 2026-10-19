@@ -16,6 +16,7 @@ public sealed class Configuration
     public string? LastAddress { get; set; }
     public bool Paused { get; set; }
     public bool TrackFps { get; set; }
+    public bool ClaudeLiveUsage { get; set; }
     public string City { get; set; } = "";
     public double Latitude { get; set; }
     public double Longitude { get; set; }
@@ -90,6 +91,7 @@ internal static class SecretProtection
     [DllImport("kernel32.dll")] private static extern IntPtr LocalFree(IntPtr pointer);
     public static string Protect(string text) => Convert.ToBase64String(Transform(Encoding.UTF8.GetBytes(text), true));
     public static string Unprotect(string text) => Encoding.UTF8.GetString(Transform(Convert.FromBase64String(text), false));
+    internal static byte[] UnprotectBytes(byte[] bytes) => Transform(bytes, false);
     private static byte[] Transform(byte[] bytes, bool protect)
     {
         var input = new Blob { Length = bytes.Length, Data = Marshal.AllocHGlobal(bytes.Length) };

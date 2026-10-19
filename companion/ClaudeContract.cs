@@ -57,7 +57,7 @@ internal static class ClaudeContract
         bool running=live.Length>0;
         // An active session without quota data must never borrow a different
         // account's old reading. Closed sessions retain an explicitly cached view.
-        var usage=(running?live:sessions).OrderByDescending(s=>s.UsageAt).FirstOrDefault();
+        var usage=(running?live:sessions).FirstOrDefault();
         var first=usage?.Primary??CodexWindow.Empty;var second=usage?.Secondary??CodexWindow.Empty;
         if(first.ResetsAt<=now.ToUnixTimeSeconds())first=CodexWindow.Empty;
         if(second.ResetsAt<=now.ToUnixTimeSeconds())second=CodexWindow.Empty;

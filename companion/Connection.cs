@@ -37,7 +37,7 @@ public sealed class Connection : IDisposable
         _ = gameWorker.ContinueWith(task => Log.Write("Game activity worker stopped: " + task.Exception?.GetBaseException().GetType().Name), TaskContinuationOptions.OnlyOnFaulted);
         var media = new SpotifyMedia { Enabled=()=>config.DisplaySettings?.Enabled(2)??true };
         var mediaWorker = Task.Run(() => media.RunAsync(shutdown.Token));
-        var claude = new ClaudeUsage { Enabled = () => config.DisplaySettings?.Enabled(7) ?? true };
+        var claude = new ClaudeUsage { Enabled = () => config.DisplaySettings?.Enabled(7) ?? true, LiveUsageEnabled = () => config.ClaudeLiveUsage };
         var claudeWorker = Task.Run(() => claude.RunAsync(shutdown.Token));
         var codex = new CodexUsage { Enabled=()=>config.DisplaySettings?.Enabled(4)??true };
         var codexWorker = Task.Run(() => codex.RunAsync(shutdown.Token));

@@ -469,7 +469,7 @@
     "claude_code": "Claude Code",
     "claude_description": "Usage limits and local Claude session activity",
     "claude_link_title": "Claude Code connection",
-    "claude_link_description": "CLI limits use the status line. Desktop limits use its local usage history, with the reading’s age shown. Existing hooks and status-line output are preserved.",
+    "claude_link_description": "Connect session activity and CLI status-line limits. Enable Live Claude limits below for fresh Desktop and CLI account usage. Existing hooks and status-line output are preserved.",
     "claude_link_button": "Connect / repair Claude Code",
     "claude_link_ready": "Claude link installed. Restart existing Claude Code sessions once.",
     "claude_link_missing": "Not connected. ClawPal changes Claude Code settings only after you click Connect. Native Windows sessions are supported.",
@@ -490,7 +490,9 @@
     "the_change_was_declined_on_the_display": "The change was declined on the display.",
     "the_change_was_not_confirmed_on_the_display_in_time": "The change was not confirmed on the display in time. Try again.",
     "claude_link_disconnect": "Disconnect Claude Code",
-    "claude_link_removed": "Claude Code settings restored. Restart open Claude Code sessions once."
+    "claude_link_removed": "Claude Code settings restored. Restart open Claude Code sessions once.",
+    "claude_live_limits": "Live Claude limits",
+    "claude_live_description": "Use your existing Claude sign-in to read current limits from api.anthropic.com. Refreshes every minute while active. No chat messages are sent; ClawPal never saves the token. Off by default."
   },
   "display": {
     "waiting_for_time": "Waiting for time",
@@ -859,8 +861,8 @@
     "open_claude_or_chatgpt_on_your_pc_your_available": "Open Claude Code on your PC. Connect it in ClawPal’s Companion settings if no data appears.",
     "sign_in_to_claude_on_your_pc_buddy_will": "Sign in to Claude Code on your PC.\nBuddy will receive your account limits automatically.",
     "update_or_install_claude_on_your_pc_buddy_needs": "Update or install Claude Code on your PC.\nBuddy needs its local account connection.",
-    "reading_your_claude_account_on_the_pc_your_limits": "Send a message in Claude Code. Subscription limits appear after its first response, when your plan reports them.",
-    "claude_no_limits": "Send a message in Claude Code. Subscription limits appear after its first response, when your plan reports them.",
+    "reading_your_claude_account_on_the_pc_your_limits": "Enable Live Claude limits in ClawPal settings for account usage. Claude must be signed in to a supported subscription.",
+    "claude_no_limits": "Enable Live Claude limits in ClawPal settings for account usage. Claude must be signed in to a supported subscription.",
     "waiting_for_you": "Waiting for you",
     "experimental_hardware": "Experimental hardware - not tested on this board",
     "confirm_firmware_title": "Install a firmware update?",

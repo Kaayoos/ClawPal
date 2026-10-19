@@ -16,7 +16,7 @@ document is also bundled in the companion's About page alongside full licenses.
   [OpenAI brand guidelines](https://openai.com/brand/). The mark is not licensed
   under ClawPal's GPL license. No endorsement is claimed.
 - **Claude / Claude Code logo:** Anthropic’s mark, supplied by the project owner
-  as `assets/logos/ClaudeLogo.png`, used only to identify the Claude Code integration.
+  as `assets/logos/ClaudeLogo2.png` (current) and `ClaudeLogo.png` (previous), used only to identify the Claude Code integration.
   [Anthropic newsroom and media resources](https://www.anthropic.com/news).
   Copyright and trademark rights remain with Anthropic; the mark is outside
   ClawPal’s GPL grant. No affiliation or endorsement is claimed.
@@ -121,8 +121,13 @@ Earlier releases publish these files separately.
 
 ClawPal uses Anthropic’s documented [status-line fields](https://code.claude.com/docs/en/statusline)
 and [session hooks](https://code.claude.com/docs/en/hooks). Claude Code is installed
-separately and is not bundled or relicensed. The bridge reads no OAuth tokens,
-cookies or transcripts, and does not call a private usage endpoint.
+separately and is not bundled or relicensed. Optional live account limits use
+`GET https://api.anthropic.com/api/oauth/usage`, an undocumented endpoint also
+used by Claude Desktop. This option is off by default. When enabled, ClawPal
+reads the current user's existing Desktop or CLI access token in memory and
+sends it only to that fixed HTTPS endpoint, without redirects. Tokens are never
+saved by ClawPal, included in logs, or sent to the display. Claude owns login
+and token renewal. No inference requests are made. See [CLAUDE.md](docs/CLAUDE.md).
 
 [Clawdmeter by HermannBjorgvin](https://github.com/HermannBjorgvin/Clawdmeter)
 was reviewed as a reference for the usage-meter idea. No Clawdmeter source,

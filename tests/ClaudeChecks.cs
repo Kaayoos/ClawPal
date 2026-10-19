@@ -75,6 +75,6 @@ internal static class ClaudeChecks
         Check(JsonNode.Parse(File.ReadAllText(path))!.AsObject().Count==0,"disconnect leaves no trace when nothing was configured before");
         File.WriteAllText(path,"{broken");bool rejected=false;try{ClaudeBridge.InstallAt(native,bridge,"example.exe");}catch(JsonException){rejected=true;}
         Check(rejected&&File.ReadAllText(path)=="{broken","invalid Claude settings are never overwritten");
-        return passed + ClaudeDesktopChecks.Run(directory);
+        return passed + ClaudeDesktopChecks.Run(directory) + ClaudeLiveChecks.Run().GetAwaiter().GetResult();
     }
 }

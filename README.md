@@ -101,15 +101,17 @@ To connect it, enable Claude Code under Apps, click **Companion → Connect / re
 
 ClawPal changes Claude Code's settings only when you click that button. It adds its own hooks, wraps your existing status line without losing its output, and saves a backup in `%USERPROFILE%/.clawpal/claude`. **Disconnect Claude Code** restores your original settings.
 
-The CLI reports usage through Claude's status line after its first response. The five-hour and seven-day windows appear only if Claude reports them for your subscription. Desktop Code sessions read the local plan-usage history instead, so percentages are marked as cached with their age, reset times aren't shown, and readings older than 30 minutes are hidden.
+For current five-hour and weekly limits, enable **Companion → Live Claude limits** and save. This is off by default, including on upgrades. ClawPal uses your existing Desktop or native CLI sign-in to request limits and reset times from Anthropic, once per minute during active sessions. No chat messages are sent. This uses an undocumented endpoint also used by Claude Desktop, so future Anthropic changes can require a ClawPal update.
 
-ClawPal doesn't decrypt or use login credentials, and it doesn't read cookies or conversation transcripts. Prompts and tool arguments from hook input are discarded. Task and project folder names travel only over your paired local connection. WSL, remote sessions and regular Desktop chat aren't supported. See [Claude Code integration](docs/CLAUDE.md) for the details.
+Without live access, the CLI reports usage through its status line after its first response on supported subscriptions. Desktop Code sessions use local plan-usage history, which can update slowly. Cached readings show their real age and expire after 30 minutes; stale Desktop history cannot replace newer status-line readings.
+
+With live limits enabled, the existing access token is decoded in memory and sent only to `https://api.anthropic.com/api/oauth/usage`. ClawPal doesn't save or log it, send it to the display, or refresh it. It doesn't read cookies or conversation transcripts. Prompts and tool arguments from hook input are discarded. Task and project folder names travel only over your paired local connection. WSL and remote sessions aren't supported; activity tracking covers Code sessions rather than regular Desktop chats. See [Claude Code integration](docs/CLAUDE.md) for the details.
 
 ## Privacy
 
 The PC and the display talk over your local network using plain HTTP and a pairing token. That traffic isn't encrypted, so keep the display on a network you trust.
 
-Two things leave your network: your location coordinates go to Open-Meteo for forecasts (location search uses its geocoding API too), and update checks contact GitHub. Codex data comes from your local Codex installation and may stop working if Codex changes.
+Your location coordinates go to Open-Meteo for forecasts (location search uses its geocoding API too), and update checks contact GitHub. If you enable Live Claude limits, ClawPal sends an authenticated usage request to Anthropic. Codex data comes from your local Codex installation and may stop working if Codex changes.
 
 FPS tracking is optional. It uses the bundled Intel PresentMon console helper and Windows ETW events, and it doesn't modify games or inject an overlay. Results and overhead depend on the game and your Windows permissions; when FPS isn't available, the field stays blank. There's no promise about how any game's anti-cheat treats it.
 

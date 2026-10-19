@@ -41,7 +41,9 @@ internal static class Program
             if (Value(args, "--diagnostics") is { } diagnosticPath) { Diagnostics(diagnosticPath).GetAwaiter().GetResult(); return 0; }
             if (Value(args, "--music-diagnostics") is { } musicPath) { MusicDiagnostics(musicPath, Value(args, "--music-command")).GetAwaiter().GetResult(); return 0; }
             if (Value(args, "--claude-diagnostics") is { } claudePath) {
-                var stats=new ClaudeUsage().Refresh();
+                var usageConfig=Configuration.Load();
+                using var usageTimeout=new CancellationTokenSource(TimeSpan.FromSeconds(15));
+                var stats=new ClaudeUsage {Enabled=()=>usageConfig.DisplaySettings?.Enabled(7)??true,LiveUsageEnabled=()=>usageConfig.ClaudeLiveUsage}.RefreshAsync(usageTimeout.Token).GetAwaiter().GetResult();
                 var safe=new { stats.Running,stats.Available,stats.Stale,stats.Status,stats.AgeS,stats.Primary,stats.Secondary,
                     WorkingCount=stats.Activity?.WorkingCount??0,TaskCount=stats.Activity?.TotalCount??0 };
                 File.WriteAllText(claudePath,JsonSerializer.Serialize(safe,Protocol.Json));return 0;
@@ -74,7 +76,7 @@ internal static class Program
             if (Value(args, "--pair-token-file") is { } tokenFile) config.Pair(tokenFile, Value(args, "--device-id") ?? throw new ArgumentException("--device-id is required when pairing."));
             if (args.Contains("--set-startup")) Startup.Set(true);
             if (args.Contains("--remove-startup")) Startup.Set(false);
-            if (args.Contains("--disconnect-claude")) { ClaudeBridge.Uninstall(); return 0; }
+            if (args.Contains("--disconnect-claude")) { ClaudeBridge.Uninstall(); config.ClaudeLiveUsage=false; config.Save(); return 0; }
             if (args.Contains("--create-start-menu")) Startup.CreateStartMenuShortcut();
             if (args.Contains("--configure-only")) return 0;
             if (Value(args, "--test-connection") is { } connectionPath) { TestConnection(config, connectionPath).GetAwaiter().GetResult(); return 0; }

@@ -49,6 +49,10 @@ Only present USB serial ports are listed, using Windows SERIALCOMM plus USB enum
 esptool 4.11 read_flash emits backspace-delimited progress. The companion decodes stdout/stderr in chunks rather than waiting for a newline, throttles UI updates, and logs coarse progress. A read with no output for 60 seconds stops before any write. Device probes have a 25-second limit; backup/write/verify operations have a 20-minute upper bound. Ordinary full backups can take several minutes at the conservative 460800 baud setting.
 
 Claude uses the same bounded usage/activity wire shape in an independent `claude` object.
-Native Windows Claude supplies documented status-line and hook events; see [CLAUDE.md](CLAUDE.md).
+Native Windows Claude supplies documented status-line and hook events. An optional
+live reader uses the signed-in Desktop or CLI account to request usage from the
+fixed Anthropic HTTPS endpoint. It is off by default, keeps credentials only in
+memory, and sends no prompts. See [CLAUDE.md](CLAUDE.md) for account selection,
+refresh intervals, cached fallback, and privacy details.
 Firmware 0.7.0 accepts up to 6144 telemetry bytes. Older firmware receives the original
 4096-byte payload without Claude, until upgraded.

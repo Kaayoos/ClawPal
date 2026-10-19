@@ -24,6 +24,9 @@ internal static class ClaudeDesktopChecks
         var merged = ClaudeDesktop.Merge(hooks, reading, now);
         Check(merged.Available && merged.Stale && merged.Status == "cached" && merged.AgeS == 300, "cached readings carry their real sample age");
         Check(merged.Running && ReferenceEquals(merged.Activity, activity), "adding quota preserves hook activity and running state");
+        var fresh = hooks with { Available = true, Stale = false, Primary = new(true, 81, 300, "", now.AddHours(1).ToUnixTimeSeconds()), AgeS = 10 };
+        Check(ReferenceEquals(ClaudeDesktop.Merge(fresh, reading, now), fresh), "older Desktop history cannot overwrite fresh status-line limits");
+        Check(ReferenceEquals(ClaudeDesktop.Merge(fresh, reading with { CapturedAt = DateTimeOffset.UnixEpoch }, now), fresh), "a missing Desktop history file cannot erase live status-line limits");
         Check(ReferenceEquals(ClaudeDesktop.Merge(hooks, null, now), hooks), "CLI state is unchanged when no Desktop session matches");
         Check(!ClaudeDesktop.Merge(hooks, reading, now.AddMinutes(26)).Available, "cached quota expires without a new Desktop sample");
         Check(!Parse(History(Sample("{\"fh\":8}", other))).Primary.Available, "another organization's quota is never borrowed");

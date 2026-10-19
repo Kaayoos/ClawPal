@@ -12,7 +12,7 @@ internal sealed class SettingsForm : ClawWindow
     private readonly DeviceSettingsClient wireless;
     private DeviceSettings draft;
     private string pcLanguage;
-    private bool fps,auto,startup,paused,deviceDirty,pcDirty,saving;
+    private bool fps,auto,startup,paused,claudeLive,deviceDirty,pcDirty,saving;
     private readonly bool preview;
     private readonly Panel sidebar=new(){Dock=DockStyle.Left,Width=210,BackColor=ClawTheme.Surface};
     private readonly ClawScrollPanel pages=new(){Dock=DockStyle.Fill,Padding=new Padding(30,12,28,20)};
@@ -32,7 +32,7 @@ internal sealed class SettingsForm : ClawWindow
     internal SettingsForm(Configuration config,Connection connection,bool preview=false)
     {
         this.config=config;this.connection=connection;pcLanguage=L.Normalize(config.CompanionLanguage);this.preview=preview;wireless=connection.Settings;
-        draft=config.DisplaySettings??DeviceSettings.FromConfiguration(config);fps=config.TrackFps;auto=config.AutoOpenApps;paused=config.Paused;startup=!preview&&Startup.Enabled;
+        draft=config.DisplaySettings??DeviceSettings.FromConfiguration(config);fps=config.TrackFps;auto=config.AutoOpenApps;paused=config.Paused;claudeLive=config.ClaudeLiveUsage;startup=!preview&&Startup.Enabled;
         Text=L.Text("clawpal_your_desk_companion");ClientSize=new(1120,790);AutoScaleMode=AutoScaleMode.Dpi;
         using(var stream=typeof(SettingsForm).Assembly.GetManifestResourceStream("ClawPal.Companion.CrabIcon"))if(stream is not null)Icon=new Icon(stream);
         var content=new Panel(){Dock=DockStyle.Fill};Controls.Add(content);Controls.Add(sidebar);
@@ -275,7 +275,7 @@ internal sealed class SettingsForm : ClawWindow
     private void CompanionPage()
     {
         title.Text=L.Text("a_quiet_companion_on_your_pc");subtitle.Text=L.Text("these_settings_apply_here_no_usb_cable_or_display");
-        var p=Page(660);
+        var p=Page(820);
         Switch(p,L.Text("start_clawpal_with_windows"),startup,0,value=>{startup=value;Dirty(false);});Put(p,L.Text("starts_quietly_in_the_tray_open_this_window_whenever"),0,46,p.Width,9);
         Switch(p,L.Text("track_game_fps_in_pc_monitor"),fps,108,value=>{fps=value;Dirty(false);});Put(p,L.Text("uses_windows_frame_events_through_presentmon_game_files_stay"),0,154,p.Width,9,false,40);
         Switch(p,L.Text("automatically_open_spotify_or_codex"),auto,216,value=>{auto=value;Dirty(false);});Put(p,L.Text("when_an_enabled_app_opens_on_your_pc_show"),0,262,p.Width,9);
@@ -285,7 +285,9 @@ internal sealed class SettingsForm : ClawWindow
         var claudeLink=new ClawButton(){Text=L.Text("claude_link_button"),Location=new(0,546),Width=245};p.Controls.Add(claudeLink);
         claudeLink.Click+=(_,_)=>{try{if(!preview)ClaudeBridge.Install();claudeStatus.Text=L.Text("claude_link_ready");crab.State="happy";}catch(Exception error){claudeStatus.Text=error.Message;crab.State="error";}};
         var claudeUnlink=new ClawButton(){Text=L.Text("claude_link_disconnect"),Location=new(257,546),Width=230};p.Controls.Add(claudeUnlink);
-        claudeUnlink.Click+=(_,_)=>{try{if(!preview)ClaudeBridge.Uninstall();claudeStatus.Text=L.Text("claude_link_removed");crab.State="idle";}catch(Exception error){claudeStatus.Text=error.Message;crab.State="error";}};
+        var liveSwitch=Switch(p,L.Text("claude_live_limits"),claudeLive,666,value=>{claudeLive=value;Dirty(false);});
+        Put(p,L.Text("claude_live_description"),0,712,p.Width,9,false,96);
+        claudeUnlink.Click+=(_,_)=>{try{if(!preview){ClaudeBridge.Uninstall();config.ClaudeLiveUsage=false;config.Save();}liveSwitch.Checked=false;claudeLive=false;claudeStatus.Text=L.Text("claude_link_removed");crab.State="idle";}catch(Exception error){claudeStatus.Text=error.Message;crab.State="error";}};
         Switch(p,L.Text("pause_pc_monitoring"),paused,324,value=>{paused=value;Dirty(false);});Put(p,L.Text("wireless_settings_remain_available_while_telemetry_is_paused"),0,370,p.Width,9);
     }
     private void DevicePage()
@@ -375,7 +377,7 @@ internal sealed class SettingsForm : ClawWindow
         try {
             draft.Validate();
             if(preview){deviceDirty=pcDirty=false;status.Text=L.Text("preview_only_no_settings_changed");return;}
-            if(pcDirty){Startup.Set(startup);config.TrackFps=fps;config.AutoOpenApps=auto;config.Paused=paused;config.CompanionLanguage=pcLanguage;config.Save();L.SetLanguage(pcLanguage);connection.SetAutoOpenApps(auto);connection.SetPaused(paused);pcDirty=false;}
+            if(pcDirty){Startup.Set(startup);config.TrackFps=fps;config.AutoOpenApps=auto;config.Paused=paused;config.ClaudeLiveUsage=claudeLive;config.CompanionLanguage=pcLanguage;config.Save();L.SetLanguage(pcLanguage);connection.SetAutoOpenApps(auto);connection.SetPaused(paused);pcDirty=false;}
             if(deviceDirty){config.SetDisplaySettings(draft);deviceDirty=false;}
             if(config.SettingsPending){using var timeout=new CancellationTokenSource(TimeSpan.FromSeconds(16));await wireless.SyncAsync(timeout.Token);}
             status.Text=L.Text("saved_your_desk_your_way");crab.State="happy";
@@ -391,6 +393,7 @@ internal sealed class SettingsForm : ClawWindow
         void Capture(string name){Application.DoEvents();using var bitmap=new Bitmap(Width,Height);DrawToBitmap(bitmap,new Rectangle(Point.Empty,Size));bitmap.Save(Path.Combine(directory,name+".png"),ImageFormat.Png);}
         foreach(var size in new[]{new Size(960,680),new Size(1600,900)}){ClientSize=size;ShowPage(0);Capture($"home-{size.Width}");}
         WindowState=FormWindowState.Maximized;ShowPage(0);Capture("home-maximized");WindowState=FormWindowState.Normal;ClientSize=new(1120,790);
+        foreach(var size in new[]{new Size(960,680),new Size(1120,790)}){ClientSize=size;ShowPage(3);Application.DoEvents();pages.ScrollTo(pages.MaximumOffset);Capture($"claude-{size.Width}");}
         ShowPage(6);pages.ScrollTo(pages.MaximumOffset);Capture("screen-bottom");
         ShowPage(2);pages.ScrollTo(pages.MaximumOffset);Capture("weather-units");
         ShowPage(2);Application.DoEvents();var choices=activePage!.Controls.OfType<ChoiceBox>().Last();choices.PerformClick();Application.DoEvents();

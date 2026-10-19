@@ -12,7 +12,7 @@
   "MaxBytes": 4128768,
   "AssetName": "clawpal-waveshare-4.3b.bin",
   "Profile": 0,
-  "Version": "0.9.0",
+  "Version": "0.9.1",
   "ToolSha256": "71B8C5E129A44E26851BD8E59DC8D299A1EB07BBD445A8E0A49ED64A0444ED1A",
   "Parts": [
     {
@@ -28,7 +28,7 @@
     {
       "File": "firmware/clawpal.bin",
       "Offset": "0x10000",
-      "Sha256": "d9c4521714b3677d62b51f81e0194cf1da5db0a7c93f00d632a53e0b31e1dfb3"
+      "Sha256": "b6b0c137d23bc64690ecac15abdb1fc2d4218fc0b9663272f2e63bdf105af98b"
     },
     {
       "File": "firmware/ota-data-initial.bin",

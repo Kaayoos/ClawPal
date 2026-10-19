@@ -6,8 +6,8 @@ internal sealed record ClaudeDesktopReading(string SessionId, DateTimeOffset Cap
     CodexWindow Primary, CodexWindow Secondary);
 
 // Read-only adapter for Desktop's locally saved plan-usage history. This is an
-// observed Desktop file format, not a public API. Never read cookies, decrypt
-// login data, poll a private endpoint, or estimate plan usage from token counts.
+// observed Desktop file format, not a public API. This remains the local-only
+// fallback; the separately opted-in live reader uses ClaudeLiveLimits.
 internal static class ClaudeDesktop
 {
     internal static readonly TimeSpan MaximumAge = TimeSpan.FromMinutes(30);
@@ -34,7 +34,7 @@ internal static class ClaudeDesktop
         Func<ClaudeSession, bool> alive) => sessions.Where(s => !s.Ended && s.Seen <= now.AddMinutes(1) &&
             s.Seen > now.AddHours(-24) && alive(s)).OrderByDescending(s => s.Seen).FirstOrDefault();
 
-    private static IEnumerable<string> Roots()
+    internal static IEnumerable<string> Roots()
     {
         var roots = new List<string> { Path.Combine(WindowsFolders.RoamingAppData, "Claude") };
         string packages = Path.Combine(WindowsFolders.LegacyLocalAppData, "Packages");
@@ -53,7 +53,21 @@ internal static class ClaudeDesktop
         // Only inspect the account marker. Other configuration properties, which
         // may include encrypted authentication data, are never used or retained.
         using var config = ReadJson(Path.Combine(root, "config.json"));
-        if (config is null || !Guid.TryParse(CodexContract.String(config.RootElement, "lastKnownAccountUuid"), out var account)) return null;
+        if (config is null) return null;
+        string? organization = Organization(root, config.RootElement, latest.Id);
+        if (organization is null) return null;
+        var empty = new ClaudeDesktopReading(latest.Id, DateTimeOffset.UnixEpoch, CodexWindow.Empty, CodexWindow.Empty);
+        try
+        {
+            using var history = ReadJson(Path.Combine(root, "plan-usage-history.json"));
+            return history is null ? empty : ParseHistory(history.RootElement, organization, latest.Id, now);
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException or JsonException) { return empty; }
+    }
+
+    internal static string? Organization(string root, JsonElement config, string sessionId)
+    {
+        if (!Guid.TryParse(CodexContract.String(config, "lastKnownAccountUuid"), out var account)) return null;
         string accountDirectory = Path.Combine(root, "claude-code-sessions", account.ToString("D"));
         if (!Directory.Exists(accountDirectory)) return null;
         string? organization = null;
@@ -66,7 +80,7 @@ internal static class ClaudeDesktop
                 try
                 {
                     using var session = ReadJson(file.FullName, 262_144);
-                    if (session is null || !MatchesSession(session.RootElement, latest.Id)) continue;
+                    if (session is null || !MatchesSession(session.RootElement, sessionId)) continue;
                     string matched = org.ToString("D");
                     if (organization is not null && organization != matched) return null;
                     organization = matched;
@@ -74,16 +88,7 @@ internal static class ClaudeDesktop
                 catch (Exception e) when (e is IOException or UnauthorizedAccessException or JsonException) { }
             }
         }
-        if (organization is null) return null;
-        // A known Desktop session with missing/invalid history must not inherit
-        // another live CLI account's limits. Return an explicitly empty reading.
-        var empty = new ClaudeDesktopReading(latest.Id, DateTimeOffset.UnixEpoch, CodexWindow.Empty, CodexWindow.Empty);
-        try
-        {
-            using var history = ReadJson(Path.Combine(root, "plan-usage-history.json"));
-            return history is null ? empty : ParseHistory(history.RootElement, organization, latest.Id, now);
-        }
-        catch (Exception e) when (e is IOException or UnauthorizedAccessException or JsonException) { return empty; }
+        return organization;
     }
 
     internal static bool MatchesSession(JsonElement root, string id) =>
@@ -127,6 +132,10 @@ internal static class ClaudeDesktop
     internal static CodexStats Merge(CodexStats hooks, ClaudeDesktopReading? reading, DateTimeOffset now)
     {
         if (reading is null) return hooks;
+        // Snapshot now selects the same latest live session as this adapter.
+        // A slower Desktop history write must not replace its newer status line.
+        if (hooks.Available && (reading.CapturedAt == DateTimeOffset.UnixEpoch ||
+            hooks.AgeS <= ActivityContract.Age(reading.CapturedAt, now))) return hooks;
         bool timely = reading.CapturedAt <= now.AddMinutes(1) && now - reading.CapturedAt <= MaximumAge;
         var primary = timely ? reading.Primary : CodexWindow.Empty;
         var secondary = timely ? reading.Secondary : CodexWindow.Empty;
@@ -136,7 +145,7 @@ internal static class ClaudeDesktop
             Primary = primary, Secondary = secondary };
     }
 
-    private static JsonDocument? ReadJson(string path, int maximumBytes = MaxFileBytes)
+    internal static JsonDocument? ReadJson(string path, int maximumBytes = MaxFileBytes)
     {
         if (!File.Exists(path)) return null;
         using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
