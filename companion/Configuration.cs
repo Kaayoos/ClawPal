@@ -43,7 +43,10 @@ public sealed class Configuration
     public static Configuration Load()
     {
         var config = File.Exists(ConfigPath) ? JsonSerializer.Deserialize<Configuration>(File.ReadAllText(ConfigPath)) ?? new() : new();
-        if (config.ProtectedToken.Length > 0) config.Token = SecretProtection.Unprotect(config.ProtectedToken);
+        // A restored backup from another Windows account or PC cannot be decrypted here; treat it as unpaired so setup can re-pair.
+        if (config.ProtectedToken.Length > 0)
+            try { config.Token = SecretProtection.Unprotect(config.ProtectedToken); }
+            catch (Exception e) when (e is System.ComponentModel.Win32Exception or FormatException) { config.Token = ""; config.SetupComplete = false; Log.Write("Saved pairing could not be decrypted on this account; setup is required."); }
         if(File.Exists(ConfigPath)) {
             using var saved=JsonDocument.Parse(File.ReadAllText(ConfigPath));
             if(!saved.RootElement.TryGetProperty(nameof(SetupComplete),out _) && config.Token.Length==64) config.SetupComplete=true;

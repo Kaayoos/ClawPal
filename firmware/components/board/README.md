@@ -17,4 +17,4 @@ ClawPal uses one touch point. ILI9341 2.1.0 has explicit CMake version defines
 because this repository disables the component manager.
 
 Full Apache-2.0 license: ../../../LICENSES/Apache-2.0.txt.
-Original 4.3B/LVGL-port provenance: ../../../vendor/SOURCES.md.
+Original 4.3B/LVGL-port provenance: ../../../THIRD_PARTY_NOTICES.md.

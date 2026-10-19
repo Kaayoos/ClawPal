@@ -106,3 +106,7 @@ Original 16 MB profiles use `ota-v1` with a 0x3f0000-byte minimum OTA slot;
 the 8 MB profile uses `ota-8m-v1` with 0x300000-byte slots. The companion chooses
 the exact paired board ID and offers a PC update first if `min_companion`
 requires it. Ordinary updates must preserve those layout contracts.
+
+Firmware 0.9.0 and later requires an on-screen **Allow** before Wi-Fi or
+firmware changes. These releases use `min_companion: 0.9.0`, so older
+companions update before their display.

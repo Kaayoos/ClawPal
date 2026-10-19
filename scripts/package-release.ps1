@@ -18,7 +18,7 @@ foreach($model in $catalog.Boards){
  $length=(Get-Item -LiteralPath $image).Length
  if($length -gt $model.MaxBytes){throw 'Firmware exceeds its OTA slot'}
  Copy-Item -LiteralPath $image -Destination (Join-Path $dist $model.AssetName) -Force
- $releases+= [ordered]@{schema=1;version=$board.Version;board=$board.Id;layout=$model.Layout;min_companion='0.8.0';firmware=[ordered]@{file=$model.AssetName;bytes=$length;sha256=$hash}}
+ $releases+= [ordered]@{schema=1;version=$board.Version;board=$board.Id;layout=$model.Layout;min_companion='0.9.0';firmware=[ordered]@{file=$model.AssetName;bytes=$length;sha256=$hash}}
 }
 $manifest=[ordered]@{schema=2;version=$default.Version;boards=$releases}
 $manifest | ConvertTo-Json -Depth 7 | Set-Content -LiteralPath (Join-Path $dist 'clawpal-release.json') -Encoding utf8

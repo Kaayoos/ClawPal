@@ -90,6 +90,13 @@ Commercial deployments need an appropriate provider arrangement.
 
 - **LVGL 8.4.0**, LVGL Kft, [MIT](LICENSES/LVGL-MIT.txt), source in
   vendor/components/lvgl__lvgl, upstream commit `4495f428630cc1741bd8bfd977f080e8460e8e8d`.
+  Three unused demo fonts whose licenses forbid redistribution are removed from
+  the vendored copy: `src/extra/libs/freetype/arial.ttf`, `src/font/korean.ttf`
+  and `scripts/built_in_font/SimSun.woff`. No ClawPal build uses them.
+- **Font Awesome Free 5** symbol glyphs, Fonticons, Inc., embedded in LVGL's
+  built-in Montserrat bitmap fonts, which the display uses as symbol fallbacks.
+  Fonts: [SIL OFL 1.1](LICENSES/FontAwesome-OFL.txt); icons:
+  [CC BY 4.0](LICENSES/CC-BY-4.0.txt). https://fontawesome.com/license/free
 - **Espressif touch components**: esp_lcd_touch 1.1.2, GT911 1.1.1~1;
   Apache-2.0. Source and license notices are in vendor/components.
 - **Waveshare display / Espressif LVGL port**: original source notices retained

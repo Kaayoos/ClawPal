@@ -90,6 +90,15 @@ static int64_t disconnected_since_us;
 static buddy_connection_state_t published_state = (buddy_connection_state_t)-1;
 static const char websocket_authorized;
 
+/* Firmware and Wi-Fi changes need a tap on the display: the bearer token alone
+ * crosses the LAN in plain HTTP, so it must not be enough to replace either. */
+#define CONFIRM_PROMPT_US 60000000LL
+#define CONFIRM_GRANT_US 120000000LL
+#define CONFIRM_DENIED_US 15000000LL
+static portMUX_TYPE confirm_lock = portMUX_INITIALIZER_UNLOCKED;
+static buddy_confirm_action_t confirm_pending, confirm_granted, confirm_denied;
+static int64_t confirm_pending_until, confirm_granted_until, confirm_denied_until;
+
 static void publish_state(buddy_connection_state_t state, const char *detail)
 {
     published_state = state;
@@ -183,6 +192,33 @@ static esp_err_t require_auth(httpd_req_t *request)
     httpd_resp_set_status(request, "401 Unauthorized");
     httpd_resp_set_hdr(request, "WWW-Authenticate", "Bearer");
     httpd_resp_sendstr(request, BT(BT_AUTHENTICATION_REQUIRED));
+    return ESP_FAIL;
+}
+
+void buddy_network_confirm_result(buddy_confirm_action_t action, bool approved)
+{
+    int64_t now = esp_timer_get_time();
+    taskENTER_CRITICAL(&confirm_lock);
+    if (action != BUDDY_CONFIRM_NONE && confirm_pending == action && now < confirm_pending_until) {
+        confirm_pending = BUDDY_CONFIRM_NONE;
+        if (approved) { confirm_granted = action; confirm_granted_until = now + CONFIRM_GRANT_US; }
+        else { confirm_denied = action; confirm_denied_until = now + CONFIRM_DENIED_US; }
+    }
+    taskEXIT_CRITICAL(&confirm_lock);
+}
+
+/* One approval authorizes exactly one request. */
+static esp_err_t require_confirmation(httpd_req_t *request, buddy_confirm_action_t action)
+{
+    int64_t now = esp_timer_get_time();
+    taskENTER_CRITICAL(&confirm_lock);
+    bool granted = confirm_granted == action && now < confirm_granted_until;
+    if (granted) confirm_granted = BUDDY_CONFIRM_NONE;
+    taskEXIT_CRITICAL(&confirm_lock);
+    if (granted) return ESP_OK;
+    httpd_resp_set_status(request, "403 Forbidden");
+    httpd_resp_set_hdr(request, "X-ClawPal-Confirm", "required");
+    httpd_resp_sendstr(request, BT(BT_CONFIRM_ON_DISPLAY_FIRST));
     return ESP_FAIL;
 }
 
@@ -852,7 +888,7 @@ static esp_err_t settings_get_handler(httpd_req_t *request)
     if (!json) return ESP_ERR_NO_MEM;
     cJSON_AddStringToObject(json, "version", esp_app_get_description()->version);
     cJSON_AddStringToObject(json, "wifi_ssid", station_ssid);
-    cJSON_AddStringToObject(json, "model", "Waveshare 4.3B");
+    cJSON_AddStringToObject(json, "model", CLAWPAL_BOARD_NAME);
     char *response = cJSON_PrintUnformatted(json); cJSON_Delete(json);
     if (!response) return ESP_ERR_NO_MEM;
     httpd_resp_set_type(request, "application/json");
@@ -873,9 +909,40 @@ static esp_err_t settings_handler(httpd_req_t *request)
     return httpd_resp_sendstr(request, "{\"saved\":true,\"restarting\":false,\"schema\":6}");
 }
 
+/* POST {"action":"firmware"|"wifi"}: shows the prompt, then reports pending, approved or denied. */
+static esp_err_t confirm_handler(httpd_req_t *request)
+{
+    if (require_auth(request) != ESP_OK) return ESP_FAIL;
+    cJSON *json = read_settings_json(request);
+    const cJSON *name = cJSON_GetObjectItemCaseSensitive(json, "action");
+    buddy_confirm_action_t action = !cJSON_IsString(name) ? BUDDY_CONFIRM_NONE :
+        strcmp(name->valuestring, "firmware") == 0 ? BUDDY_CONFIRM_FIRMWARE :
+        strcmp(name->valuestring, "wifi") == 0 ? BUDDY_CONFIRM_WIFI : BUDDY_CONFIRM_NONE;
+    cJSON_Delete(json);
+    if (action == BUDDY_CONFIRM_NONE) return httpd_resp_send_err(request, HTTPD_400_BAD_REQUEST, "Unknown confirmation");
+    int64_t now = esp_timer_get_time();
+    const char *state = "pending";
+    bool prompt = false;
+    taskENTER_CRITICAL(&confirm_lock);
+    if (confirm_granted == action && now < confirm_granted_until) state = "approved";
+    else if (confirm_denied == action && now < confirm_denied_until) { state = "denied"; confirm_denied = BUDDY_CONFIRM_NONE; }
+    else {
+        if (confirm_pending != action || now >= confirm_pending_until) { confirm_pending = action; confirm_pending_until = now + CONFIRM_PROMPT_US; }
+        prompt = true;
+    }
+    taskEXIT_CRITICAL(&confirm_lock);
+    if (prompt && callbacks.on_confirm) callbacks.on_confirm(action);
+    char response[32];
+    snprintf(response, sizeof(response), "{\"state\":\"%s\"}", state);
+    httpd_resp_set_type(request, "application/json");
+    httpd_resp_set_hdr(request, "Cache-Control", "no-store");
+    return httpd_resp_sendstr(request, response);
+}
+
 static esp_err_t wifi_settings_handler(httpd_req_t *request)
 {
     if (require_auth(request) != ESP_OK) return ESP_FAIL;
+    if (require_confirmation(request, BUDDY_CONFIRM_WIFI) != ESP_OK) return ESP_FAIL;
     cJSON *json = read_settings_json(request);
     const cJSON *ssid = cJSON_GetObjectItemCaseSensitive(json, "ssid");
     const cJSON *password = cJSON_GetObjectItemCaseSensitive(json, "password");
@@ -904,7 +971,7 @@ static esp_err_t wifi_settings_handler(httpd_req_t *request)
 static esp_err_t firmware_get_handler(httpd_req_t *request)
 { if(require_auth(request)!=ESP_OK)return ESP_FAIL;return buddy_update_info(request); }
 static esp_err_t firmware_post_handler(httpd_req_t *request)
-{ if(require_auth(request)!=ESP_OK)return ESP_FAIL;return buddy_update_upload(request); }
+{ if(require_auth(request)!=ESP_OK || require_confirmation(request,BUDDY_CONFIRM_FIRMWARE)!=ESP_OK)return ESP_FAIL;return buddy_update_upload(request); }
 
 static esp_err_t start_monitor_server(void)
 {
@@ -932,6 +999,8 @@ static esp_err_t start_monitor_server(void)
     const httpd_uri_t wifi_settings = {.uri = "/wifi", .method = HTTP_POST, .handler = wifi_settings_handler};
     ESP_RETURN_ON_ERROR(httpd_register_uri_handler(monitor_server, &settings_read), TAG, "Read settings URI");
     ESP_RETURN_ON_ERROR(httpd_register_uri_handler(monitor_server, &wifi_settings), TAG, "Wi-Fi settings URI");
+    const httpd_uri_t confirm = {.uri = "/confirm", .method = HTTP_POST, .handler = confirm_handler};
+    ESP_RETURN_ON_ERROR(httpd_register_uri_handler(monitor_server, &confirm), TAG, "Confirmation URI");
     const httpd_uri_t settings = {.uri = "/settings", .method = HTTP_POST, .handler = settings_handler};
     ESP_RETURN_ON_ERROR(httpd_register_uri_handler(monitor_server, &settings), TAG, "Settings URI");
     const httpd_uri_t health = {.uri = "/health", .method = HTTP_GET, .handler = health_handler};
@@ -1016,7 +1085,7 @@ static esp_err_t send_setup_page(httpd_req_t *request,bool connecting)
     if(!connecting){
         httpd_resp_sendstr_chunk(request,"<form method=post action=/configure><label>");send_html_text(request,BT(BT_NETWORK_NAME));
         httpd_resp_sendstr_chunk(request,"<input name=ssid required maxlength=32 autocomplete=off></label><label>");send_html_text(request,BT(BT_WIFI_PASSWORD));
-        httpd_resp_sendstr_chunk(request,"<input type=password name=password minlength=8 maxlength=64 autocomplete=off required></label><button>");send_html_text(request,BT(BT_CONNECT_CLAWPAL));
+        httpd_resp_sendstr_chunk(request,"<input type=password name=password maxlength=64 autocomplete=off></label><button>");send_html_text(request,BT(BT_CONNECT_CLAWPAL));
         httpd_resp_sendstr_chunk(request,"</button></form><p>");send_html_text(request,BT(BT_SETTINGS_STAY));httpd_resp_sendstr_chunk(request,"</p>");
     }
     httpd_resp_sendstr_chunk(request,"</main></html>");return httpd_resp_send_chunk(request,NULL,0);
@@ -1121,7 +1190,7 @@ static esp_err_t setup_post(httpd_req_t *request)
     char ssid[33], password[65];
     bool valid = form_field(body, "ssid", ssid, sizeof(ssid)) && ssid[0] &&
                  form_field(body, "password", password, sizeof(password)) &&
-                 ((strlen(password) >= 8 && strlen(password) <= 63) || is_hex_string(password, 64));
+                 (strlen(password) == 0 || (strlen(password) >= 8 && strlen(password) <= 63) || is_hex_string(password, 64));
     memset(body, 0, request->content_len);
     free(body);
     if (!valid) return httpd_resp_send_err(request, HTTPD_400_BAD_REQUEST,
@@ -1282,7 +1351,8 @@ esp_err_t buddy_network_start(const buddy_network_callbacks_t *requested_callbac
     wifi_config_t station = {0};
     memcpy(station.sta.ssid, station_ssid, strlen(station_ssid));
     memcpy(station.sta.password, station_password, strlen(station_password));
-    station.sta.threshold.authmode = WIFI_AUTH_WPA2_PSK;
+    /* An explicit WPA2 threshold filters out the open networks that setup allows with a blank password. */
+    station.sta.threshold.authmode = station_password[0] ? WIFI_AUTH_WPA2_PSK : WIFI_AUTH_OPEN;
     station.sta.pmf_cfg.capable = true;
     station.sta.pmf_cfg.required = false;
     station.sta.sae_pwe_h2e = WPA3_SAE_PWE_BOTH;

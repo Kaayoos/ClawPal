@@ -268,7 +268,7 @@ internal sealed class CodexRpc : IAsyncDisposable
         var client = new CodexRpc(process);
         try
         {
-            await client.RequestAsync("initialize", new { clientInfo = new { name = "buddyos_usage", title = "ClawPal usage display", version = "0.6.2" }, capabilities = new { } }, cancellationToken);
+            await client.RequestAsync("initialize", new { clientInfo = new { name = "buddyos_usage", title = "ClawPal usage display", version = typeof(CodexUsage).Assembly.GetName().Version?.ToString(3) ?? "0.0.0" }, capabilities = new { } }, cancellationToken);
             await client.process.StandardInput.WriteLineAsync("{\"method\":\"initialized\",\"params\":{}}".AsMemory(), cancellationToken);
             await client.process.StandardInput.FlushAsync(cancellationToken);
             return client;

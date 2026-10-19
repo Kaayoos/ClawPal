@@ -11,7 +11,9 @@ copyright notices and document changes to third-party code. Do not submit
 assets unless their redistribution rights are known.
 
 Keep owned UI text in languages/*.json and run the language generator and
-tests. Follow docs/BUILDING.md for full builds. Do not commit generated
+tests. `python tests/firmware_host/run.py` checks the firmware's settings and
+weather parsers on your PC (it needs ESP-IDF's cJSON through `IDF_PATH`, or
+`--cjson DIR`). Follow docs/BUILDING.md for full builds. Do not commit generated
 executables, firmware images, credentials, device backups or local profiles.
 Use the real contributor's Git identity; do not add tool identities as authors
 or co-authors. Release notes are curated and do not auto-generate author lists.

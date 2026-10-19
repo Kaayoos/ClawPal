@@ -33,6 +33,7 @@
 #define CLOCK_DELAY_MS 30000U
 #define TOUCH_WAKE_POLL_MS 40U
 #define BACKLIGHT_RETRY_MS 1000U
+#define CONFIRM_TIMEOUT_MS 60000U
 #define APP_TRANSITION_MS 1000U
 #define C_CLOCK_BG   BUDDY_COLOR_CLOCK_BG
 #define C_CLOCK_TEXT BUDDY_COLOR_CLOCK_TEXT
@@ -112,6 +113,10 @@ static struct {
     bool claude_tasks_selected, claude_tab_initialized, claude_tab_manual;
     uint32_t music_command_tick, music_command_control_id;
     buddy_music_control_callback_t music_control_callback;
+    buddy_confirm_callback_t confirm_callback;
+    buddy_confirm_action_t confirm_action;
+    uint32_t confirm_started;
+    lv_obj_t *confirm_page, *confirm_title, *confirm_body, *confirm_allow, *confirm_deny;
     uint32_t timer_remaining_ms, timer_tick, timer_duration_s, timer_last_seconds;
     uint32_t timer_celebration_tick;
     bool timer_running, timer_started, timer_completed, timer_celebrating, timer_notify;
@@ -284,7 +289,8 @@ static void refresh_display_power(void)
     uint32_t elapsed = now - ui.power_tick;
     ui.power_tick = now;
     bool connected = ui.connection == BUDDY_PC_CONNECTED;
-    if ((connected && view_settings.dim_behavior != 2) || touched != ui.last_touch_tick || ui.wake_touch_active) {
+    if ((connected && view_settings.dim_behavior != 2) || touched != ui.last_touch_tick || ui.wake_touch_active ||
+        ui.confirm_action != BUDDY_CONFIRM_NONE) {
         ui.idle_ms = 0;
     } else {
         /* Saturation prevents a long unattended run from waking at tick wrap. */
@@ -2481,6 +2487,82 @@ void buddy_ui_apply_settings(const buddy_settings_t *settings)
     if (!app_enabled(ui.active_app)) activate_app(BUDDY_APP_HOME, false);
     buddy_ui_set_weather(&ui.weather); refresh_app_cards();
     refresh_visibility(); refresh_connection(); refresh_music(); refresh_codex(); refresh_claude(); refresh_home(); refresh_footer();
+}
+
+static void confirm_answer(bool approved)
+{
+    buddy_confirm_action_t action = ui.confirm_action;
+    if (action == BUDDY_CONFIRM_NONE) return;
+    ui.confirm_action = BUDDY_CONFIRM_NONE;
+    visible(ui.confirm_page, false);
+    if (ui.confirm_callback) ui.confirm_callback(action, approved);
+}
+
+static void confirm_clicked(lv_event_t *event)
+{
+    confirm_answer(lv_event_get_user_data(event) != NULL);
+}
+
+static void confirm_tick(lv_timer_t *timer)
+{
+    (void)timer;
+    if (ui.confirm_action != BUDDY_CONFIRM_NONE && lv_tick_elaps(ui.confirm_started) >= CONFIRM_TIMEOUT_MS) confirm_answer(false);
+}
+
+static void create_confirm_page(void)
+{
+    const int width = BOARD_DISPLAY_WIDTH, height = BOARD_DISPLAY_HEIGHT;
+    const bool compact = width < 480;
+    const int margin = compact ? 12 : 32, button_h = compact ? 44 : 64, gap = compact ? 12 : 16;
+    const int button_w = (width - margin * 2 - gap) / 2, button_y = height - margin - button_h;
+    ui.confirm_page = box(ui.screen, 0, 0, width, height);
+    /* Clickable so presses never reach the app underneath. */
+    lv_obj_add_flag(ui.confirm_page, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_set_style_bg_color(ui.confirm_page, color(C_BG), 0);
+    lv_obj_set_style_bg_opa(ui.confirm_page, LV_OPA_COVER, 0);
+    ui.confirm_title = text(ui.confirm_page, "", margin, margin, width - margin * 2,
+                            width >= 800 ? &buddy_language_font_32 : compact ? &buddy_language_font_20 : &buddy_language_font_24, C_ACCENT);
+    lv_label_set_long_mode(ui.confirm_title, LV_LABEL_LONG_WRAP);
+    /* Placed under the wrapped title on each request; see buddy_ui_request_confirmation. */
+    ui.confirm_body = text(ui.confirm_page, "", margin, margin, width - margin * 2,
+                           compact ? &buddy_language_font_14 : &buddy_language_font_20, C_TEXT);
+    lv_label_set_long_mode(ui.confirm_body, LV_LABEL_LONG_WRAP);
+    /* Deny sits where a stray tap is most likely; Allow needs a deliberate press. */
+    lv_obj_t *deny = action_button(ui.confirm_page, "", margin, button_y, button_w, button_h, &ui.confirm_deny);
+    lv_obj_add_event_cb(deny, confirm_clicked, LV_EVENT_CLICKED, NULL);
+    lv_obj_t *allow = action_button(ui.confirm_page, "", margin + button_w + gap, button_y, button_w, button_h, &ui.confirm_allow);
+    lv_obj_set_style_text_color(ui.confirm_allow, color(C_ACCENT), 0);
+    lv_obj_add_event_cb(allow, confirm_clicked, LV_EVENT_CLICKED, (void *)1);
+    lv_timer_create(confirm_tick, 1000, NULL);
+}
+
+void buddy_ui_set_confirm_callback(buddy_confirm_callback_t callback)
+{
+    ui.confirm_callback = callback;
+}
+
+void buddy_ui_request_confirmation(buddy_confirm_action_t action)
+{
+    if (action != BUDDY_CONFIRM_FIRMWARE && action != BUDDY_CONFIRM_WIFI) return;
+    if (!ui.confirm_page) create_confirm_page();
+    if (ui.confirm_action == action) return;
+    ui.confirm_action = action;
+    ui.confirm_started = lv_tick_get();
+    bool firmware = action == BUDDY_CONFIRM_FIRMWARE;
+    lv_label_set_text(ui.confirm_title, BT(firmware ? BT_CONFIRM_FIRMWARE_TITLE : BT_CONFIRM_WIFI_TITLE));
+    lv_label_set_text(ui.confirm_body, BT(firmware ? BT_CONFIRM_FIRMWARE_BODY : BT_CONFIRM_WIFI_BODY));
+    lv_label_set_text(ui.confirm_allow, BT(BT_CONFIRM_ALLOW));
+    lv_label_set_text(ui.confirm_deny, BT(BT_CONFIRM_DENY));
+    lv_obj_update_layout(ui.confirm_page);
+    int body_y = lv_obj_get_y(ui.confirm_title) + lv_obj_get_height(ui.confirm_title) + (BOARD_DISPLAY_WIDTH < 480 ? 12 : 24);
+    lv_obj_set_y(ui.confirm_body, body_y);
+    lv_obj_set_height(ui.confirm_body, LV_MAX(0, lv_obj_get_y(lv_obj_get_parent(ui.confirm_allow)) - body_y - 16));
+    visible(ui.confirm_page, true);
+    lv_obj_move_foreground(ui.confirm_page);
+    // Keep the existing wake/dim overlay above every surface, so a dark screen's first press only wakes it.
+    lv_obj_move_foreground(ui.dim_overlay);
+    lv_disp_trig_activity(NULL);
+    refresh_display_power();
 }
 
 void buddy_ui_set_music_control_callback(buddy_music_control_callback_t callback)

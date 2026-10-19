@@ -66,6 +66,13 @@ internal static class ClaudeChecks
         string once=File.ReadAllText(path);ClaudeBridge.InstallAt(native,bridge,"C:/Program Files/Example's ClawPal/ClawPal.exe");
         Check(once==File.ReadAllText(path),"repair is idempotent and does not duplicate hooks");
         Check(File.ReadAllText(Path.Combine(bridge,"settings-before-clawpal.json"))==original,"repair retains first backup");
+        ClaudeBridge.UninstallAt(native,bridge);
+        doc=JsonNode.Parse(File.ReadAllText(path))!;
+        Check(doc["statusLine"]!["command"]!.GetValue<string>()=="printf 'existing status'"&&doc["statusLine"]!["padding"]!.GetValue<int>()==2,"disconnect restores the original status line");
+        Check(doc["hooks"]!.AsObject().Count==1&&doc["hooks"]!["Stop"]!.AsArray().Count==1&&doc["hooks"]!["Stop"]![0]!["hooks"]![0]!["command"]!.GetValue<string>()=="echo existing","disconnect removes only ClawPal hooks");
+        Check(doc["permissions"]!["allow"]![0]!.GetValue<string>()=="Read"&&!File.Exists(Path.Combine(bridge,"previous-statusline.json")),"disconnect keeps unrelated settings and forgets the saved status line");
+        File.WriteAllText(path,"{}");ClaudeBridge.InstallAt(native,bridge,"example.exe");ClaudeBridge.UninstallAt(native,bridge);
+        Check(JsonNode.Parse(File.ReadAllText(path))!.AsObject().Count==0,"disconnect leaves no trace when nothing was configured before");
         File.WriteAllText(path,"{broken");bool rejected=false;try{ClaudeBridge.InstallAt(native,bridge,"example.exe");}catch(JsonException){rejected=true;}
         Check(rejected&&File.ReadAllText(path)=="{broken","invalid Claude settings are never overwritten");
         return passed + ClaudeDesktopChecks.Run(directory);

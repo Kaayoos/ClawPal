@@ -412,10 +412,6 @@
     "no_match_try_a_nearby_town_or_different_spelling": "No match. Try a nearby town or different spelling.",
     "choose_your_location_and_check_its_time_zone": "Choose your location and check its time zone.",
     "location_search": "Location search: ",
-    "choose_a_weather_location_in_make_it_yours_first": "Choose a weather location in Make it yours first.",
-    "clawpal_is_offline_connect_it_to_the_same_network": "ClawPal is offline. Connect it to the same network first.",
-    "location_saved_the_display_is_restarting_to_apply_it": "Location saved. The display is restarting to apply it.",
-    "could_not_update_location": "Could not update location: ",
     "connect_and_check_your_display_then_confirm_the_board": "Connect and check your display, then confirm the board first.",
     "choose_backup_json": "Choose backup.json",
     "clawpal_backup_metadata_backup_json": "ClawPal backup metadata|backup.json",
@@ -476,7 +472,7 @@
     "claude_link_description": "CLI limits use the status line. Desktop limits use its local usage history, with the reading’s age shown. Existing hooks and status-line output are preserved.",
     "claude_link_button": "Connect / repair Claude Code",
     "claude_link_ready": "Claude link installed. Restart existing Claude Code sessions once.",
-    "claude_link_missing": "Open Claude Code after connecting it here. Native Windows sessions are supported.",
+    "claude_link_missing": "Not connected. ClawPal changes Claude Code settings only after you click Connect. Native Windows sessions are supported.",
     "claude_install_first": "Install ClawPal on this PC first, then connect Claude Code.",
     "claude_settings_invalid": "Claude settings could not be read safely. Check its settings.json and retry.",
     "claude_settings_changed": "Claude settings changed during setup. Please retry.",
@@ -489,7 +485,12 @@
     "usb_migration_original_only": "This legacy USB preparation is only for the original 4.3B. Other models already include Wi-Fi updates after installation.",
     "invalid_board_release": "The release contains inconsistent board information.",
     "release_board_missing": "This release has no firmware for your exact display model.",
-    "your_display_dimensions": "Your display · {0} × {1}"
+    "your_display_dimensions": "Your display · {0} × {1}",
+    "tap_allow_on_your_clawpal_display_to_continue": "Tap Allow on your ClawPal display to continue.",
+    "the_change_was_declined_on_the_display": "The change was declined on the display.",
+    "the_change_was_not_confirmed_on_the_display_in_time": "The change was not confirmed on the display in time. Try again.",
+    "claude_link_disconnect": "Disconnect Claude Code",
+    "claude_link_removed": "Claude Code settings restored. Restart open Claude Code sessions once."
   },
   "display": {
     "waiting_for_time": "Waiting for time",
@@ -861,7 +862,14 @@
     "reading_your_claude_account_on_the_pc_your_limits": "Send a message in Claude Code. Subscription limits appear after its first response, when your plan reports them.",
     "claude_no_limits": "Send a message in Claude Code. Subscription limits appear after its first response, when your plan reports them.",
     "waiting_for_you": "Waiting for you",
-    "experimental_hardware": "Experimental hardware - not tested on this board"
+    "experimental_hardware": "Experimental hardware - not tested on this board",
+    "confirm_firmware_title": "Install a firmware update?",
+    "confirm_firmware_body": "Your PC companion wants to install new display firmware over Wi-Fi. Allow it only if you started this update.",
+    "confirm_wifi_title": "Change the Wi-Fi network?",
+    "confirm_wifi_body": "Your PC companion wants to move this display to a different Wi-Fi network. Allow it only if you requested this change.",
+    "confirm_allow": "Allow",
+    "confirm_deny": "Deny",
+    "confirm_on_display_first": "Confirm this change on the display first"
   },
   "formats": {
     "display": [

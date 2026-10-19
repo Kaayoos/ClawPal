@@ -8,6 +8,8 @@ typedef struct {
     void (*on_state)(buddy_connection_state_t state, const char *ssid,
                      const char *ip, const char *detail);
     void (*on_stats)(const buddy_stats_t *stats);
+    /* Show an Allow/Deny prompt; repeated while the companion waits, so it must be idempotent. */
+    void (*on_confirm)(buddy_confirm_action_t action);
 } buddy_network_callbacks_t;
 
 /* NVS must already be initialized. Namespace buddy: ssid, password, token,
@@ -18,3 +20,6 @@ esp_err_t buddy_network_start(const buddy_network_callbacks_t *callbacks);
  * unsupported, or busy. Acceptance means queued, not confirmed execution;
  * music.control_id/control_ok/control_error in telemetry confirm the result. */
 bool buddy_network_music_control(const char *action);
+
+/* Record the touch-screen answer to a pending confirmation. Safe from the UI task. */
+void buddy_network_confirm_result(buddy_confirm_action_t action, bool approved);

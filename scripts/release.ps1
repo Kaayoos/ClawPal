@@ -36,8 +36,10 @@ try {
         try {
             & $Python (Join-Path $PSScriptRoot 'build-firmware.py') --all
             if ($LASTEXITCODE -ne 0) { throw 'Firmware build failed.' }
-            & $Python -m pip install ziglang==0.13.0
+            & $Python -m pip install --require-hashes -r (Join-Path $repo 'tests/simulator/requirements.txt')
             if ($LASTEXITCODE -ne 0) { throw 'Simulator compiler setup failed.' }
+            & $Python (Join-Path $repo 'tests/firmware_host/run.py')
+            if ($LASTEXITCODE -ne 0) { throw 'Firmware parser checks failed.' }
             & (Join-Path $PSScriptRoot 'test-ui.ps1') -Python $Python
             & (Join-Path $PSScriptRoot 'build.ps1') -Python $Python -Dotnet $Dotnet
         }

@@ -7,6 +7,10 @@ Spotify controls, Codex and Claude Code usage, weather, a clock and a timer to a
 Official source and updates: **[Kaayoos/clawpal](https://github.com/Kaayoos/clawpal)**.
 ClawPal is independent of Spotify, OpenAI, Anthropic, Intel, Espressif and Waveshare.
 
+## Case
+
+ClawPal comes with a ready 3D Printable case, which you can find on [MakerWorld](https://makerworld.com/en/models/3430625-esp32-clawpal-your-desk-pc-buddy-for-daily-use#profileId-3911176)
+
 ## Hardware support
 
 Only the original **Waveshare 4.3B** has been exercised on physical hardware.
@@ -70,30 +74,22 @@ network settings. USB setup replaces existing firmware.
 - Use the Weather app for current conditions, the next 24 hours and five days.
   Clock keeps its minimal weather line. Tap your crab for a hello.
 
-Settings sync over authenticated local Wi-Fi. The PC may use Ethernet on the
-same reachable network. Offline changes wait until reconnection. Initial
+Settings sync over local Wi-Fi using the pairing token. That traffic is plain
+HTTP, not encrypted, so keep the display on a network you trust. A firmware
+update or Wi-Fi change sent from the PC waits until you tap **Allow** on the
+display. The PC may use Ethernet on the same reachable network. Offline changes wait until reconnection. Initial
 installation and backup/restore use USB; ordinary firmware updates use Wi-Fi
 and preserve settings. A future bootloader/partition change may require USB.
 
 Click the companion's version label for **About**, credits and offline licenses.
 On the display, hold the version text on Home to find the same project attribution.
 
-## Updates
-
-ClawPal checks **only Kaayoos/clawpal** on startup and every six hours while
-running. Automatic checks can be disabled. New releases produce an Updates
-badge and a tray notification; nothing installs without the user's action.
-
-For a PC update, download the new installer from Updates, exit ClawPal through
-the tray, then run it. A newer installer replaces the installed companion and
-keeps its configuration. Install display firmware from Updates over Wi-Fi.
-Releases use a matching `vX.Y.Z` tag, manifest and checksum-validated image.
-
 ## Claude Code
 
 Native Windows Claude Code sessions have their own display app, usage windows,
 keyboard crab and recorded-session list. Enable Claude Code in Apps, then use
-**Companion → Connect / repair Claude Code** if it has not connected automatically.
+**Companion → Connect / repair Claude Code**. ClawPal edits Claude Code's
+settings only when you click it; **Disconnect Claude Code** restores them.
 Restart already-open Claude sessions once. New installations include a Home
 shortcut; upgrades preserve your existing shortcut order. Add Claude from Home
 settings if you want it pinned. Automatic navigation follows the shared preference.
@@ -141,7 +137,7 @@ See the release guide for the one-time toolchain setup and recovery command.
 - [Contributing](CONTRIBUTING.md)
 - [Screen and weather settings](docs/SCREEN-AND-WEATHER.md)
 
-The prepared release is **0.8.1**. The Windows executable is unsigned.
+The prepared release is **0.9.0**. The Windows executable is unsigned.
 The original 4.3B's main workflows have been exercised during development;
 backup restoration and broader Windows/hardware acceptance still need testing.
 
