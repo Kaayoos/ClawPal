@@ -1,4 +1,3 @@
-using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Threading.Channels;
 using Windows.Graphics.Imaging;
@@ -7,10 +6,14 @@ using Windows.Media.Control;
 
 namespace ClawPal.Companion;
 
-// Windows SMTC is local and needs no Spotify account credentials or cloud API.
-// Only the Spotify executable/package identities in MusicContract are selected.
-public sealed class SpotifyMedia
+// A small square cover for the display: RGB565 little-endian, Size x Size pixels.
+public sealed record AlbumCover(int Id, int Size, byte[] Pixels);
+
+// Windows SMTC is local and needs no player account or cloud API. Any player that
+// publishes a Windows media session works: Spotify, Apple Music, TIDAL, browsers and more.
+public sealed class MediaSessions
 {
+    public const int CoverSize = 160;
     public Func<bool> Enabled { get; init; } = () => true;
     private GlobalSystemMediaTransportControlsSessionManager? manager;
     private readonly SemaphoreSlim mediaGate = new(1, 1);
@@ -18,7 +21,10 @@ public sealed class SpotifyMedia
     private string providerStatus = "Starting";
     private string artTrack = "";
     private int artColor, artAttempts;
+    private AlbumCover? cover;
+    private string? audioProcess;
     public MusicStats Snapshot => Volatile.Read(ref snapshot);
+    public AlbumCover? Cover => Volatile.Read(ref cover);
     public string ProviderStatus => providerStatus;
     private static MusicStats Empty(bool running) => new(running, false, "", "", "", false, 0, 0, false, false, false);
 
@@ -31,7 +37,7 @@ public sealed class SpotifyMedia
             catch (Exception error)
             {
                 // A transient process/COM failure must not permanently freeze cached media.
-                var failure = "Spotify polling failed: " + error.GetType().Name;
+                var failure = "Media polling failed: " + error.GetType().Name;
                 if (providerStatus != failure) Log.Write(failure);
                 providerStatus = failure;
                 manager = null;
@@ -43,10 +49,9 @@ public sealed class SpotifyMedia
 
     public async Task<MusicStats> RefreshAsync(CancellationToken cancellationToken)
     {
-        var running = Enabled() && IsSpotifyRunning();
-        if (!running)
+        if (!Enabled())
         {
-            providerStatus = "Spotify is not running.";
+            providerStatus = "Music is turned off.";
             Volatile.Write(ref snapshot, Empty(false));
             return Snapshot;
         }
@@ -60,10 +65,12 @@ public sealed class SpotifyMedia
                 var session = await FindSessionAsync(timeout.Token);
                 if (session is null)
                 {
-                    providerStatus = running ? "Spotify is running; waiting for its Windows media session." : "Spotify is not running.";
-                    Volatile.Write(ref snapshot, Empty(running));
+                    providerStatus = "No player has a Windows media session.";
+                    audioProcess = null;
+                    Volatile.Write(ref snapshot, Empty(false));
                     return Snapshot;
                 }
+                var appId = session.SourceAppUserModelId;
                 var media = await session.TryGetMediaPropertiesAsync().AsTask(timeout.Token);
                 var playback = session.GetPlaybackInfo();
                 var timeline = session.GetTimelineProperties();
@@ -80,16 +87,18 @@ public sealed class SpotifyMedia
                 var canPlayPause = controls.IsPlayPauseToggleEnabled || (playing ? controls.IsPauseEnabled : controls.IsPlayEnabled);
                 var shuffle = playback.IsShuffleActive;
                 var repeat = playback.AutoRepeatMode;
-                var volume = SpotifyAudio.Read();
-                var sampled = new MusicStats(running, true, MusicContract.LimitText(media?.Title, 191), MusicContract.LimitText(media?.Artist, 127),
+                audioProcess = MusicContract.ProcessName(appId);
+                var volume = audioProcess is null ? default : AppAudio.Read(audioProcess);
+                await ArtAsync(media, timeout.Token);
+                var sampled = new MusicStats(true, true, MusicContract.LimitText(media?.Title, 191), MusicContract.LimitText(media?.Artist, 127),
                     MusicContract.LimitText(media?.AlbumTitle, 127), playing, Math.Min(MusicContract.Seconds(position), duration), duration,
                     canPlayPause, controls.IsNextEnabled, controls.IsPreviousEnabled,
                     CanShuffle: controls.IsShuffleEnabled && shuffle.HasValue, Shuffle: shuffle == true,
                     CanRepeat: controls.IsRepeatEnabled && repeat.HasValue, Repeat: Math.Clamp((int)(repeat ?? MediaPlaybackAutoRepeatMode.None), 0, 2),
                     CanSeek: controls.IsPlaybackPositionEnabled && duration > 0,
                     CanVolume: volume.Available, Volume: volume.Volume, Muted: volume.Muted,
-                    ArtColor: await ArtColorAsync(media, timeout.Token));
-                providerStatus = "Spotify Windows media session available.";
+                    ArtColor: artColor, Source: MusicContract.SourceName(appId), ArtId: Cover?.Id ?? 0);
+                providerStatus = "Windows media session available: " + sampled.Source;
                 Volatile.Write(ref snapshot, sampled);
                 return sampled;
             }
@@ -99,8 +108,8 @@ public sealed class SpotifyMedia
         catch (Exception error) when (error is COMException or InvalidOperationException or UnauthorizedAccessException or OperationCanceledException)
         {
             manager = null;
-            providerStatus = "Spotify Windows media data unavailable: " + error.GetType().Name;
-            Volatile.Write(ref snapshot, Empty(running));
+            providerStatus = "Windows media data unavailable: " + error.GetType().Name;
+            Volatile.Write(ref snapshot, Empty(false));
             return Snapshot;
         }
     }
@@ -116,8 +125,8 @@ public sealed class SpotifyMedia
             {
                 if (command.Action is "volume" or "mute")
                 {
-                    // The mixer session belongs to Spotify's audio stream, not its media session.
-                    bool changed = IsSpotifyRunning() && (command.Action == "volume" ? SpotifyAudio.SetVolume(command.Value) : SpotifyAudio.ToggleMute());
+                    // The mixer session belongs to the player's audio stream, not its media session.
+                    bool changed = audioProcess is { } process && (command.Action == "volume" ? AppAudio.SetVolume(process, command.Value) : AppAudio.ToggleMute(process));
                     return new(command.Id, changed, changed ? "" : "unavailable");
                 }
                 var session = await FindSessionAsync(timeout.Token);
@@ -150,7 +159,7 @@ public sealed class SpotifyMedia
                         break;
                     case "repeat":
                         if (!controls.IsRepeatEnabled) return new(command.Id, false, "unsupported");
-                        // Spotify's own order: off, the whole list, then the current track.
+                        // Spotify's own order, which most players share: off, the whole list, then the current track.
                         var next = playback.AutoRepeatMode switch
                         {
                             MediaPlaybackAutoRepeatMode.List => MediaPlaybackAutoRepeatMode.Track,
@@ -174,61 +183,55 @@ public sealed class SpotifyMedia
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
         catch (Exception error) when (error is COMException or InvalidOperationException or UnauthorizedAccessException or OperationCanceledException)
         {
-            // A failed/timed-out command is never repeated: a skip may already have reached Spotify.
+            // A failed/timed-out command is never repeated: a skip may already have reached the player.
             return new(command.Id, false, "failed");
         }
     }
 
-    // Only the cover's accent color leaves this method; the image is decoded in memory
-    // at thumbnail size and never stored or sent. Spotify can publish a track a moment
-    // before its cover, so a missing cover is retried for a few polls.
-    private async Task<int> ArtColorAsync(GlobalSystemMediaTransportControlsSessionMediaProperties? media, CancellationToken cancellationToken)
+    // The cover is decoded in memory once per track. Only its accent color and a small RGB565
+    // copy for the paired display leave this method; nothing is stored. Players can publish
+    // a track a moment before its cover, so a missing cover is retried for a few polls.
+    private async Task ArtAsync(GlobalSystemMediaTransportControlsSessionMediaProperties? media, CancellationToken cancellationToken)
     {
         string track = media is null ? "" : media.Title + "\n" + media.Artist + "\n" + media.AlbumTitle;
-        if (track != artTrack) { artTrack = track; artColor = 0; artAttempts = 0; }
-        if (artColor != 0 || artAttempts >= 5 || media?.Thumbnail is null) return artColor;
+        if (track != artTrack) { artTrack = track; artColor = 0; artAttempts = 0; Volatile.Write(ref cover, null); }
+        if (Cover is not null || artAttempts >= 5 || media?.Thumbnail is null) return;
         ++artAttempts;
         try
         {
             using var stream = await media.Thumbnail.OpenReadAsync().AsTask(cancellationToken);
-            if (stream.Size == 0 || stream.Size > 8_388_608) return 0;
+            if (stream.Size == 0 || stream.Size > 8_388_608) return;
             var decoder = await BitmapDecoder.CreateAsync(stream).AsTask(cancellationToken);
-            var scale = new BitmapTransform { ScaledWidth = 24, ScaledHeight = 24, InterpolationMode = BitmapInterpolationMode.Fant };
-            var pixels = await decoder.GetPixelDataAsync(BitmapPixelFormat.Bgra8, BitmapAlphaMode.Straight, scale,
-                ExifOrientationMode.IgnoreExifOrientation, ColorManagementMode.DoNotColorManage).AsTask(cancellationToken);
-            artColor = MusicContract.AccentColor(pixels.DetachPixelData());
+            // Fill the square: scale the short side to the cover size and crop the long side.
+            double scale = (double)CoverSize / Math.Min(decoder.OrientedPixelWidth, decoder.OrientedPixelHeight);
+            uint width = (uint)Math.Max(CoverSize, Math.Round(decoder.OrientedPixelWidth * scale)), height = (uint)Math.Max(CoverSize, Math.Round(decoder.OrientedPixelHeight * scale));
+            var transform = new BitmapTransform
+            {
+                ScaledWidth = width, ScaledHeight = height, InterpolationMode = BitmapInterpolationMode.Fant,
+                Bounds = new BitmapBounds { X = (width - CoverSize) / 2u, Y = (height - CoverSize) / 2u, Width = CoverSize, Height = CoverSize },
+            };
+            var pixels = await decoder.GetPixelDataAsync(BitmapPixelFormat.Bgra8, BitmapAlphaMode.Straight, transform,
+                ExifOrientationMode.RespectExifOrientation, ColorManagementMode.DoNotColorManage).AsTask(cancellationToken);
+            var bgra = pixels.DetachPixelData();
+            if (bgra.Length != CoverSize * CoverSize * 4) return;
+            artColor = MusicContract.AccentColor(bgra);
+            var rgb565 = MusicContract.Rgb565(bgra);
+            Volatile.Write(ref cover, new AlbumCover(MusicContract.CoverId(rgb565), CoverSize, rgb565));
         }
         catch (Exception error) when (error is COMException or ArgumentException or InvalidOperationException or IOException or UnauthorizedAccessException) { }
-        return artColor;
     }
 
+    // A playing session wins, Windows' current session next, then any other.
     private async Task<GlobalSystemMediaTransportControlsSession?> FindSessionAsync(CancellationToken cancellationToken)
     {
-        // Windows can retain a stopped application's media session briefly.
-        if (!IsSpotifyRunning()) return null;
         manager ??= await GlobalSystemMediaTransportControlsSessionManager.RequestAsync().AsTask(cancellationToken);
-        var spotify = manager.GetSessions().Where(value => MusicContract.IsSpotifySession(value.SourceAppUserModelId)).ToArray();
-        return spotify.FirstOrDefault(value => value.GetPlaybackInfo().PlaybackStatus == GlobalSystemMediaTransportControlsSessionPlaybackStatus.Playing)
-            ?? spotify.FirstOrDefault();
-    }
-
-    private static bool IsSpotifyRunning()
-    {
-        Process[] processes = [];
-        try
-        {
-            using var current = Process.GetCurrentProcess();
-            var sessionId = current.SessionId;
-            processes = Process.GetProcessesByName("Spotify");
-            foreach (var process in processes)
-            {
-                try { if (process.SessionId == sessionId) return true; }
-                catch (Exception error) when (error is InvalidOperationException or System.ComponentModel.Win32Exception or UnauthorizedAccessException) { }
-            }
-            return false;
-        }
-        catch (Exception error) when (error is InvalidOperationException or System.ComponentModel.Win32Exception or UnauthorizedAccessException) { return false; }
-        finally { foreach (var process in processes) process.Dispose(); }
+        var sessions = manager.GetSessions().ToArray();
+        if (sessions.Length == 0) return null;
+        var current = manager.GetCurrentSession();
+        static bool Playing(GlobalSystemMediaTransportControlsSession value) =>
+            value.GetPlaybackInfo().PlaybackStatus == GlobalSystemMediaTransportControlsSessionPlaybackStatus.Playing;
+        if (current is not null && Playing(current)) return current;
+        return sessions.FirstOrDefault(Playing) ?? current ?? sessions[0];
     }
 }
 
@@ -255,12 +258,13 @@ public sealed class MusicControlQueue
             if (previous.Id >= value.Id) return;
         } while (!ReferenceEquals(Interlocked.CompareExchange(ref result, value, previous), previous));
     }
-    public async Task RunAsync(SpotifyMedia media, CancellationToken cancellationToken)
+    // Focus requests from the needs-you alert share the queue, ordering and replay checks.
+    public async Task RunAsync(MediaSessions media, Func<DeviceControl, MusicControlResult> focus, CancellationToken cancellationToken)
     {
         await foreach (var command in queue.Reader.ReadAllAsync(cancellationToken))
         {
             cancellationToken.ThrowIfCancellationRequested();
-            var outcome = await media.ExecuteAsync(command, cancellationToken);
+            var outcome = command.Action == "focus" ? focus(command) : await media.ExecuteAsync(command, cancellationToken);
             cancellationToken.ThrowIfCancellationRequested();
             SetResult(outcome);
         }

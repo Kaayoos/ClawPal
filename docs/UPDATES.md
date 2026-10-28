@@ -152,7 +152,9 @@ version, firmware filename, byte count and SHA-256. Missing boards, mismatched
 tags, chips, sizes or hashes are rejected. Existing single-board manifests
 remain understood by the companion.
 
-Checks propose updates; they do not install automatically. PC updates retain
+Checks propose updates; they do not install automatically. Since 0.10.0 the partition
+table has a 256 KiB `coredump` partition at the end of the unused storage area. Wi-Fi
+updates keep a display's existing table; it gains crash reports at its next USB install. PC updates retain
 configuration. Wi-Fi firmware updates write the inactive application slot,
 preserve settings and wait for boot confirmation. A bootloader or partition
 change may still require USB. Keep power connected during an update.

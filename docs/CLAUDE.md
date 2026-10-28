@@ -66,13 +66,21 @@ Hook snapshots keep only a local session ID, session name, project basename,
 lifecycle state, process identity, timestamps, and quota windows. Prompts,
 transcripts, and tool arguments are discarded. The paired display receives at
 most three activity rows, counts, remaining percentages, and reset times. Working
-and waiting states expire after two minutes without a matching event. Closed or
+states expire after two minutes without a matching event and waiting ones after thirty. Closed or
 crashed processes cannot remain live because process creation time is checked.
 
 Project settings, managed policy, disabled hooks, or a different configuration
 directory can override the user-level bridge. Restart existing sessions after
 connecting if activity does not appear. Enabling the Claude app alone does not
 install hooks or enable live account access.
+
+## Needs-you alert
+
+A permission prompt or question puts the session in the waiting state. The display then
+shows a full-screen alert over any app. **Show on PC** brings forward the window that hosts
+the session (Windows Terminal, VS Code, Claude Desktop or a classic console), found from
+the session's process. **Not now** hides the alert until the session stops waiting. Waiting
+lasts up to 30 minutes without another hook event, then counts as unknown.
 
 ## Disconnecting
 
@@ -81,7 +89,7 @@ keeping local activity. Disabling the Claude app stops all its collection and
 transmission. **Disconnect Claude Code**, or `--disconnect-claude`, also disables
 live requests, removes only ClawPal's hooks, and restores the original status
 line. Other settings remain intact. Disconnect before deleting ClawPal's private
-directory so Claude does not keep calling a missing executable.
+directory so Claude does not keep calling a missing executable. `--uninstall` disconnects first.
 
 The prior status-line configuration and first settings backup are kept under
 `%USERPROFILE%/.clawpal/claude`; do not publish that directory. The bridge emits

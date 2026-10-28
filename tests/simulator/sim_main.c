@@ -284,6 +284,20 @@ static void music_playing(const char *title, const char *artist, const char *alb
     snprintf(m->album, sizeof(m->album), "%s", album);
     m->position_s = position; m->duration_s = duration;
     m->control_ok = true;
+    snprintf(m->source, sizeof(m->source), "Spotify");
+}
+
+/* A fictional 160x160 cover: a diagonal sunset gradient, as the companion would send it. */
+static uint8_t *sample_cover(void)
+{
+    uint8_t *pixels = malloc(160 * 160 * 2);
+    if (!pixels) exit(1);
+    for (int y = 0; y < 160; ++y) for (int x = 0; x < 160; ++x) {
+        unsigned r = 255 - y / 2, g = 90 + (x + y) / 4, b = 60 + x / 2;
+        uint16_t c = (uint16_t)((r >> 3) << 11 | (g >> 2) << 5 | b >> 3);
+        pixels[(y * 160 + x) * 2] = (uint8_t)c; pixels[(y * 160 + x) * 2 + 1] = (uint8_t)(c >> 8);
+    }
+    return pixels;
 }
 
 /* Telemetry varies gently each second, like the companion's one-second frames. */
@@ -436,6 +450,10 @@ int main(int argc,char **argv){
     if(argc<2)return 2;snprintf(out_dir,sizeof(out_dir),"%s",argv[1]);
     static const uint8_t order[]={0,2,4,7,6};boot(order,5);
     music_playing("Golden Hour Drive","Neon Harbor","Coastline Sessions",71,204);send_stats();
+    // A task waiting for an answer covers every app; Show on PC asks the companion to bring it forward.
+    live(400);if(!buddy_ui_get_state().needs_you||!find_label(lv_scr_act(),BT(BT_CLAUDE_CODE_NEEDS_YOU)))return 40;save_frame("needs-you");
+    tap_overlay_label(BT(BT_SHOW_ON_PC));if(strcmp(music_last_action,"focus")||music_last_value!=BUDDY_APP_CLAUDE||buddy_ui_get_state().needs_you)return 41;
+    music_reply();live(1000);if(buddy_ui_get_state().needs_you)return 42;
     const char *names[]={"monitor","clock","music","timer","codex","home","weather","claude"};
     for(int app=0;app<BUDDY_APP_COUNT;++app){
         if(!buddy_ui_select_app((buddy_app_t)app))return 3;live(1400);if(buddy_ui_get_state().active_app!=(unsigned)app)return 4;
@@ -455,6 +473,11 @@ int main(int argc,char **argv){
             stats.music.volume=music_last_value;music_reply();live(1000);
             tap_label(LV_SYMBOL_LOOP);if(strcmp(music_last_action,"repeat"))return 30;stats.music.repeat=1;music_reply();live(1000);
             save_frame("music-controls");
+            // Any Windows player fills the page; an uploaded cover replaces the crab while its ID matches.
+            buddy_ui_set_album_art(77,160,sample_cover());snprintf(stats.music.source,sizeof(stats.music.source),"Apple Music");stats.music.art_id=77;
+            send_stats();live(400);if(!find_label(lv_scr_act(),"Apple Music"))return 38;save_frame("music-cover");
+            stats.music.art_id=78;send_stats();live(400);save_frame("music-cover-pending");
+            snprintf(stats.music.source,sizeof(stats.music.source),"Spotify");stats.music.art_id=0;send_stats();
             buddy_music_t current=stats.music;
             snprintf(stats.music.title,sizeof(stats.music.title),"Midnight Ferry to the Lighthouse Islands (Extended Harbour Mix)");
             send_stats();live(400);save_frame("music-long");stats.music=current;send_stats();
@@ -495,8 +518,16 @@ int main(int argc,char **argv){
     tap_overlay_label(BT(BT_CONFIRM_DENY));if(confirm_answers!=2||confirm_last!=BUDDY_CONFIRM_WIFI||confirm_approved)return 11;
     buddy_ui_request_confirmation(BUDDY_CONFIRM_WIFI);wait_ms(61000);
     if(confirm_answers!=3||confirm_approved||find_label(lv_scr_act(),BT(BT_CONFIRM_WIFI_TITLE)))return 12;
+    // A new waiting task alerts again; Not now closes it without asking the PC for anything.
+    stats.claude.activity.items[1]=(buddy_codex_task_t){ "Ship the release", "clawpal", "waiting", 5 };send_stats();live(400);
+    if(!buddy_ui_get_state().needs_you)return 43;music_last_action[0]=0;
+    tap_overlay_label(BT(BT_NOT_NOW));if(buddy_ui_get_state().needs_you||music_last_action[0])return 44;
+    // A locked or sleeping PC naps the crab and, after the usual delay, falls back like an offline one.
+    stats.away=true;send_stats();live(31000);
+    if(!buddy_ui_get_state().pc_away||buddy_ui_get_state().active_app!=BUDDY_APP_CLOCK)return 45;save_frame("pc-away");
+    stats.away=false;send_stats();live(1500);if(buddy_ui_get_state().pc_away||buddy_ui_get_state().active_app==BUDDY_APP_CLOCK)return 46;
     // All size classes retain the same offline fallback and wake/dim policy.
     buddy_ui_set_connection(BUDDY_PC_OFFLINE,"Home Wi-Fi","192.168.1.40","");wait_ms(61000);update_clock();
     if(buddy_ui_get_state().active_app!=BUDDY_APP_CLOCK)return 7;
-    printf("PASS %dx%d: all apps, footer navigation, remote-change confirmation, offline fallback\n",W,H);return 0;
+    printf("PASS %dx%d: all apps, footer navigation, remote-change confirmation, needs-you alert, album cover, away and offline fallback\n",W,H);return 0;
 }

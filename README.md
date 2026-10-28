@@ -6,7 +6,7 @@
 
 <p align="center">
   A little company for your desk.<br>
-  An animated pixel crab that shows PC stats, Spotify controls, Codex and Claude Code usage,
+  An animated pixel crab that shows PC stats, music controls, Codex and Claude Code usage,
   weather, a clock and a timer on a Wi-Fi touch display.
 </p>
 
@@ -37,12 +37,13 @@
 The crab lives on the Home screen next to a clock and shortcuts to your apps:
 
 - Live PC stats, with optional in-game FPS
-- A Spotify player with seeking, shuffle, repeat and volume, tinted to the album cover
+- A music player for Spotify, Apple Music, TIDAL, browsers and any other app that shows up in Windows' media controls, with the album cover, seeking, shuffle, repeat and volume
 - Codex and Claude Code usage gauges with reset countdowns, a pace forecast and recent tasks
+- A full-screen alert on any app when Claude Code or Codex is waiting for your answer; **Show on PC** brings that window to the front
 - Weather now, for the next 24 hours and for five days
 - A clock and a timer with quick presets and an end time
 
-Spotify, Codex and Claude Code can open their apps on the display automatically, or you can keep Home on screen. Tap your crab for a hello.
+Music, Codex and Claude Code can open their apps on the display automatically, or you can keep Home on screen. When you lock the PC or it goes to sleep, the crab naps instead of reporting the PC offline. Tap your crab for a hello.
 
 <p align="center">
   <img src="assets/ClawPal-promo.gif" alt="ClawPal promo animation">
@@ -93,6 +94,10 @@ In the companion you can:
 - Set idle dimming, brightness, night hours and the app shown while the PC is offline
 - Turn on FPS tracking or Windows startup, or pause PC monitoring
 
+CPU temperature appears when [LibreHardwareMonitor](https://github.com/LibreHardwareMonitor/LibreHardwareMonitor) is running, or HWiNFO with **Shared Memory Support** turned on. Windows has no standard CPU temperature sensor, and ClawPal doesn't install a driver to read one.
+
+To remove ClawPal, use **Settings → Apps → Installed apps** in Windows, or run `ClawPal.Companion.exe --uninstall`. It closes the companion, removes its shortcuts and settings, disconnects Claude Code and asks whether to keep your display backups. The display keeps its firmware.
+
 ## Claude Code
 
 Native Windows Claude Code sessions get their own display app, with usage windows, a keyboard crab and a list of recorded sessions.
@@ -111,7 +116,7 @@ With live limits enabled, the existing access token is decoded in memory and sen
 
 The PC and the display talk over your local network using plain HTTP. Every request is signed with your pairing key, which itself never crosses the network, so another device on the LAN can't send commands or replay old ones. The traffic isn't encrypted, though, so keep the display on a network you trust. Wi-Fi firmware updates must be signed by the ClawPal release key; your own builds still install over USB.
 
-Your location coordinates go to Open-Meteo for forecasts (location search uses its geocoding API too), and update checks contact GitHub. If you enable Live Claude limits, ClawPal sends an authenticated usage request to Anthropic. Codex data comes from your local Codex installation and may stop working if Codex changes. Spotify controls use Windows' local media session and Spotify's own entry in the Windows volume mixer, so system volume is never changed. The album cover is reduced to a single accent color on the PC; the image itself never reaches the display.
+Your location coordinates go to Open-Meteo for forecasts (location search uses its geocoding API too), and update checks contact GitHub. If you enable Live Claude limits, ClawPal sends an authenticated usage request to Anthropic. Codex data comes from your local Codex installation and may stop working if Codex changes. Music controls use Windows' local media session and the player's own entry in the Windows volume mixer, so system volume is never changed. The album cover is shrunk to 160 × 160 pixels on the PC and sent only to your paired display, which keeps the current one in memory.
 
 FPS tracking is optional. It uses the bundled Intel PresentMon console helper and Windows ETW events, and it doesn't modify games or inject an overlay. Results and overhead depend on the game and your Windows permissions; when FPS isn't available, the field stays blank. There's no promise about how any game's anti-cheat treats it.
 

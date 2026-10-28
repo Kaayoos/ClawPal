@@ -140,7 +140,9 @@ static bool parse_music(const cJSON *root, buddy_music_t *music)
            get_optional_boolean(value, "can_volume", &music->can_volume) &&
            get_optional_uint32(value, "volume", 100, &music->volume) &&
            get_optional_boolean(value, "muted", &music->muted) &&
-           get_optional_uint32(value, "art_color", 0xFFFFFF, &music->art_color);
+           get_optional_uint32(value, "art_color", 0xFFFFFF, &music->art_color) &&
+           copy_json_string(value, "source", music->source, sizeof(music->source)) &&
+           get_optional_uint32(value, "art_id", INT_MAX, &music->art_id);
 }
 
 static bool parse_codex_window(const cJSON *codex, const char *key, buddy_codex_window_t *window)
@@ -299,6 +301,7 @@ bool buddy_telemetry_parse(const char *payload, size_t length, buddy_stats_t *st
                  cJSON_IsObject(cpu) && cJSON_IsObject(gpu) &&
                  cJSON_IsObject(memory) && cJSON_IsObject(network) &&
                  (!auto_open || cJSON_IsBool(auto_open)) &&
+                 get_optional_boolean(root, "away", &stats->away) &&
                  copy_json_string(root, "hostname", stats->hostname, sizeof(stats->hostname)) &&
                  copy_json_string(cpu, "name", stats->cpu_name, sizeof(stats->cpu_name)) &&
                  copy_json_string(gpu, "name", stats->gpu_name, sizeof(stats->gpu_name)) &&

@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Text.Json;
+using Microsoft.Win32;
 
 namespace ClawPal.Companion;
 
@@ -24,6 +25,12 @@ internal static class Program
             }
             var version = typeof(Program).Assembly.GetName().Version?.ToString(3) ?? L.Text("unknown");
             Log.Write($"Launch version={version} path={Environment.ProcessPath} data={Configuration.DirectoryPath} origin={StartupContract.Origin(args)}.");
+            if (args.Contains("--uninstall")) {
+                ApplicationConfiguration.Initialize();
+                try { L.SetLanguage(Configuration.Load(recover: false).CompanionLanguage); }
+                catch (Exception error) when (error is IOException or JsonException or ArgumentException or FormatException or InvalidOperationException or NotSupportedException) { }
+                return Uninstaller.Run(args.Contains("--quiet"));
+            }
             if(args.Length==0)L.SetLanguage(Configuration.Load().CompanionLanguage);
             CompanionUpgrade.ApplyIfNewer(args);
             if (StartupContract.ShouldRedirect(args, Environment.ProcessPath, Startup.InstalledPath, File.Exists(Startup.InstalledPath)))
@@ -82,11 +89,15 @@ internal static class Program
             if (Value(args, "--test-connection") is { } connectionPath) { TestConnection(config, connectionPath).GetAwaiter().GetResult(); return 0; }
             using var singleton = new Mutex(true, @"Local\ClawPal.Companion", out var firstInstance);
             if (!firstInstance) { using var signal = new EventWaitHandle(false, EventResetMode.AutoReset, @"Local\ClawPal.Show"); signal.Set(); return 0; }
+            // Keeps the installed-apps entry, and its version, current after every upgrade.
+            if (StartupContract.SamePath(Environment.ProcessPath, Startup.InstalledPath))
+                try { Uninstaller.Register(); }
+                catch (Exception error) when (error is IOException or UnauthorizedAccessException or System.Security.SecurityException) { Log.Write("Uninstall entry unavailable: " + error.GetType().Name); }
             Installer.DeleteStaleProvisioningImages();
             ApplicationConfiguration.Initialize();
             Application.SetUnhandledExceptionMode(UnhandledExceptionMode.CatchException);
             Application.ThreadException += (_, e) => Log.Write($"UI error: {e.Exception.GetType().Name}: {e.Exception.Message}");
-            using var context = new TrayContext(config, !args.Contains(StartupContract.StartupArgument));
+            using var context = new TrayContext(config, !args.Contains(StartupContract.StartupArgument) || Configuration.Recovered);
             Application.Run(context);
             return 0;
         }
@@ -112,7 +123,7 @@ internal static class Program
             (parts.Length == 2 && parts[0] is "seek" or "volume" && int.TryParse(parts[1], out value) && value >= 0 && value <= (parts[0] == "volume" ? 100 : 604800));
         if (!valid) throw new ArgumentException(L.Text("unsupported_spotify_diagnostic_command"));
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(12));
-        var media = new SpotifyMedia();
+        var media = new MediaSessions();
         var before = await media.RefreshAsync(timeout.Token);
         MusicControlResult? command = null;
         if (action is not null)
@@ -122,7 +133,7 @@ internal static class Program
         }
         var after = action is null ? before : await media.RefreshAsync(timeout.Token);
         Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(path))!);
-        await File.WriteAllTextAsync(path, JsonSerializer.Serialize(new { provider = "Windows SMTC / Spotify only", status = media.ProviderStatus, before, command, after }, new JsonSerializerOptions(Protocol.Json) { WriteIndented = true }), timeout.Token);
+        await File.WriteAllTextAsync(path, JsonSerializer.Serialize(new { provider = "Windows SMTC, any player", status = media.ProviderStatus, cover = media.Cover is { } cover ? new { cover.Id, cover.Size } : null, before, command, after }, new JsonSerializerOptions(Protocol.Json) { WriteIndented = true }), timeout.Token);
     }
     private static async Task CodexDiagnostics(string path)
     {
@@ -168,6 +179,8 @@ internal sealed class TrayContext : ApplicationContext
     private SetupForm? setup;
     private SettingsForm? settings;
     private readonly EventWaitHandle showSignal = new(false, EventResetMode.AutoReset, @"Local\ClawPal.Show");
+    private readonly EventWaitHandle exitSignal = new(false, EventResetMode.AutoReset, Uninstaller.ExitSignal);
+    private bool locked;
     public TrayContext(Configuration config, bool show)
     {
         this.config = config;
@@ -195,10 +208,28 @@ internal sealed class TrayContext : ApplicationContext
         icon.BalloonTipClicked+=(_,_)=>{ShowSetup();settings?.ShowUpdates();};
         icon.DoubleClick += (_, _) => ShowSetup();
         refresh.Tick += (_, _) => { if (showSignal.WaitOne(0)) ShowSetup(); };
+        // The uninstaller asks this app to exit; it never interrupts a display being written.
+        refresh.Tick += (_, _) => { if (exitSignal.WaitOne(0) && setup?.Busy != true && !connection.Updates.Busy) ExitThread(); };
         refresh.Start();
+        SystemEvents.SessionSwitch += SessionSwitched;
+        SystemEvents.PowerModeChanged += PowerModeChanged;
+        if (Configuration.Recovered) icon.ShowBalloonTip(8000, L.Text("settings_damaged_title"), L.Text("settings_damaged_body"), ToolTipIcon.Warning);
         if (show) ShowSetup();
         worker = Task.Run(connection.RunAsync);
         _ = worker.ContinueWith(task => Log.Write($"Monitor stopped unexpectedly: {task.Exception?.GetBaseException().Message}"), TaskContinuationOptions.OnlyOnFaulted);
+    }
+    // The display would otherwise only see telemetry stop and report the PC offline.
+    private void SessionSwitched(object? sender, SessionSwitchEventArgs e)
+    {
+        if (e.Reason is SessionSwitchReason.SessionLock or SessionSwitchReason.ConsoleDisconnect or SessionSwitchReason.RemoteDisconnect) locked = true;
+        else if (e.Reason is SessionSwitchReason.SessionUnlock or SessionSwitchReason.SessionLogon or SessionSwitchReason.RemoteConnect) locked = false;
+        else return;
+        connection.SetAway(locked);
+    }
+    private void PowerModeChanged(object? sender, PowerModeChangedEventArgs e)
+    {
+        if (e.Mode == PowerModes.Suspend) { connection.SetAway(true); connection.WaitAwaySent(TimeSpan.FromSeconds(1.5)); }
+        else if (e.Mode == PowerModes.Resume) connection.SetAway(locked);
     }
     private void ShowSetup() {
         if(setup?.Busy==true) { setup.Show();setup.Activate();return; }
@@ -215,7 +246,7 @@ internal sealed class TrayContext : ApplicationContext
     protected override void ExitThreadCore() { connection.Dispose(); icon.Visible = false; base.ExitThreadCore(); }
     protected override void Dispose(bool disposing)
     {
-        if (disposing) { refresh.Dispose(); showSignal.Dispose(); setup?.Dispose(); settings?.Dispose(); connection.Dispose(); icon.Visible = false; icon.ContextMenuStrip?.Dispose(); icon.Dispose(); artwork.Dispose(); }
+        if (disposing) { SystemEvents.SessionSwitch -= SessionSwitched; SystemEvents.PowerModeChanged -= PowerModeChanged; refresh.Dispose(); showSignal.Dispose(); exitSignal.Dispose(); setup?.Dispose(); settings?.Dispose(); connection.Dispose(); icon.Visible = false; icon.ContextMenuStrip?.Dispose(); icon.Dispose(); artwork.Dispose(); }
         base.Dispose(disposing);
     }
     private static Icon MakeIcon()

@@ -41,16 +41,37 @@ public sealed class Configuration
     private void CopyLocation(DeviceSettings settings) { City=settings.City;Latitude=settings.Latitude;Longitude=settings.Longitude;Timezone=settings.Timezone; }
     [JsonIgnore] public string Token { get; private set; } = "";
 
-    public static Configuration Load()
+    /// <summary>Set when this process found config.json damaged and started over with setup.</summary>
+    public static bool Recovered { get; private set; }
+
+    // Hook processes pass recover: false, so only the tray app ever moves the file.
+    public static Configuration Load(bool recover = true) => LoadFrom(ConfigPath, recover);
+
+    internal static Configuration LoadFrom(string path, bool recover = true)
     {
-        var config = File.Exists(ConfigPath) ? JsonSerializer.Deserialize<Configuration>(File.ReadAllText(ConfigPath)) ?? new() : new();
+        if (!File.Exists(path)) return Prepare(new(), null);
+        string text = File.ReadAllText(path);
+        try { return Prepare(JsonSerializer.Deserialize<Configuration>(text) ?? new(), text); }
+        catch (Exception error) when (recover && error is JsonException or ArgumentException or FormatException or InvalidOperationException or NotSupportedException)
+        {
+            // A damaged file must not stop ClawPal from starting. Keep it for inspection, then pair again.
+            string aside = path + ".damaged-" + DateTime.Now.ToString("yyyyMMdd-HHmmss");
+            File.Move(path, aside, true);
+            Recovered = true;
+            Log.Write($"Configuration was unreadable ({error.GetType().Name}); moved it to {Path.GetFileName(aside)} and returned to setup.");
+            return Prepare(new(), null);
+        }
+    }
+
+    private static Configuration Prepare(Configuration config, string? saved)
+    {
         // A restored backup from another Windows account or PC cannot be decrypted here; treat it as unpaired so setup can re-pair.
         if (config.ProtectedToken.Length > 0)
             try { config.Token = SecretProtection.Unprotect(config.ProtectedToken); }
             catch (Exception e) when (e is System.ComponentModel.Win32Exception or FormatException) { config.Token = ""; config.SetupComplete = false; Log.Write("Saved pairing could not be decrypted on this account; setup is required."); }
-        if(File.Exists(ConfigPath)) {
-            using var saved=JsonDocument.Parse(File.ReadAllText(ConfigPath));
-            if(!saved.RootElement.TryGetProperty(nameof(SetupComplete),out _) && config.Token.Length==64) config.SetupComplete=true;
+        if(saved is not null) {
+            using var document=JsonDocument.Parse(saved);
+            if(!document.RootElement.TryGetProperty(nameof(SetupComplete),out _) && config.Token.Length==64) config.SetupComplete=true;
         }
         config.DisplaySettings = (config.DisplaySettings ?? DeviceSettings.FromConfiguration(config)).Upgrade();
         config.CompanionLanguage=L.Normalize(config.CompanionLanguage);

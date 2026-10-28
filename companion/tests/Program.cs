@@ -89,6 +89,24 @@ Check(Protocol.ParseControl(Valued("seek", 95)) == new DeviceControl(4, "seek", 
 Check(Protocol.ParseControl(Control(1, "seek")) is null && Protocol.ParseControl(Valued("next", 1)) is null && Protocol.ParseControl(Valued("volume", 101)) is null &&
     Protocol.ParseControl(Valued("seek", -1)) is null && Protocol.ParseControl(Valued("seek", 604801)) is null && Protocol.ParseControl(Valued("volume", "40")) is null &&
     Protocol.ParseControl(Valued("volume", 4.5)) is null, "missing, unexpected and out-of-range control values rejected");
+Check(Protocol.ParseControl(Valued("focus", Protocol.ClaudeApp)) == new DeviceControl(4, "focus", 7) && Protocol.ParseControl(Valued("focus", Protocol.CodexApp)) == new DeviceControl(4, "focus", 4),
+    "needs-you focus names the Claude or Codex app");
+Check(Protocol.ParseControl(Control(1, "focus")) is null && Protocol.ParseControl(Valued("focus", 2)) is null && Protocol.ParseControl(Valued("focus", 0)) is null,
+    "focus without an agent app is rejected");
+using (var awayJson = JsonDocument.Parse(JsonSerializer.Serialize(sample with { Away = true }, Protocol.Json)))
+    Check(awayJson.RootElement.GetProperty("away").GetBoolean() && !serialized.RootElement.TryGetProperty("away", out _), "away is sent only while locked or going to sleep");
+using (var playerJson = JsonDocument.Parse(JsonSerializer.Serialize(new MusicStats(true, true, "T", "A", "B", true, 1, 2, true, true, true, Source: "Apple Music", ArtId: 12345), Protocol.Json)))
+    Check(playerJson.RootElement.GetProperty("source").GetString() == "Apple Music" && playerJson.RootElement.GetProperty("art_id").GetInt32() == 12345, "player name and cover id use the firmware field names");
+Check(MusicContract.SourceName("Spotify.exe") == "Spotify" && MusicContract.SourceName("AppleInc.AppleMusicWin_nzyj5cx40ttqa!App") == "Apple Music" &&
+    MusicContract.SourceName("chrome.exe") == "Chrome" && MusicContract.SourceName("308046B0AF4A39CB") == "Firefox" &&
+    MusicContract.SourceName("C:\\Apps\\Strawberry\\strawberry.exe") == "strawberry" && MusicContract.SourceName("Contoso.Player_abc123!App") == "Player" &&
+    MusicContract.SourceName("") == "", "players are named from their Windows media identity");
+Check(MusicContract.ProcessName("TIDAL.exe") == "TIDAL" && MusicContract.ProcessName("SpotifyAB.SpotifyMusic_zpdnekdrzrea0!Spotify") == "Spotify" &&
+    MusicContract.ProcessName("AppleInc.AppleMusicWin_nzyj5cx40ttqa!App") is null && MusicContract.ProcessName(null) is null, "only players with a known process get volume control");
+var rgb565 = MusicContract.Rgb565(new byte[] { 0, 0, 255, 255, 255, 0, 0, 255, 255, 255, 255, 255 });
+Check(rgb565.SequenceEqual(new byte[] { 0x00, 0xF8, 0x1F, 0x00, 0xFF, 0xFF }), "covers convert BGRA to little-endian RGB565");
+Check(MusicContract.CoverId(rgb565) == MusicContract.CoverId(rgb565.ToArray()) && MusicContract.CoverId(rgb565) > 0 &&
+    MusicContract.CoverId(rgb565) != MusicContract.CoverId(new byte[] { 1, 2 }), "cover ids are stable, positive and follow the pixels");
 byte[] Cover(params (byte R, byte G, byte B, int Count)[] parts) => parts.SelectMany(p => Enumerable.Repeat(new byte[] { p.B, p.G, p.R, 255 }, p.Count).SelectMany(pixel => pixel)).ToArray();
 int vivid = MusicContract.AccentColor(Cover((200, 30, 40, 400), (40, 40, 200, 176)));
 Check(vivid >> 16 > (vivid >> 8 & 255) && vivid >> 16 > (vivid & 255), "album accent follows the dominant vivid hue, not an average (" + vivid.ToString("x6") + ")");

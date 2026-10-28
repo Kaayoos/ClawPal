@@ -57,3 +57,8 @@ CONFIG_SECURE_SIGNED_APPS_NO_SECURE_BOOT=y
 CONFIG_SECURE_SIGNED_APPS_RSA_SCHEME=y
 CONFIG_SECURE_SIGNED_ON_UPDATE_NO_SECURE_BOOT=y
 CONFIG_SECURE_BOOT_BUILD_SIGNED_BINARIES=n
+
+# Crash reports: an ELF core dump goes to the "coredump" partition, and /health and
+# /coredump report it. Displays whose partition table predates it keep running without one.
+CONFIG_ESP_COREDUMP_ENABLE_TO_FLASH=y
+CONFIG_ESP_COREDUMP_DATA_FORMAT_ELF=y

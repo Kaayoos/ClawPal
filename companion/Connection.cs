@@ -1,4 +1,6 @@
+using System.Globalization;
 using System.Net;
+using System.Net.Http.Headers;
 using System.Net.NetworkInformation;
 using System.Net.Sockets;
 using System.Net.WebSockets;
@@ -14,6 +16,10 @@ public sealed class Connection : IDisposable
     private CancellationTokenSource? session;
     private volatile bool paused,maintenance;
     private volatile bool autoOpenApps;
+    private volatile bool away;
+    // Released to send the next frame now instead of after the usual second.
+    private readonly SemaphoreSlim nudge = new(0, 1);
+    private readonly ManualResetEventSlim awaySent = new(true);
     private string status = L.Text("starting");
     private long sequence;
     public string Status => L.Retranslate(status);
@@ -24,6 +30,16 @@ public sealed class Connection : IDisposable
     public Connection(Configuration config) { this.config = config; Settings=new(config); Updates=new(config,Settings,SetMaintenance); paused = config.Paused; autoOpenApps = config.AutoOpenApps; }
     public void SetPaused(bool value) { paused = value; if(value)IsConnected=false; CancelSession(); }
     public void SetAutoOpenApps(bool value) { autoOpenApps = value; }
+    // Lock and sleep are sent at once, so the display naps instead of reporting the PC offline.
+    public void SetAway(bool value)
+    {
+        if (away == value) return;
+        if (value) awaySent.Reset();
+        away = value;
+        try { if (nudge.CurrentCount == 0) nudge.Release(); } catch (SemaphoreFullException) { }
+    }
+    // Lets a suspend handler wait briefly until the display has heard before the network goes down.
+    public bool WaitAwaySent(TimeSpan timeout) => !IsConnected || awaySent.Wait(timeout);
 
     public async Task RunAsync()
     {
@@ -35,7 +51,7 @@ public sealed class Connection : IDisposable
         using var gaming = new GameActivity { Enabled = () => config.TrackFps && (config.DisplaySettings?.Enabled(0) ?? true) };
         var gameWorker = Task.Run(() => gaming.RunAsync(shutdown.Token));
         _ = gameWorker.ContinueWith(task => Log.Write("Game activity worker stopped: " + task.Exception?.GetBaseException().GetType().Name), TaskContinuationOptions.OnlyOnFaulted);
-        var media = new SpotifyMedia { Enabled=()=>config.DisplaySettings?.Enabled(2)??true };
+        var media = new MediaSessions { Enabled=()=>config.DisplaySettings?.Enabled(2)??true };
         var mediaWorker = Task.Run(() => media.RunAsync(shutdown.Token));
         var claude = new ClaudeUsage { Enabled = () => config.DisplaySettings?.Enabled(7) ?? true, LiveUsageEnabled = () => config.ClaudeLiveUsage };
         var claudeWorker = Task.Run(() => claude.RunAsync(shutdown.Token));
@@ -70,7 +86,12 @@ public sealed class Connection : IDisposable
                 long lastResponse = Stopwatch.GetTimestamp();
                 var acknowledgements = new Acknowledgements();
                 var controls = new MusicControlQueue();
-                var controlWorker = controls.RunAsync(media, attempt.Token);
+                var controlWorker = controls.RunAsync(media, WindowFocus.Execute, attempt.Token);
+                // The display keeps one cover; a reconnect may follow its restart, so send it again.
+                int uploadedArt = 0;
+                bool artSupported = true;
+                long artRetryAt = 0;
+                Task<bool?>? artTask = null;
                 var receiver = ReceiveAsync(socket, acknowledgements, controls, () => Interlocked.Exchange(ref lastResponse, Stopwatch.GetTimestamp()), attempt.Token);
                 try
                 {
@@ -82,7 +103,8 @@ public sealed class Connection : IDisposable
                             Music = media.Snapshot with { ControlId = controlResult.Id, ControlOk = controlResult.Ok, ControlError = controlResult.Error },
                             Codex = codex.Snapshot with { Activity = activity.Snapshot },
                             Claude = config.DisplaySettings?.Enabled(7)!=false && Settings.FirmwareVersion.Length>0 && Version.TryParse(Settings.FirmwareVersion,out var firmwareVersion) && firmwareVersion>=new Version(0,7,0) ? claude.Snapshot : null,
-                            AutoOpenApps = autoOpenApps
+                            AutoOpenApps = autoOpenApps,
+                            Away = away ? true : null
                         };
                         gaming.SetGpuUsage(sample.Gpu.Usage);
                         sample = sample with { Game = gaming.Snapshot };
@@ -92,7 +114,21 @@ public sealed class Connection : IDisposable
                         if (payload.Length > (sample.Claude is null ? 4096 : 6144)) throw new IOException(L.Text("telemetry_exceeds_the_device_message_limit"));
                         acknowledgements.RecordSent(sample.Seq);
                         await socket.SendAsync(payload, WebSocketMessageType.Text, true, sendTimeout.Token);
-                        var delay = Task.Delay(1000, attempt.Token);
+                        if (sample.Away == true) awaySent.Set();
+                        if (artTask is { IsCompleted: true })
+                        {
+                            var uploaded = await artTask;
+                            if (uploaded is null) artSupported = false;
+                            else if (uploaded == false) { uploadedArt = 0; artRetryAt = Environment.TickCount64 + 30000; }
+                            artTask = null;
+                        }
+                        if (artTask is null && artSupported && media.Cover is { } cover && sample.Music?.ArtId == cover.Id &&
+                            cover.Id != uploadedArt && Environment.TickCount64 >= artRetryAt)
+                        {
+                            uploadedArt = cover.Id;
+                            artTask = UploadArtAsync(cover, attempt.Token);
+                        }
+                        var delay = nudge.WaitAsync(1000, attempt.Token);
                         if (await Task.WhenAny(receiver, delay) == receiver) { await receiver; throw new IOException(L.Text("buddy_closed_its_connection")); }
                         await delay;
                         var responseAt = Interlocked.Read(ref lastResponse);
@@ -104,6 +140,7 @@ public sealed class Connection : IDisposable
                     attempt.Cancel();
                     try { await receiver; } catch (Exception error) when (error is OperationCanceledException or WebSocketException or IOException) { }
                     try { await controlWorker; } catch (OperationCanceledException) { }
+                    if (artTask is not null) try { await artTask; } catch (OperationCanceledException) { }
                 }
             }
             catch (OperationCanceledException) when (shutdown.IsCancellationRequested) { break; }
@@ -128,6 +165,31 @@ public sealed class Connection : IDisposable
     }
 
     private void SetStatus(string value) { if (status == value) return; status = value; Log.Write(value); }
+
+    // Covers go over signed HTTP rather than the telemetry socket: one is about 50 KB.
+    // Returns null when the firmware predates covers, so this connection stops trying.
+    private async Task<bool?> UploadArtAsync(AlbumCover cover, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var endpoint = await DiscoverAsync(config, cancellationToken);
+            if (endpoint is null) return false;
+            using var http = DeviceAuth.For(endpoint, config.Token).CreateClient(TimeSpan.FromSeconds(10));
+            using var content = new ByteArrayContent(cover.Pixels);
+            content.Headers.ContentType = new MediaTypeHeaderValue("application/octet-stream");
+            using var request = new HttpRequestMessage(HttpMethod.Post, $"http://{endpoint.Address}:{Protocol.MonitorPort}/art") { Content = content };
+            request.Headers.Add("X-ClawPal-Art-Id", cover.Id.ToString(CultureInfo.InvariantCulture));
+            request.Headers.Add("X-ClawPal-Art-Size", cover.Size.ToString(CultureInfo.InvariantCulture));
+            using var response = await http.SendAsync(request, cancellationToken);
+            if (response.StatusCode is HttpStatusCode.NotFound or HttpStatusCode.MethodNotAllowed) return null;
+            return response.IsSuccessStatusCode;
+        }
+        catch (Exception error) when (error is IOException or HttpRequestException or SocketException || (error is TaskCanceledException && !cancellationToken.IsCancellationRequested))
+        {
+            Log.Write("Album cover upload failed: " + error.GetType().Name);
+            return false;
+        }
+    }
     public static async Task<ClientWebSocket> ConnectAsync(DeviceEndpoint endpoint, string token, CancellationToken cancellationToken)
     {
         var socket = new ClientWebSocket();

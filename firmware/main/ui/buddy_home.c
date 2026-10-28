@@ -161,7 +161,7 @@ lv_obj_t *buddy_home_create(lv_obj_t *screen, lv_event_cb_t open_app, lv_event_c
     lv_obj_t *seam = plain(home.page, 441, 60, 1, 358);
     lv_obj_set_style_bg_color(seam, lv_color_hex(HOME_SEAM), 0); lv_obj_set_style_bg_opa(seam, LV_OPA_COVER, 0);
     home.wifi = plain(home.page, 744, 9, 38, 32); lv_obj_add_event_cb(home.wifi, draw_wifi, LV_EVENT_DRAW_MAIN, NULL);
-    const char *names[] = { BT(BT_PC_MONITOR), BT(BT_CLOCK), BT(BT_SPOTIFY), BT(BT_TIMER), BT(BT_CODEX), BT(BT_HOME), BT(BT_WEATHER), BT(BT_CLAUDE) };
+    const char *names[] = { BT(BT_PC_MONITOR), BT(BT_CLOCK), BT(BT_MUSIC), BT(BT_TIMER), BT(BT_CODEX), BT(BT_HOME), BT(BT_WEATHER), BT(BT_CLAUDE) };
     for (unsigned app = 0; app < BUDDY_APP_COUNT; ++app) {
         if (app == BUDDY_APP_HOME) continue;
         lv_obj_t *row = plain(home.page, 464, 67, 316, 78); home.rows[app] = row;

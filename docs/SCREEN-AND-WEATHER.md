@@ -7,7 +7,7 @@ Settings → Screen controls:
 - Delay: 15 seconds through 60 minutes. Default: 60 seconds.
 - Dimmed brightness: 5–90%; default 40% (about 60% darker). This board has an on/off backlight, so dimming uses a black display overlay; night sleep physically switches off its backlight.
 - Night hours: enabled by default, 01:00–10:00. Any different whole-hour pair works, including across midnight. Local display time applies. A connected PC prevents night shutoff. Touch gives at least a minute before night shutoff (the independent dim policy can dim sooner).
-- Offline app: opened once after 30 seconds without PC telemetry; default Clock. A running timer postpones switching. Manual app selection while offline stays selected. Reconnection retains existing Home / opted-in Spotify / Codex / Claude behavior.
+- Offline app: opened once after 30 seconds without PC telemetry, or 30 seconds after the PC locks or sleeps; default Clock. A running timer postpones switching. Manual app selection while offline stays selected. Reconnection retains existing Home / opted-in Spotify / Codex / Claude behavior.
 
 The new settings travel through the authenticated Wi-Fi settings endpoint and persist in NVS. Schema 2 records upgrade in memory to schema 3 without discarding existing settings; Weather is enabled as the new app, and Home shortcuts keep their order. Saving writes schema 3. Update ClawPal companion before firmware; releases require companion 0.4.0. Pending new settings are held until the compatible firmware is installed. Home holds five shortcuts, with all enabled apps reachable through Apps.
 

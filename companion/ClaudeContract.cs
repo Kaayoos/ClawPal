@@ -66,7 +66,8 @@ internal static class ClaudeContract
         var items=sessions.OrderByDescending(s=>!s.Ended&&alive(s)).ThenByDescending(s=>s.ActivityAt).Select(s=>{
             long a=ActivityContract.Age(s.ActivityAt,now);
             string state=s.State;
-            if(state is "working" or "waiting" && (a>120 || s.Ended || !alive(s)))state="unknown";
+            // A permission prompt sends no further events until it is answered, so waiting lasts longer.
+            if((state=="working"&&a>120)||(state=="waiting"&&a>1800)||(state is "working" or "waiting"&&(s.Ended||!alive(s))))state="unknown";
             return new CodexActivityItem(s.Title,s.Project,state,a);
         }).ToArray();
         int working=items.Count(i=>i.State=="working");

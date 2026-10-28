@@ -58,6 +58,8 @@ typedef struct {
     uint32_t timer_completed;
     uint32_t game_active;
     float game_fps;
+    uint32_t pc_away;
+    uint32_t needs_you;
 } buddy_ui_state_t;
 
 /* Invoke with the board LVGL lock held. The UI owns no network resources. */
@@ -75,6 +77,10 @@ void buddy_ui_set_music_control_callback(buddy_music_control_callback_t callback
  * The callback receives the answer, or a denial when the prompt times out. */
 void buddy_ui_set_confirm_callback(buddy_confirm_callback_t callback);
 void buddy_ui_request_confirmation(buddy_confirm_action_t action);
+
+/* Takes ownership of a heap buffer of size x size RGB565 little-endian pixels; the music
+ * page shows it while telemetry's music art_id equals `id`. */
+void buddy_ui_set_album_art(uint32_t id, uint16_t size, uint8_t *pixels);
 
 /* Explicit/manual selection. Only Monitor is available while provisioning. */
 bool buddy_ui_select_app(buddy_app_t app);

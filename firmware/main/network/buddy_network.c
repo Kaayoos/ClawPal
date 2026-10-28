@@ -21,11 +21,14 @@
 
 #include "cJSON.h"
 #include "esp_check.h"
+#include "esp_core_dump.h"
 #include "esp_event.h"
+#include "esp_heap_caps.h"
 #include "esp_http_server.h"
 #include "esp_log.h"
 #include "esp_mac.h"
 #include "esp_netif.h"
+#include "esp_partition.h"
 #include "esp_random.h"
 #include "esp_system.h"
 #include "esp_timer.h"
@@ -47,6 +50,9 @@
 #define PC_TIMEOUT_US (10LL * 1000 * 1000)
 #define SETUP_FALLBACK_US (60LL * 1000 * 1000)
 #define CONTROL_QUEUE_TIMEOUT_US (3LL * 1000 * 1000)
+/* Album covers are square RGB565 images; the companion scales them to fit. */
+#define ART_MIN_SIZE 16
+#define ART_MAX_SIZE 160
 
 typedef enum {
     MUSIC_PLAY_PAUSE = 1,
@@ -57,6 +63,8 @@ typedef enum {
     MUSIC_SEEK = 32,
     MUSIC_VOLUME = 64,
     MUSIC_MUTE = 128,
+    /* Not media: asks the PC to bring a waiting Codex or Claude window forward. */
+    MUSIC_FOCUS = 256,
 } music_action_t;
 
 typedef struct {
@@ -272,14 +280,22 @@ static const char *music_action_name(music_action_t action)
     case MUSIC_SEEK: return "seek";
     case MUSIC_VOLUME: return "volume";
     case MUSIC_MUTE: return "mute";
+    case MUSIC_FOCUS: return "focus";
     default: return NULL;
     }
 }
 
-/* Seek carries seconds and volume a percentage; every other action is a toggle. */
+/* Seek carries seconds, volume a percentage and focus an app ID; the rest are toggles. */
 static bool music_action_valued(music_action_t action)
 {
-    return action == MUSIC_SEEK || action == MUSIC_VOLUME;
+    return action == MUSIC_SEEK || action == MUSIC_VOLUME || action == MUSIC_FOCUS;
+}
+
+static bool activity_waiting(const buddy_codex_activity_t *activity)
+{
+    for (uint32_t i = 0; i < activity->item_count && i < 3; ++i)
+        if (strcmp(activity->items[i].state, "waiting") == 0) return true;
+    return false;
 }
 
 static void expire_music_command_locked(int64_t now)
@@ -360,8 +376,10 @@ bool buddy_network_music_control(const char *action, uint32_t value)
     else if (strcmp(action, "seek") == 0) selected = MUSIC_SEEK;
     else if (strcmp(action, "volume") == 0) selected = MUSIC_VOLUME;
     else if (strcmp(action, "mute") == 0) selected = MUSIC_MUTE;
+    else if (strcmp(action, "focus") == 0) selected = MUSIC_FOCUS;
     else return false;
-    if ((selected == MUSIC_SEEK && value > BUDDY_MUSIC_MAX_SECONDS) || (selected == MUSIC_VOLUME && value > 100)) return false;
+    if ((selected == MUSIC_SEEK && value > BUDDY_MUSIC_MAX_SECONDS) || (selected == MUSIC_VOLUME && value > 100) ||
+        (selected == MUSIC_FOCUS && value != BUDDY_APP_CODEX && value != BUDDY_APP_CLAUDE)) return false;
     if (!music_action_valued(selected)) value = 0;
     if (!(xEventGroupGetBits(events) & CONNECTED_BIT) || xSemaphoreTake(state_lock, 0) != pdTRUE) return false;
     int64_t now = esp_timer_get_time();
@@ -469,6 +487,7 @@ static esp_err_t websocket_handler(httpd_req_t *request)
         if (stats.music.can_seek) music_capabilities |= MUSIC_SEEK;
         if (stats.music.can_volume) music_capabilities |= MUSIC_VOLUME | MUSIC_MUTE;
     }
+    if (activity_waiting(&stats.codex.activity) || activity_waiting(&stats.claude.activity)) music_capabilities |= MUSIC_FOCUS;
     xSemaphoreGive(state_lock);
     if (callbacks.on_stats) callbacks.on_stats(&stats);
     char acknowledgement[96];
@@ -481,6 +500,66 @@ static esp_err_t websocket_handler(httpd_req_t *request)
         .final = true,
     };
     return httpd_ws_send_frame(request, &reply);
+}
+
+static const char *reset_reason_name(esp_reset_reason_t reason)
+{
+    switch (reason) {
+    case ESP_RST_POWERON: return "power_on";
+    case ESP_RST_EXT: return "external";
+    case ESP_RST_SW: return "software";
+    case ESP_RST_PANIC: return "panic";
+    case ESP_RST_INT_WDT: return "interrupt_watchdog";
+    case ESP_RST_TASK_WDT: return "task_watchdog";
+    case ESP_RST_WDT: return "watchdog";
+    case ESP_RST_DEEPSLEEP: return "deep_sleep";
+    case ESP_RST_BROWNOUT: return "brownout";
+    case ESP_RST_SDIO: return "sdio";
+    case ESP_RST_USB: return "usb";
+    case ESP_RST_JTAG: return "jtag";
+    case ESP_RST_EFUSE: return "efuse";
+    case ESP_RST_PWR_GLITCH: return "power_glitch";
+    case ESP_RST_CPU_LOCKUP: return "cpu_lockup";
+    default: return "unknown";
+    }
+}
+
+/* Displays installed before the core dump partition existed report "no_partition"
+ * until a USB install writes the current partition table. */
+static const char *core_dump_state(void)
+{
+    if (!esp_partition_find_first(ESP_PARTITION_TYPE_DATA, ESP_PARTITION_SUBTYPE_DATA_COREDUMP, NULL)) return "no_partition";
+    size_t address, size;
+    if (esp_core_dump_image_get(&address, &size) != ESP_OK || size == 0) return "none";
+    return esp_core_dump_image_check() == ESP_OK ? "present" : "invalid";
+}
+
+/* Reset cause, uptime, memory low-water marks and the last crash, for diagnosing
+ * reboots in the field. Task names are ASCII but are filtered before quoting. */
+static void system_health(char *out, size_t size)
+{
+    char crash[96] = "null";
+    const char *dump = core_dump_state();
+    esp_core_dump_summary_t *summary = strcmp(dump, "present") == 0 ? calloc(1, sizeof(*summary)) : NULL;
+    if (summary && esp_core_dump_get_summary(summary) == ESP_OK) {
+        char task[sizeof(summary->exc_task) + 1] = "";
+        for (size_t i = 0; i < sizeof(summary->exc_task) && summary->exc_task[i]; ++i)
+            task[i] = isalnum((unsigned char)summary->exc_task[i]) || summary->exc_task[i] == '_' ? summary->exc_task[i] : '_';
+        snprintf(crash, sizeof(crash), "{\"task\":\"%s\",\"pc\":\"0x%08lx\"}", task, (unsigned long)summary->exc_pc);
+    }
+    free(summary);
+    TaskHandle_t main_task = xTaskGetHandle("main");
+    snprintf(out, size,
+        "{\"reset_reason\":\"%s\",\"uptime_s\":%llu,"
+        "\"internal_free\":%u,\"internal_min_free\":%u,\"internal_largest_block\":%u,"
+        "\"psram_free\":%u,\"psram_min_free\":%u,\"main_stack_min_free\":%u,\"httpd_stack_min_free\":%u,"
+        "\"core_dump\":\"%s\",\"crash\":%s}",
+        reset_reason_name(esp_reset_reason()), (unsigned long long)(esp_timer_get_time() / 1000000),
+        (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL), (unsigned)heap_caps_get_minimum_free_size(MALLOC_CAP_INTERNAL),
+        (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL),
+        (unsigned)heap_caps_get_free_size(MALLOC_CAP_SPIRAM), (unsigned)heap_caps_get_minimum_free_size(MALLOC_CAP_SPIRAM),
+        main_task ? (unsigned)uxTaskGetStackHighWaterMark(main_task) : 0U, (unsigned)uxTaskGetStackHighWaterMark(NULL),
+        dump, crash);
 }
 
 static esp_err_t health_handler(httpd_req_t *request)
@@ -507,12 +586,15 @@ static esp_err_t health_handler(httpd_req_t *request)
     char fps[24];
     if (isfinite(ui_state.game_fps)) snprintf(fps, sizeof(fps), "%.1f", ui_state.game_fps);
     else strlcpy(fps, "null", sizeof(fps));
-    char response[1600];
-    snprintf(response, sizeof(response),
-        "{\"type\":\"buddy.health\",\"v\":1,\"id\":\"%s\",\"state\":%d,\"version\":\"%s\","
+    char system[512];
+    system_health(system, sizeof(system));
+    char *response = malloc(2304);
+    if (!response) return httpd_resp_send_err(request, HTTPD_500_INTERNAL_SERVER_ERROR, "No memory");
+    int length = snprintf(response, 2304,
+        "{\"type\":\"buddy.health\",\"v\":1,\"id\":\"%s\",\"state\":%d,\"version\":\"%s\",\"system\":%s,"
         "\"ui\":{\"app\":\"%s\",\"automatic\":%s,\"menu_open\":%s,"
         "\"dimmed\":%s,\"screen_off\":%s,\"night_hours\":%s,\"display_idle_ms\":%lu,"
-        "\"transition\":%s,\"has_stats\":%s,\"auto_open_apps\":%s,\"last_stats_age_ms\":%lu,"
+        "\"transition\":%s,\"has_stats\":%s,\"auto_open_apps\":%s,\"away\":%s,\"needs_you\":%s,\"last_stats_age_ms\":%lu,"
         "\"music\":{\"running\":%s,\"available\":%s,\"automatic\":%s},"
         "\"codex\":{\"running\":%s,\"available\":%s,\"stale\":%s,\"automatic\":%s,"
         "\"tasks_available\":%s,\"tasks_stale\":%s,\"working_count\":%lu,\"task_count\":%lu},"
@@ -524,7 +606,7 @@ static esp_err_t health_handler(httpd_req_t *request)
         "\"hourly_count\":%u,\"daily_count\":%u,\"temperature_c\":%.1f,\"code\":%d,\"is_day\":%s,"
         "\"fetch_state\":\"%s\",\"http_status\":%d,\"response_bytes\":%d,\"fetch_error\":%d,\"tls_error\":%d,\"tls_flags\":%d}}",
         device_id, (int)published_state,
-        esp_app_get_description()->version,
+        esp_app_get_description()->version, system,
         app_name,
         (ui_state.offline_automatic || ui_state.music_automatic || ui_state.codex_automatic || ui_state.claude_automatic) ? "true" : "false",
         ui_state.menu_open ? "true" : "false",
@@ -535,6 +617,8 @@ static esp_err_t health_handler(httpd_req_t *request)
         ui_state.transition_active ? "true" : "false",
         ui_state.has_stats ? "true" : "false",
         ui_state.auto_open_apps ? "true" : "false",
+        ui_state.pc_away ? "true" : "false",
+        ui_state.needs_you ? "true" : "false",
         (unsigned long)ui_state.last_stats_age_ms,
         ui_state.music_running ? "true" : "false",
         ui_state.music_available ? "true" : "false",
@@ -567,9 +651,80 @@ static esp_err_t health_handler(httpd_req_t *request)
         (unsigned)weather.hourly_count, (unsigned)weather.daily_count, (double)weather.temperature_c, weather.code,
         weather.is_day ? "true" : "false",
         weather.fetch_state ? weather.fetch_state : "waiting", weather.http_status, weather.response_bytes, (int)weather.fetch_error, weather.tls_error, weather.tls_flags);
+    /* A truncated object would be invalid JSON; report it rather than send it. */
+    if (length <= 0 || length >= 2304) {
+        free(response);
+        return httpd_resp_send_err(request, HTTPD_500_INTERNAL_SERVER_ERROR, "Health report too large");
+    }
     httpd_resp_set_type(request, "application/json");
     httpd_resp_set_hdr(request, "Cache-Control", "no-store");
-    return httpd_resp_sendstr(request, response);
+    esp_err_t result = httpd_resp_sendstr(request, response);
+    free(response);
+    return result;
+}
+
+/* The raw ELF core dump from the last crash, for `idf.py coredump-info`. */
+static esp_err_t core_dump_handler(httpd_req_t *request)
+{
+    if (require_auth(request) != ESP_OK) return ESP_FAIL;
+    const esp_partition_t *partition = esp_partition_find_first(ESP_PARTITION_TYPE_DATA, ESP_PARTITION_SUBTYPE_DATA_COREDUMP, NULL);
+    size_t address, size;
+    if (!partition || strcmp(core_dump_state(), "present") != 0 || esp_core_dump_image_get(&address, &size) != ESP_OK ||
+        address < partition->address || size > partition->size || address - partition->address > partition->size - size)
+        return httpd_resp_send_err(request, HTTPD_404_NOT_FOUND, "No core dump");
+    httpd_resp_set_type(request, "application/octet-stream");
+    httpd_resp_set_hdr(request, "Cache-Control", "no-store");
+    char chunk[1024];
+    for (size_t offset = 0; offset < size; offset += sizeof(chunk)) {
+        size_t length = size - offset < sizeof(chunk) ? size - offset : sizeof(chunk);
+        if (esp_partition_read(partition, address - partition->address + offset, chunk, length) != ESP_OK ||
+            httpd_resp_send_chunk(request, chunk, length) != ESP_OK) return ESP_FAIL;
+    }
+    return httpd_resp_send_chunk(request, NULL, 0);
+}
+
+static bool header_number(httpd_req_t *request, const char *name, unsigned long minimum, unsigned long maximum, unsigned long *out)
+{
+    char value[12];
+    if (httpd_req_get_hdr_value_str(request, name, value, sizeof(value)) != ESP_OK || !value[0]) return false;
+    for (const char *p = value; *p; ++p) if (!isdigit((unsigned char)*p)) return false;
+    errno = 0;
+    *out = strtoul(value, NULL, 10);
+    return errno == 0 && *out >= minimum && *out <= maximum;
+}
+
+/* POST /art: a square RGB565 little-endian cover, X-ClawPal-Art-Size pixels wide.
+ * Telemetry names the cover by X-ClawPal-Art-Id; the music page shows it while they match. */
+static esp_err_t art_handler(httpd_req_t *request)
+{
+    if (require_auth(request) != ESP_OK) return ESP_FAIL;
+    unsigned long id, size;
+    if (!header_number(request, "X-ClawPal-Art-Id", 1, INT_MAX, &id) ||
+        !header_number(request, "X-ClawPal-Art-Size", ART_MIN_SIZE, ART_MAX_SIZE, &size) ||
+        request->content_len != size * size * 2)
+        return httpd_resp_send_err(request, HTTPD_400_BAD_REQUEST, "Invalid cover");
+    uint8_t *pixels = heap_caps_malloc(request->content_len, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+    if (!pixels) return httpd_resp_send_err(request, HTTPD_500_INTERNAL_SERVER_ERROR, "No memory");
+    size_t received = 0;
+    while (received < request->content_len) {
+        int n = httpd_req_recv(request, (char *)pixels + received, request->content_len - received);
+        if (n <= 0) { free(pixels); return ESP_FAIL; }
+        received += (size_t)n;
+    }
+    /* The signature covers the declared hash; these must be the bytes it described. */
+    char declared[65], actual[65];
+    if (!declared_body_hash(request, declared) || !buddy_auth_body_hash(pixels, received, actual) || strcmp(declared, actual) != 0) {
+        free(pixels);
+        return httpd_resp_send_err(request, HTTPD_400_BAD_REQUEST, "Cover does not match its signature");
+    }
+    if (!board_lvgl_lock(1000)) {
+        free(pixels);
+        return httpd_resp_send_err(request, HTTPD_500_INTERNAL_SERVER_ERROR, BT(BT_DISPLAY_BUSY));
+    }
+    buddy_ui_set_album_art((uint32_t)id, (uint16_t)size, pixels);
+    board_lvgl_unlock();
+    httpd_resp_set_type(request, "application/json");
+    return httpd_resp_sendstr(request, "{\"saved\":true}");
 }
 
 static esp_err_t snapshot_handler(httpd_req_t *request)
@@ -734,7 +889,7 @@ static esp_err_t start_monitor_server(void)
     config.ctrl_port = MONITOR_PORT + 1;
     config.stack_size = 8192;
     config.max_open_sockets = 4;
-    config.max_uri_handlers = 10;
+    config.max_uri_handlers = 12;
     config.lru_purge_enable = true;
     config.close_fn = close_session;
     config.recv_wait_timeout = 3;
@@ -759,8 +914,12 @@ static esp_err_t start_monitor_server(void)
     ESP_RETURN_ON_ERROR(httpd_register_uri_handler(monitor_server, &settings), TAG, "Settings URI");
     const httpd_uri_t health = {.uri = "/health", .method = HTTP_GET, .handler = health_handler};
     const httpd_uri_t snapshot = {.uri = "/snapshot", .method = HTTP_GET, .handler = snapshot_handler};
+    const httpd_uri_t core_dump = {.uri = "/coredump", .method = HTTP_GET, .handler = core_dump_handler};
+    const httpd_uri_t art = {.uri = "/art", .method = HTTP_POST, .handler = art_handler};
     ESP_RETURN_ON_ERROR(httpd_register_uri_handler(monitor_server, &websocket), TAG, "WebSocket URI");
     ESP_RETURN_ON_ERROR(httpd_register_uri_handler(monitor_server, &health), TAG, "Health URI");
+    ESP_RETURN_ON_ERROR(httpd_register_uri_handler(monitor_server, &core_dump), TAG, "Core dump URI");
+    ESP_RETURN_ON_ERROR(httpd_register_uri_handler(monitor_server, &art), TAG, "Cover URI");
     return httpd_register_uri_handler(monitor_server, &snapshot);
 }
 

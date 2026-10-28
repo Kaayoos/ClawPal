@@ -49,6 +49,7 @@ passed += SettingsChecks.Run();
 passed += ClaudeChecks.Run(directory);
 passed += LocalizationChecks.Run();
 passed += TimeZoneChecks.Run();
+passed += CompanionChecks.Run(directory);
 passed += UpdateChecks.Run();
 passed += BoardChecks.Run();
 passed += ChoiceBoxChecks.Run();

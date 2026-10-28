@@ -3,16 +3,16 @@ using System.Runtime.InteropServices;
 
 namespace ClawPal.Companion;
 
-internal readonly record struct SpotifyVolume(bool Available, int Volume, bool Muted);
+internal readonly record struct AppVolume(bool Available, int Volume, bool Muted);
 
-// Spotify's own entry in the Windows volume mixer, read and changed through Core Audio.
+// A player's own entry in the Windows volume mixer, read and changed through Core Audio.
 // System volume and other applications are never touched.
-internal static class SpotifyAudio
+internal static class AppAudio
 {
-    internal static SpotifyVolume Read()
+    internal static AppVolume Read(string process)
     {
-        SpotifyVolume volume = default;
-        Visit(audio =>
+        AppVolume volume = default;
+        Visit(process, audio =>
         {
             if (volume.Available || audio.GetMasterVolume(out float level) != 0 || audio.GetMute(out bool muted) != 0) return false;
             volume = new(true, (int)Math.Round(Math.Clamp(level, 0, 1) * 100), muted);
@@ -21,24 +21,24 @@ internal static class SpotifyAudio
         return volume;
     }
 
-    internal static bool SetVolume(int percent)
+    internal static bool SetVolume(string process, int percent)
     {
         float level = Math.Clamp(percent, 0, 100) / 100f;
         var context = Guid.Empty;
-        // Raising the slider from zero is a request to hear Spotify again.
-        return Visit(audio => audio.SetMasterVolume(level, ref context) == 0 && (level == 0 || audio.SetMute(false, ref context) == 0)) > 0;
+        // Raising the slider from zero is a request to hear the player again.
+        return Visit(process, audio => audio.SetMasterVolume(level, ref context) == 0 && (level == 0 || audio.SetMute(false, ref context) == 0)) > 0;
     }
 
-    internal static bool ToggleMute()
+    internal static bool ToggleMute(string process)
     {
-        var current = Read();
+        var current = Read(process);
         var context = Guid.Empty;
-        return current.Available && Visit(audio => audio.SetMute(!current.Muted, ref context) == 0) > 0;
+        return current.Available && Visit(process, audio => audio.SetMute(!current.Muted, ref context) == 0) > 0;
     }
 
-    // Visits every Spotify session on every active output, so a device switch or a
-    // second Spotify stream cannot leave one session behind. Returns the successes.
-    private static int Visit(Func<ISimpleAudioVolume, bool> use)
+    // Visits every session of the player on every active output, so a device switch or a
+    // second stream cannot leave one session behind. Returns the successes.
+    private static int Visit(string process, Func<ISimpleAudioVolume, bool> use)
     {
         int succeeded = 0;
         var released = new List<object>();
@@ -67,7 +67,7 @@ internal static class SpotifyAudio
                     if (sessions.GetSession(s, out var control) != 0) continue;
                     released.Add(control);
                     if (control is not IAudioSessionControl2 details || details.GetProcessId(out uint processId) != 0 ||
-                        !IsSpotify((int)processId, session) || control is not ISimpleAudioVolume audio) continue;
+                        !IsProcess((int)processId, session, process) || control is not ISimpleAudioVolume audio) continue;
                     if (use(audio)) ++succeeded;
                 }
             }
@@ -80,13 +80,13 @@ internal static class SpotifyAudio
         return succeeded;
     }
 
-    private static bool IsSpotify(int processId, int session)
+    private static bool IsProcess(int processId, int session, string name)
     {
         if (processId <= 0) return false;
         try
         {
             using var process = Process.GetProcessById(processId);
-            return process.SessionId == session && process.ProcessName.Equals("Spotify", StringComparison.OrdinalIgnoreCase);
+            return process.SessionId == session && process.ProcessName.Equals(name, StringComparison.OrdinalIgnoreCase);
         }
         catch (Exception error) when (error is ArgumentException or InvalidOperationException or System.ComponentModel.Win32Exception) { return false; }
     }

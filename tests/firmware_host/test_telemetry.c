@@ -1,5 +1,6 @@
 /* Host checks and a mutation fuzzer for the display's telemetry parser.
  * Included by test_parsers.c, which supplies check(). */
+#include <limits.h>
 #include "buddy_telemetry_parse.h"
 
 static const char telemetry_full[] =
@@ -53,6 +54,7 @@ static bool telemetry_invariants(const buddy_stats_t *s)
     bool ok = bounded(s->hostname, sizeof(s->hostname)) && bounded(s->cpu_name, sizeof(s->cpu_name)) &&
               bounded(s->gpu_name, sizeof(s->gpu_name)) && bounded(s->music.title, sizeof(s->music.title)) &&
               bounded(s->music.artist, sizeof(s->music.artist)) && bounded(s->music.album, sizeof(s->music.album)) &&
+              bounded(s->music.source, sizeof(s->music.source)) && s->music.art_id <= INT_MAX &&
               bounded(s->game.name, sizeof(s->game.name)) && (!s->game.active || s->game.name[0]) &&
               (isnan(s->cpu_usage) || (s->cpu_usage >= 0 && s->cpu_usage <= 100)) &&
               (isnan(s->game.fps) || (s->game.fps >= 0 && s->game.fps <= 2000)) &&
@@ -99,6 +101,15 @@ static void telemetry_checks(void)
     check(!telemetry_with("\"seq\":42", "\"seq\":-1"), "telemetry: negative sequence is rejected");
     check(!telemetry_with("\"seq\":42", "\"seq\":9007199254740993"), "telemetry: sequence past 2^53 is rejected");
     check(!telemetry_with("\"auto_open_apps\":false", "\"auto_open_apps\":0"), "telemetry: non-boolean preference is rejected");
+    check(telemetry(telemetry_full, &s) && !s.away && !s.music.source[0] && s.music.art_id == 0,
+          "telemetry: away, player and cover default off");
+    check(telemetry_with("\"auto_open_apps\":false", "\"auto_open_apps\":false,\"away\":true") &&
+          !telemetry_with("\"auto_open_apps\":false", "\"auto_open_apps\":false,\"away\":1"),
+          "telemetry: away must be a boolean");
+    check(telemetry_with("\"control_error\":null}", "\"control_error\":null,\"source\":\"Apple Music\",\"art_id\":77}") &&
+          !telemetry_with("\"control_error\":null}", "\"control_error\":null,\"art_id\":-1}") &&
+          !telemetry_with("\"control_error\":null}", "\"control_error\":null,\"source\":\"0123456789012345678901234567890123\"}"),
+          "telemetry: player name and cover id are bounded");
 
     char name[128];
     memset(name, 'a', 63); name[63] = 0;

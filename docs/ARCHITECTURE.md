@@ -66,3 +66,32 @@ older firmware ignores the new fields. `buddy.control` accepts `shuffle`, `repea
 `mute` toggles, plus `seek` and `volume` with an integer `value` (seconds, or 0–100).
 One command is in flight at a time; a slider moved meanwhile sends its newest value
 once the previous command is answered.
+
+Any player with a Windows media session can fill the page. `music.source` names it
+(at most 31 UTF-8 bytes) and `music.art_id` names its cover. The companion uploads the
+cover to authenticated `POST /art` as a square RGB565 little-endian image (16–160 pixels,
+`X-ClawPal-Art-Id` and `X-ClawPal-Art-Size` headers, body hash signed like any request) after
+a fresh discovery, once per track and again after a reconnect. The display keeps one cover
+in PSRAM and shows it only while telemetry names the same ID, so a stale or missing upload
+falls back to the crab. Firmware without `/art` answers 404 and that connection stops
+uploading. Volume is offered only for players that map to a process in the Windows mixer.
+
+`away: true` is sent while the PC is locked and, without waiting for the next second, just
+before it sleeps. The display then reports "PC away", naps the crab, dims as if offline and,
+after the usual 30 seconds, opens the offline app; a frame without `away` brings it back.
+
+When a Codex or Claude task's state is `waiting`, the display covers any app with an alert.
+**Not now** hides it until that task stops waiting; **Show on PC** sends `buddy.control`
+`focus` with `value` 7 (Claude Code) or 4 (Codex). The companion brings forward the window
+of the newest waiting Claude session, walking up from the session's process to the
+terminal, editor or Claude Desktop that owns a visible window, or the Codex app's window.
+If Windows refuses the foreground change, the taskbar button flashes instead. A Claude
+permission prompt stays `waiting` for up to 30 minutes, since no hook runs until it is answered.
+
+Authenticated `GET /health` includes a `system` object: reset reason, uptime, free and
+minimum-free internal and PSRAM heap, the largest internal block, stack low-water marks for
+the main and HTTP tasks, and `core_dump` (`present`, `none`, `invalid` or `no_partition`)
+with the crashed task and program counter. `GET /coredump` returns the raw ELF core dump for
+`idf.py coredump-info`. Core dumps go to a 256 KiB `coredump` partition carved from the end
+of the unused `storage` area; displays keep their old table, and report `no_partition`, until a
+USB install writes the new one. Wi-Fi updates never change the partition table.

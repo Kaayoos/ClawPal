@@ -23,6 +23,7 @@ public static class StartupContract
     public static string Origin(string[] args)
     {
         if (args.Contains(StartupArgument)) return "windows-startup";
+        if (args.Contains("--uninstall")) return "uninstall";
         if (args.Any(arg => arg is "--diagnostics" or "--music-diagnostics" or "--codex-diagnostics" or "--activity-diagnostics" or "--game-diagnostics" or "--test-connection")) return "diagnostic";
         if (args.Any(arg => arg is "--configure-only" or "--pair-token-file" or "--set-startup" or "--remove-startup" or "--create-start-menu")) return "configuration";
         return "manual";

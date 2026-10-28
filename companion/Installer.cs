@@ -299,7 +299,11 @@ public sealed class Installer
             if (StartupContract.SamePath(source, target)) continue;
             Directory.CreateDirectory(Path.GetDirectoryName(target)!); File.Copy(source, target, true);
         }
-        Startup.CreateStartMenuShortcut(); Startup.Set(startup); return Task.CompletedTask;
+        Startup.CreateStartMenuShortcut(); Startup.Set(startup);
+        // The installed-apps entry is a convenience; failing to write it must not fail setup.
+        try { Uninstaller.Register(); }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException or System.Security.SecurityException) { Log.Write("Uninstall entry unavailable: " + error.GetType().Name); }
+        return Task.CompletedTask;
     }
 }
 

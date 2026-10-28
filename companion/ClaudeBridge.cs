@@ -104,7 +104,7 @@ internal static class ClaudeBridge
             while((count=reader.Read(buffer,0,buffer.Length))>0){if(text.Length+count>1_048_576)return 0;text.Append(buffer,0,count);}
             input=text.ToString();
             using var json=JsonDocument.Parse(input);
-            if(Configuration.Load().DisplaySettings?.Enabled(7)!=false)Store(json.RootElement,statusLine);
+            if(Configuration.Load(recover:false).DisplaySettings?.Enabled(7)!=false)Store(json.RootElement,statusLine);
         } catch { /* A monitor failure must never interrupt a Claude session. */ }
         if(statusLine)ForwardStatusLine(input);
         return 0;
@@ -172,11 +172,15 @@ internal static class ClaudeBridge
             for(int depth=0;depth<8;depth++){
                 using var p=Process.GetProcessById(id);
                 if(depth>0 && (p.ProcessName.Equals("claude",StringComparison.OrdinalIgnoreCase)||p.ProcessName.Equals("node",StringComparison.OrdinalIgnoreCase)))return(p.Id,p.StartTime.ToUniversalTime().Ticks);
-                var info=new BasicInfo();if(NtQueryInformationProcess(p.Handle,0,ref info,Marshal.SizeOf<BasicInfo>(),out _)!=0)break;
-                id=(int)info.ParentPid;if(id<=0)break;
+                id=ParentProcessId(p);if(id<=0)break;
             }
         }catch { }
         return(0,0);
+    }
+    internal static int ParentProcessId(Process process)
+    {
+        var info=new BasicInfo();
+        return NtQueryInformationProcess(process.Handle,0,ref info,Marshal.SizeOf<BasicInfo>(),out _)==0?(int)info.ParentPid:0;
     }
     internal static void AtomicWrite(string path,string value)
     {
@@ -196,15 +200,20 @@ internal sealed class ClaudeUsage
     private ClaudeDesktopReading? desktopReading;
     private DateTimeOffset nextDesktopRead;
     private string? desktopSession;
-    internal CodexStats Refresh()
+    internal static List<ClaudeSession> ReadSessions()
     {
-        var now=DateTimeOffset.UtcNow;
         var rows=new List<ClaudeSession>();
         if(Directory.Exists(ClaudeBridge.DirectoryPath))foreach(var file in new DirectoryInfo(ClaudeBridge.DirectoryPath).EnumerateFiles("*.session.json").OrderByDescending(f=>f.LastWriteTimeUtc).Take(64)) {
             if(file.Length>16384)continue;
             if(file.LastWriteTimeUtc<DateTime.UtcNow.AddDays(-2)){file.Delete();continue;}
             try{var s=JsonSerializer.Deserialize<ClaudeSession>(File.ReadAllText(file.FullName));if(s is not null)rows.Add(s);}catch(JsonException){}catch(IOException){}
         }
+        return rows;
+    }
+    internal CodexStats Refresh()
+    {
+        var now=DateTimeOffset.UtcNow;
+        var rows=ReadSessions();
         latestSession=ClaudeDesktop.LatestLive(rows,now,ClaudeBridge.IsAlive);
         string? latest=latestSession?.Id;
         if(latest!=desktopSession||now>=nextDesktopRead){

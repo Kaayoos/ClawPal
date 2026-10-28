@@ -6,5 +6,5 @@ idf_component_register(
          "../tests/display_power_policy.c" "../tests/weather_animation_policy.c" "../tests/weather_units.cpp"
     INCLUDE_DIRS "language" "include" "ui" "network" "assets" "weather" "settings" "update"
     REQUIRES board esp_wifi esp_netif esp_event esp_http_server esp_http_client nvs_flash json mbedtls lwip esp_timer esp_hw_support
-    PRIV_REQUIRES esp_app_format app_update bootloader_support
+    PRIV_REQUIRES esp_app_format app_update bootloader_support espcoredump esp_partition
 )

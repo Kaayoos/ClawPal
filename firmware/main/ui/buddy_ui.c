@@ -9,6 +9,7 @@
 
 #include <math.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include "lvgl.h"
 #include "esp_log.h"
@@ -144,6 +145,18 @@ static struct {
     buddy_confirm_action_t confirm_action;
     uint32_t confirm_started;
     lv_obj_t *confirm_page, *confirm_title, *confirm_body, *confirm_allow, *confirm_deny;
+    /* Full-screen alert while a Codex or Claude task waits for the user. */
+    lv_obj_t *alert_page, *alert_title, *alert_body, *alert_focus, *alert_dismiss;
+    buddy_app_t alert_app;
+    char alert_key[112], alert_dismissed[112];
+    /* The companion's last uploaded cover, shown while telemetry names the same ID. */
+    lv_obj_t *music_art;
+    lv_img_dsc_t art_frame;
+    uint8_t *art_pixels;
+    uint32_t art_id;
+    /* The PC reported it is locked or going to sleep. */
+    bool pc_away;
+    uint32_t away_tick;
     uint32_t timer_remaining_ms, timer_tick, timer_duration_s, timer_last_seconds;
     uint32_t timer_celebration_tick;
     bool timer_running, timer_started, timer_completed, timer_celebrating, timer_notify;
@@ -189,6 +202,13 @@ static bool codex_tasks_stale(void);
 static bool claude_tasks_stale(void);
 static void refresh_home(void);
 static void refresh_game(void);
+static void refresh_alert(void);
+
+/* A PC that is connected and not locked or asleep. */
+static bool pc_live(void)
+{
+    return ui.connection == BUDDY_PC_CONNECTED && !ui.pc_away;
+}
 
 static void dismiss_startup(void)
 {
@@ -319,9 +339,9 @@ static void refresh_display_power(void)
     uint32_t now = lv_tick_get();
     uint32_t elapsed = now - ui.power_tick;
     ui.power_tick = now;
-    bool connected = ui.connection == BUDDY_PC_CONNECTED;
+    bool connected = pc_live();
     if ((connected && view_settings.dim_behavior != 2) || touched != ui.last_touch_tick || ui.wake_touch_active ||
-        ui.confirm_action != BUDDY_CONFIRM_NONE) {
+        ui.confirm_action != BUDDY_CONFIRM_NONE || ui.alert_key[0]) {
         ui.idle_ms = 0;
     } else {
         /* Saturation prevents a long unattended run from waking at tick wrap. */
@@ -580,7 +600,7 @@ static void refresh_activity(void)
         else buddy_ui_motion_cancel(ui.music_link);
     }
     if (show) set_label_if_changed(ui.music_link_title,
-        ui.stats.music.title[0] ? ui.stats.music.title : BT(BT_SPOTIFY));
+        ui.stats.music.title[0] ? ui.stats.music.title : BT(BT_MUSIC));
     refresh_app_cards();
 }
 
@@ -589,8 +609,8 @@ static const char *connection_name(void)
     switch (ui.connection) {
     case BUDDY_WIFI_CONNECTING: return BT(BT_JOINING_WI_FI);
     case BUDDY_WIFI_READY: return BT(BT_WAITING_FOR_PC);
-    case BUDDY_PC_CONNECTED: return BT(BT_CONNECTED);
-    case BUDDY_PC_OFFLINE: return BT(BT_PC_OFFLINE);
+    case BUDDY_PC_CONNECTED: return ui.pc_away ? BT(BT_PC_AWAY) : BT(BT_CONNECTED);
+    case BUDDY_PC_OFFLINE: return ui.pc_away ? BT(BT_PC_AWAY) : BT(BT_PC_OFFLINE);
     case BUDDY_PROVISIONING: return BT(BT_SETUP_NEEDED);
     default: return BT(BT_CONNECTING);
     }
@@ -601,6 +621,8 @@ static buddy_mascot_state_t mascot_state(void)
     if (ui.startup) return BUDDY_MASCOT_HAPPY;
     if (ui.transition_active) return ui.transition_mascot;
     if (ui.active_app == BUDDY_APP_HOME) return BUDDY_MASCOT_IDLE;
+    /* The crab naps with the PC; the timer keeps its own animation. */
+    if (ui.pc_away && ui.active_app != BUDDY_APP_TIMER) return BUDDY_MASCOT_SLEEPING;
     if (ui.active_app == BUDDY_APP_TIMER) {
         if (ui.timer_celebrating && lv_tick_elaps(ui.timer_celebration_tick) < 2400)
             return BUDDY_MASCOT_HAPPY;
@@ -943,7 +965,7 @@ static void activate_app(buddy_app_t app, bool automatic)
     if (!app_enabled(app) && ui.connection != BUDDY_PROVISIONING) app = BUDDY_APP_HOME;
     bool changed = app != ui.active_app;
     ui.active_app = app;
-    ui.offline_automatic = automatic && ui.connection != BUDDY_PC_CONNECTED;
+    ui.offline_automatic = automatic && !pc_live();
     ui.clock_automatic = app == BUDDY_APP_CLOCK && ui.offline_automatic;
     ui.music_automatic = app == BUDDY_APP_MUSIC && automatic;
     ui.codex_automatic = app == BUDDY_APP_CODEX && automatic;
@@ -968,7 +990,9 @@ static void maybe_auto_app(void)
 {
     if (ui.connection == BUDDY_PROVISIONING || ui.menu_open || ui.startup) return;
     uint32_t age = lv_tick_elaps(ui.last_stats_tick);
-    bool fresh_pc = ui.have_stats && ui.connection == BUDDY_PC_CONNECTED && age < CLOCK_DELAY_MS;
+    bool fresh_pc = ui.have_stats && pc_live() && age < CLOCK_DELAY_MS;
+    /* A locked PC keeps reporting; it counts as away from the moment it locked. */
+    if (ui.pc_away && ui.connection == BUDDY_PC_CONNECTED) age = lv_tick_elaps(ui.away_tick);
     if (fresh_pc) ui.offline_handled = false;
     /* Each connection chooses from a fresh frame, so old Spotify/Codex state
      * cannot send a newly connected PC to the wrong app. Timers keep running. */
@@ -1076,6 +1100,11 @@ static void refresh_connection(void)
         lv_label_set_text(ui.empty_body, BT(BT_WAITING_FOR_THE_FIRST_SENSOR_READING));
         break;
     default:
+        if (ui.pc_away) {
+            lv_label_set_text(ui.empty_title, BT(BT_YOUR_PC_IS_LOCKED_OR_ASLEEP));
+            lv_label_set_text(ui.empty_body, BT(BT_CLAWPAL_PICKS_UP_AGAIN_WHEN_YOU_RE_BACK));
+            break;
+        }
         lv_label_set_text(ui.empty_title, BT(BT_READY_WHEN_YOUR_PC_IS));
         lv_label_set_text(ui.empty_body, ui.message[0] ? buddy_retranslate_copy(ui.message) :
             BT(BT_KEEP_CLAWPAL_RUNNING_IN_YOUR_PC_S_TRAY_BOTH));
@@ -1449,6 +1478,21 @@ static void refresh_music(void)
     bool connected = music_connected(), live = connected && music->running && music->available;
     uint32_t accent = live && music->art_color ? music->art_color : C_ACCENT;
     if (accent != ui.music_accent) apply_music_accent(accent);
+    /* Any Windows player can fill this page; only Spotify gets its logo. */
+    bool spotify = strcmp(music->source, "Spotify") == 0;
+    set_label_if_changed(ui.music_heading, live && music->source[0] ? music->source : BT(BT_MUSIC));
+    if (BOARD_DISPLAY_WIDTH >= 800) {
+        visible(ui.music_logo, live && spotify);
+        lv_obj_set_x(ui.music_heading, live && spotify ? 84 : 28);
+    }
+    bool cover = live && music->art_id && music->art_id == ui.art_id && ui.art_pixels;
+    visible(ui.music_art, cover);
+    visible(ui.music_buddy, !cover);
+    for (unsigned i = 0; i < 2; ++i) visible(ui.music_rings[i], !cover);
+    if (cover) {
+        lv_img_set_zoom(ui.music_art, (uint16_t)(lv_obj_get_width(ui.music_cover) * 256 / ui.art_frame.header.w));
+        lv_obj_center(ui.music_art);
+    }
     const char *status = !connected ? BT(BT_PC_OFFLINE) : !music->running ? BT(BT_NOT_RUNNING) :
                          !music->available ? BT(BT_WAITING_FOR_PLAYBACK) : music->playing ? BT(BT_PLAYING) : BT(BT_PAUSED);
     set_label_if_changed(ui.music_status, status);
@@ -2255,7 +2299,7 @@ static void create_music_page(void)
     lv_img_set_zoom(ui.music_logo, 192);
     lv_obj_set_pos(ui.music_logo, 21, 14);
     lv_obj_clear_flag(ui.music_logo, LV_OBJ_FLAG_CLICKABLE);
-    ui.music_heading = text(ui.music_page, BT(BT_SPOTIFY), 84, 25, 380, &buddy_language_font_24, C_TEXT);
+    ui.music_heading = text(ui.music_page, BT(BT_MUSIC), 84, 25, 380, &buddy_language_font_24, C_TEXT);
     ui.music_status = text(ui.music_page, BT(BT_WAITING_FOR_PC), 508, 29, 264, &buddy_language_font_16, C_MUTED);
     lv_obj_set_style_text_align(ui.music_status, LV_TEXT_ALIGN_RIGHT, 0);
     ui.music_eq = box(ui.music_page, 0, 0, 18, 14);
@@ -2284,6 +2328,11 @@ static void create_music_page(void)
     lv_img_set_antialias(ui.music_buddy, false);
     lv_obj_center(ui.music_buddy);
     lv_obj_clear_flag(ui.music_buddy, LV_OBJ_FLAG_CLICKABLE);
+    /* The album cover replaces the crab when the PC sends one. */
+    lv_obj_set_style_clip_corner(ui.music_cover, true, 0);
+    ui.music_art = lv_img_create(ui.music_cover);
+    lv_obj_clear_flag(ui.music_art, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_add_flag(ui.music_art, LV_OBJ_FLAG_HIDDEN);
     music_cover_layout(28, 104, 228);
 
     ui.music_meta = box(ui.music_page, 284, 104, 488, 150);
@@ -2573,7 +2622,7 @@ void buddy_ui_init(void)
     lv_obj_set_style_radius(ui.music_link, 8, 0);
     lv_obj_add_event_cb(ui.music_link, activity_clicked, LV_EVENT_CLICKED, (void *)(uintptr_t)BUDDY_APP_MUSIC);
     text(ui.music_link, BT(BT_NOW_PLAYING), 39, 6, 180, &buddy_language_font_14, C_ACCENT);
-    ui.music_link_title = text(ui.music_link, BT(BT_SPOTIFY), 12, 29, 210, &buddy_language_font_20, C_TEXT);
+    ui.music_link_title = text(ui.music_link, BT(BT_MUSIC), 12, 29, 210, &buddy_language_font_20, C_TEXT);
     lv_obj_set_height(ui.music_link_title, 26);
     for (unsigned i = 0; i < 3; ++i) {
         ui.music_link_bars[i] = box(ui.music_link, 13 + (int)i * 7, 14, 3, 8);
@@ -2734,6 +2783,9 @@ void buddy_ui_set_connection(buddy_connection_state_t state, const char *ssid,
     }
     if (state != BUDDY_PC_CONNECTED) ui.pc_launch_pending = false;
     ui.connection = state;
+    /* Away only explains a quiet PC; it ends when Wi-Fi itself is gone. */
+    if (state != BUDDY_PC_CONNECTED && state != BUDDY_PC_OFFLINE) ui.pc_away = false;
+    if (state != BUDDY_PC_CONNECTED && ui.alert_key[0]) { ui.alert_key[0] = 0; visible(ui.alert_page, false); }
     if (state == BUDDY_PROVISIONING) {
         /* Setup instructions always remain accessible, including after Clock. */
         dismiss_startup();
@@ -2843,6 +2895,10 @@ void buddy_ui_update_stats(const buddy_stats_t *stats)
         }
         set_music_feedback(feedback, true);
     }
+    bool away_changed = stats->away != ui.pc_away;
+    if (stats->away && !ui.pc_away) ui.away_tick = lv_tick_get();
+    if (away_changed) ui.offline_handled = false;
+    ui.pc_away = stats->away;
     ui.stats = *stats;
     ui.have_stats = true;
     ui.fresh_sample = true;
@@ -2878,7 +2934,9 @@ void buddy_ui_update_stats(const buddy_stats_t *stats)
     lv_label_set_text(ui.detail_uptime, buf);
     refresh_music();
     refresh_codex(); refresh_claude();
+    if (away_changed) refresh_connection();
     maybe_auto_app();
+    refresh_alert();
     refresh_footer();
     refresh_visibility();
 }
@@ -2967,6 +3025,121 @@ void buddy_ui_apply_settings(const buddy_settings_t *settings)
     if (!app_enabled(ui.active_app)) activate_app(BUDDY_APP_HOME, false);
     buddy_ui_set_weather(&ui.weather); refresh_app_cards();
     refresh_visibility(); refresh_connection(); refresh_music(); refresh_codex(); refresh_claude(); refresh_home(); refresh_footer();
+}
+
+/* The first task in the order shown on the agent pages that waits for an answer. */
+static const buddy_codex_task_t *waiting_task(const buddy_codex_t *agent)
+{
+    for (uint32_t i = 0; i < agent->activity.item_count && i < 3; ++i)
+        if (strcmp(agent->activity.items[i].state, "waiting") == 0) return &agent->activity.items[i];
+    return NULL;
+}
+
+static void close_alert(void)
+{
+    /* Stays dismissed until that task stops waiting, so it can alert again next time. */
+    snprintf(ui.alert_dismissed, sizeof(ui.alert_dismissed), "%s", ui.alert_key);
+    ui.alert_key[0] = 0;
+    visible(ui.alert_page, false);
+    refresh_display_power();
+}
+
+static void alert_clicked(lv_event_t *event)
+{
+    bool focus = lv_event_get_user_data(event) != NULL;
+    buddy_app_t app = ui.alert_app;
+    close_alert();
+    /* The PC brings that window forward; a refused request simply leaves it where it is. */
+    if (focus && ui.music_control_callback) ui.music_control_callback("focus", (uint32_t)app);
+}
+
+static void create_alert_page(void)
+{
+    const int width = BOARD_DISPLAY_WIDTH, height = BOARD_DISPLAY_HEIGHT;
+    const bool compact = width < 480;
+    const int margin = compact ? 12 : 32, button_h = compact ? 44 : 64, gap = compact ? 12 : 16;
+    const int button_w = (width - margin * 2 - gap) / 2, button_y = height - margin - button_h;
+    ui.alert_page = box(ui.screen, 0, 0, width, height);
+    /* Clickable so presses never reach the app underneath. */
+    lv_obj_add_flag(ui.alert_page, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_set_style_bg_color(ui.alert_page, color(C_BG), 0);
+    lv_obj_set_style_bg_opa(ui.alert_page, LV_OPA_COVER, 0);
+    ui.alert_title = text(ui.alert_page, "", margin, margin, width - margin * 2,
+                          width >= 800 ? &buddy_language_font_48 : compact ? &buddy_language_font_24 : &buddy_language_font_32, C_WARNING);
+    lv_label_set_long_mode(ui.alert_title, LV_LABEL_LONG_WRAP);
+    ui.alert_body = text(ui.alert_page, "", margin, margin, width - margin * 2,
+                         compact ? &buddy_language_font_16 : &buddy_language_font_24, C_TEXT);
+    lv_label_set_long_mode(ui.alert_body, LV_LABEL_LONG_WRAP);
+    lv_obj_t *dismiss = action_button(ui.alert_page, "", margin, button_y, button_w, button_h, &ui.alert_dismiss);
+    lv_obj_add_event_cb(dismiss, alert_clicked, LV_EVENT_CLICKED, NULL);
+    lv_obj_t *focus = action_button(ui.alert_page, "", margin + button_w + gap, button_y, button_w, button_h, &ui.alert_focus);
+    lv_obj_set_style_text_color(ui.alert_focus, color(C_ACCENT), 0);
+    lv_obj_add_event_cb(focus, alert_clicked, LV_EVENT_CLICKED, (void *)1);
+    lv_obj_add_flag(ui.alert_page, LV_OBJ_FLAG_HIDDEN);
+}
+
+/* Shows the alert over any app while a task waits; the first tap is the user's choice. */
+static void refresh_alert(void)
+{
+    const buddy_codex_t *agents[] = { &ui.stats.claude, &ui.stats.codex };
+    const buddy_app_t apps[] = { BUDDY_APP_CLAUDE, BUDDY_APP_CODEX };
+    const buddy_codex_task_t *task = NULL;
+    buddy_app_t app = BUDDY_APP_CLAUDE;
+    for (unsigned i = 0; !task && i < 2; ++i)
+        if (music_connected() && (task = waiting_task(agents[i])) != NULL) app = apps[i];
+    char key[sizeof(ui.alert_key)] = "";
+    if (task) snprintf(key, sizeof(key), "%d|%.63s|%.31s", (int)app, task->title, task->project);
+    if (!task || strcmp(key, ui.alert_dismissed) != 0) ui.alert_dismissed[0] = 0;
+    bool show = task && !ui.alert_dismissed[0] && ui.connection != BUDDY_PROVISIONING;
+    if (!show) {
+        if (ui.alert_key[0]) { ui.alert_key[0] = 0; visible(ui.alert_page, false); refresh_display_power(); }
+        return;
+    }
+    if (strcmp(key, ui.alert_key) == 0) return;
+    if (!ui.alert_page) create_alert_page();
+    snprintf(ui.alert_key, sizeof(ui.alert_key), "%s", key);
+    ui.alert_app = app;
+    lv_label_set_text(ui.alert_title, BT(app == BUDDY_APP_CLAUDE ? BT_CLAUDE_CODE_NEEDS_YOU : BT_CODEX_NEEDS_YOU));
+    char body[192];
+    const char *name = task->title[0] ? task->title : task->project;
+    if (name[0] && task->title[0] && task->project[0]) snprintf(body, sizeof(body), "%s  /  %s\n%s", task->title, task->project, BT(BT_IT_IS_WAITING_FOR_YOUR_PERMISSION_OR_ANSWER));
+    else if (name[0]) snprintf(body, sizeof(body), "%s\n%s", name, BT(BT_IT_IS_WAITING_FOR_YOUR_PERMISSION_OR_ANSWER));
+    else snprintf(body, sizeof(body), "%s", BT(BT_IT_IS_WAITING_FOR_YOUR_PERMISSION_OR_ANSWER));
+    lv_label_set_text(ui.alert_body, body);
+    lv_label_set_text(ui.alert_focus, BT(BT_SHOW_ON_PC));
+    lv_label_set_text(ui.alert_dismiss, BT(BT_NOT_NOW));
+    lv_obj_update_layout(ui.alert_page);
+    int body_y = lv_obj_get_y(ui.alert_title) + lv_obj_get_height(ui.alert_title) + (BOARD_DISPLAY_WIDTH < 480 ? 12 : 24);
+    lv_obj_set_y(ui.alert_body, body_y);
+    lv_obj_set_height(ui.alert_body, LV_MAX(0, lv_obj_get_y(lv_obj_get_parent(ui.alert_focus)) - body_y - 16));
+    visible(ui.alert_page, true);
+    lv_obj_move_foreground(ui.alert_page);
+    /* An approval prompt for this display stays above it, and the dim shield above both. */
+    if (ui.confirm_page && ui.confirm_action != BUDDY_CONFIRM_NONE) lv_obj_move_foreground(ui.confirm_page);
+    lv_obj_move_foreground(ui.dim_overlay);
+    lv_disp_trig_activity(NULL);
+    refresh_display_power();
+}
+
+void buddy_ui_set_album_art(uint32_t id, uint16_t size, uint8_t *pixels)
+{
+    if (!pixels) return;
+    if (!ui.music_art || !id || size == 0) { free(pixels); return; }
+#if LV_COLOR_16_SWAP
+    /* The companion sends little-endian RGB565. */
+    for (size_t i = 0; i + 1 < (size_t)size * size * 2; i += 2) { uint8_t low = pixels[i]; pixels[i] = pixels[i + 1]; pixels[i + 1] = low; }
+#endif
+    lv_img_cache_invalidate_src(&ui.art_frame);
+    free(ui.art_pixels);
+    ui.art_pixels = pixels;
+    ui.art_id = id;
+    ui.art_frame = (lv_img_dsc_t) {
+        .header = { .cf = LV_IMG_CF_TRUE_COLOR, .always_zero = 0, .w = size, .h = size },
+        .data_size = (uint32_t)size * size * 2, .data = pixels,
+    };
+    lv_img_set_src(ui.music_art, &ui.art_frame);
+    lv_img_set_antialias(ui.music_art, true);
+    refresh_music();
 }
 
 static void confirm_answer(bool approved)
@@ -3090,6 +3263,8 @@ buddy_ui_state_t buddy_ui_get_state(void)
         .timer_duration_s = ui.timer_duration_s,
         .timer_completed = ui.timer_completed,
         .game_active = music_connected() && ui.stats.game.active,
+        .pc_away = ui.pc_away,
+        .needs_you = ui.alert_key[0] != 0,
         .game_fps = music_connected() && ui.stats.game.active ? ui.stats.game.fps : NAN,
     };
 }

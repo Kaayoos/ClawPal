@@ -12,6 +12,8 @@ public static class Protocol
 {
     public const int DiscoveryPort = 42170;
     public const int MonitorPort = 42171;
+    // Display app IDs that a "focus" control may name.
+    public const int CodexApp = 4, ClaudeApp = 7;
     // This JSON is carried as WebSocket data, never embedded in HTML. Keep Unicode
     // as UTF-8 so bounded media strings remain compact for the 4096-byte device limit.
     public static readonly JsonSerializerOptions Json = new() { PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower, Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping };
@@ -74,11 +76,12 @@ public static class Protocol
             if (fields.Count != (valued ? 5 : 4) || root.GetProperty("type").GetString() != "buddy.control" ||
                 root.GetProperty("v").GetInt32() != 1 || !root.GetProperty("id").TryGetInt32(out var id) || id <= 0) return null;
             var action = root.GetProperty("action").GetString();
-            // Seek (seconds) and volume (percent) carry a value; toggles never do.
-            if (valued != (action is "seek" or "volume")) return null;
+            // Seek (seconds), volume (percent) and focus (app ID) carry a value; toggles never do.
+            if (valued != (action is "seek" or "volume" or "focus")) return null;
             int value = 0;
             if (valued && (!root.GetProperty("value").TryGetInt32(out value) || value < 0 || value > (action == "volume" ? 100 : 604800))) return null;
-            return action is "play_pause" or "next" or "previous" or "shuffle" or "repeat" or "mute" or "seek" or "volume" ? new DeviceControl(id, action, value) : null;
+            if (action == "focus" && value is not (CodexApp or ClaudeApp)) return null;
+            return action is "play_pause" or "next" or "previous" or "shuffle" or "repeat" or "mute" or "seek" or "volume" or "focus" ? new DeviceControl(id, action, value) : null;
         }
         catch (Exception error) when (error is JsonException or InvalidOperationException or KeyNotFoundException or FormatException or OverflowException) { return null; }
     }
@@ -136,13 +139,16 @@ public sealed record PcStats(string Type, int V, long Seq, string Hostname, long
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] CodexStats? Codex = null,
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] CodexStats? Claude = null,
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] GameStats? Game = null,
-    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] bool? AutoOpenApps = null);
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] bool? AutoOpenApps = null,
+    // Locked or about to sleep; omitted otherwise. The display then naps instead of reporting offline.
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] bool? Away = null);
 // Repeat follows MediaPlaybackAutoRepeatMode: 0 off, 1 track, 2 list. ArtColor is
 // 0xRRGGBB picked from the album cover, or 0 when the display should keep its accent.
+// Source names the player; ArtId names the cover uploaded to POST /art, 0 when none.
 public sealed record MusicStats(bool Running, bool Available, string Title, string Artist, string Album, bool Playing,
     long PositionS, long DurationS, bool CanPlayPause, bool CanNext, bool CanPrevious, int ControlId = 0, bool ControlOk = false, string ControlError = "",
     bool CanShuffle = false, bool Shuffle = false, bool CanRepeat = false, int Repeat = 0, bool CanSeek = false,
-    bool CanVolume = false, int Volume = 0, bool Muted = false, int ArtColor = 0);
+    bool CanVolume = false, int Volume = 0, bool Muted = false, int ArtColor = 0, string Source = "", int ArtId = 0);
 public sealed record DeviceControl(int Id, string Action, int Value = 0);
 public sealed record MusicControlResult(int Id, bool Ok, string Error);
 
@@ -162,6 +168,41 @@ public static class MusicContract
     public static bool IsSpotifySession(string? appId) =>
         string.Equals(appId, "Spotify.exe", StringComparison.OrdinalIgnoreCase) ||
         (appId?.StartsWith("SpotifyAB.SpotifyMusic_zpdnekdrzrea0!", StringComparison.OrdinalIgnoreCase) == true && appId.Length > "SpotifyAB.SpotifyMusic_zpdnekdrzrea0!".Length);
+
+    // Windows media sessions identify players by AppUserModelID; these are the common ones.
+    private static readonly (string Id, string Name)[] KnownPlayers =
+    [
+        ("AppleInc.AppleMusicWin_", "Apple Music"), ("AppleInc.iTunes_", "iTunes"), ("Microsoft.ZuneMusic_", "Media Player"),
+        ("Microsoft.ZuneVideo_", "Films & TV"), ("308046B0AF4A39CB", "Firefox"), ("MSEdge", "Edge"),
+        ("chrome.exe", "Chrome"), ("msedge.exe", "Edge"), ("firefox.exe", "Firefox"), ("brave.exe", "Brave"), ("opera.exe", "Opera"),
+        ("vivaldi.exe", "Vivaldi"), ("TIDAL.exe", "TIDAL"), ("Deezer.exe", "Deezer"), ("Amazon Music.exe", "Amazon Music"),
+        ("iTunes.exe", "iTunes"), ("vlc.exe", "VLC"), ("foobar2000.exe", "foobar2000"), ("MusicBee.exe", "MusicBee"),
+        ("AIMP.exe", "AIMP"), ("Winamp.exe", "Winamp"), ("YouTube Music.exe", "YouTube Music"),
+    ];
+
+    public static string SourceName(string? appId)
+    {
+        if (string.IsNullOrWhiteSpace(appId)) return "";
+        if (IsSpotifySession(appId)) return "Spotify";
+        string id = appId.Trim();
+        foreach (var (known, player) in KnownPlayers)
+            if (known.EndsWith(".exe") ? id.Equals(known, StringComparison.OrdinalIgnoreCase) || id.EndsWith("\\" + known, StringComparison.OrdinalIgnoreCase)
+                : id.StartsWith(known, StringComparison.OrdinalIgnoreCase)) return player;
+        // Win32 players report their executable; packaged ones "Publisher.Name_hash!Entry".
+        string name = Path.GetFileName(id.Replace('/', '\\'));
+        if (name.EndsWith(".exe", StringComparison.OrdinalIgnoreCase)) name = name[..^4];
+        else if (name.IndexOf('_') is > 0 and var end) name = name[..end].Split('.').Last();
+        return LimitText(name, 31);
+    }
+
+    // The volume mixer lists Win32 players by process; packaged and browser-tab identities are not mapped.
+    public static string? ProcessName(string? appId)
+    {
+        if (IsSpotifySession(appId)) return "Spotify";
+        if (string.IsNullOrWhiteSpace(appId) || !appId.EndsWith(".exe", StringComparison.OrdinalIgnoreCase)) return null;
+        string name = Path.GetFileNameWithoutExtension(appId.Replace('/', '\\'));
+        return name.Length > 0 ? name : null;
+    }
 
     public static string LimitText(string? text, int maxUtf8Bytes)
     {
@@ -207,6 +248,26 @@ public static class MusicContract
         double saturation = high == low ? 0 : (high - low) / (1 - Math.Abs(2 * lightness - 1));
         double hue = Hue(red, green, blue, high, high - low);
         return Rgb(hue, Math.Clamp(saturation, 0.5, 0.85), Math.Clamp(lightness, 0.58, 0.7));
+    }
+
+    // BGRA8 to RGB565 little-endian, the display's native pixel format.
+    public static byte[] Rgb565(ReadOnlySpan<byte> bgra)
+    {
+        var result = new byte[bgra.Length / 4 * 2];
+        for (int i = 0, o = 0; i + 3 < bgra.Length; i += 4, o += 2)
+        {
+            int value = (bgra[i + 2] >> 3) << 11 | (bgra[i + 1] >> 2) << 5 | bgra[i] >> 3;
+            result[o] = (byte)value;
+            result[o + 1] = (byte)(value >> 8);
+        }
+        return result;
+    }
+
+    // A stable positive ID for a cover's pixels, so the display only redraws a new cover.
+    public static int CoverId(ReadOnlySpan<byte> pixels)
+    {
+        int id = BitConverter.ToInt32(SHA256.HashData(pixels)) & int.MaxValue;
+        return id == 0 ? 1 : id;
     }
 
     private static double Hue(double r, double g, double b, double max, double chroma)

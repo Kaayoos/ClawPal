@@ -43,6 +43,10 @@ typedef struct {
     uint32_t volume; /* Spotify's Windows mixer level, 0..100 */
     bool muted;
     uint32_t art_color; /* 0xRRGGBB from the album cover; 0 keeps the theme accent */
+    /* Player name from Windows media controls; empty from older companions (Spotify). */
+    char source[32];
+    /* Cover image the companion uploaded to POST /art; 0 when there is none. */
+    uint32_t art_id;
 } buddy_music_t;
 
 typedef struct {
@@ -112,6 +116,8 @@ typedef struct {
     int64_t timestamp_ms;
     /* Tray preference; parser defaults true only for older companions. */
     bool auto_open_apps;
+    /* The PC is locked or about to sleep; telemetry may stop without it being offline. */
+    bool away;
     /* All zeros when an older companion does not send music metadata. */
     buddy_music_t music;
     /* Availability is authoritative; zero remaining is valid when available. */

@@ -9,6 +9,7 @@ namespace ClawPal.Companion;
 public sealed class Metrics : IDisposable
 {
     private readonly GpuProvider gpu = new();
+    private readonly CpuTemperature cpuTemperature = new();
     private readonly string cpuName;
     private readonly Stopwatch clock = Stopwatch.StartNew();
     private double previousTime;
@@ -16,7 +17,7 @@ public sealed class Metrics : IDisposable
     private bool hasCpuSample;
     private readonly Dictionary<string, (long Rx, long Tx)> previousNetwork = new();
     public string GpuProviderName => gpu.ProviderName;
-    public string CpuTemperatureStatus => "Unavailable: Windows exposes no standard CPU package temperature counter; no kernel sensor driver is installed by ClawPal.";
+    public string CpuTemperatureStatus => cpuTemperature.Status;
 
     public Metrics()
     {
@@ -61,7 +62,7 @@ public sealed class Metrics : IDisposable
         // The display rejects a whole frame when a name fills its 96-byte buffer.
         var gpuStats = gpu.Sample();
         return new("pc.stats", 1, seq, Environment.MachineName, DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
-            new(usage, null, MusicContract.LimitText(cpuName, 95)), gpuStats with { Name = MusicContract.LimitText(gpuStats.Name, 95) },
+            new(usage, cpuTemperature.Read(), MusicContract.LimitText(cpuName, 95)), gpuStats with { Name = MusicContract.LimitText(gpuStats.Name, 95) },
             new(Math.Round(usedMb, 1), Math.Round(totalMb, 1), Math.Round(totalMb > 0 ? usedMb / totalMb * 100 : 0, 1)),
             new(Math.Round(rx, 1), Math.Round(tx, 1)), Environment.TickCount64 / 1000);
     }
