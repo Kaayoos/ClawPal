@@ -1,0 +1,45 @@
+name: Release ClawPal
+# The only publisher: `scripts/release.ps1 -Publish` pushes a vX.Y.Z tag, this builds
+# it, waits for approval to sign the firmware, then publishes the GitHub release.
+on:
+  push:
+    tags: ['v*']
+permissions:
+  contents: read
+concurrency:
+  group: release-${{ github.ref }}
+jobs:
+  build:
+    uses: ./.github/workflows/build.yml
+    with:
+      release: true
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    # The source bundle archives the same SDK checkout that built the firmware.
+    container: espressif/idf:v5.5.2@sha256:05cbfc42ed2e987b8026722c15bf1d8523d3e4fd1b4ac04d2e4056f5e0918b99
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          # Full history, so the release can check that its tag is on main.
+          fetch-depth: 0
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: ClawPal-release-files
+          path: dist
+      - name: Package and publish
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          . /opt/esp/idf/export.sh
+          # Throwaway container: the checkout and the SDK belong to other users.
+          git config --global --add safe.directory '*'
+          python scripts/local-release.py prepare --ci
+          python scripts/local-release.py publish --ci

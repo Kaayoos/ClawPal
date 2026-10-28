@@ -41,8 +41,8 @@ Downloads are from the official esptool 4.11.0 and PresentMon 2.6.0 releases,
 with pinned SHA-256 checks. Their licenses are packaged for offline access.
 The output is dist/ClawPal-Setup.exe plus the release manifest, firmware images,
 checksum and license bundle. Every tool is packaged; no runtime download is
-needed to enable FPS collection. The local release command collects source and licenses into one ZIP automatically.
-See [local releases](UPDATES.md) for `./scripts/release.ps1 -Publish`.
+needed to enable FPS collection. The release packaging collects source and licenses into one ZIP automatically.
+See [releases](UPDATES.md) for `./scripts/release.ps1 -Publish`, which GitHub Actions builds, signs and publishes.
 
 Run `python scripts/check-publication.py` before staging changes. This checks
 the files Git would publish, including already-tracked ignored files. It is a
@@ -69,7 +69,7 @@ needed to run modified firmware that way. Wi-Fi updates only accept images signe
 with the key that signed the running firmware: official releases use the ClawPal
 release key, and a fork can install its own signed build over USB once, then
 update it over Wi-Fi with its own key (`scripts/sign-firmware.py`).
-Keep board/layout compatibility and checksums correct. For local releases,
+Keep board/layout compatibility and checksums correct. For local packages,
 `ClawPal-Setup.exe --install-bundled-wifi result.json` installs its own bundled
 firmware onto an already-paired compatible display. Do not use the official
 GitHub update feed to distribute independent builds. The official repository

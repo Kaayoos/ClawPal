@@ -5,6 +5,11 @@ on:
   pull_request:
   workflow_dispatch:
   workflow_call:
+    inputs:
+      release:
+        description: Sign the firmware with the release key (waits for approval in the release environment)
+        type: boolean
+        default: false
 permissions:
   contents: read
 jobs:
@@ -33,8 +38,41 @@ jobs:
         with:
           name: ClawPal-firmware-payload
           path: payload/
-  windows:
+  # Release tags only. The key is a secret of the protected "release" environment, so
+  # pull requests, forks and branch builds never see it, and the build job that runs
+  # the toolchain never holds it. Each release waits here for a reviewer's approval.
+  sign:
+    if: inputs.release
     needs: firmware
+    runs-on: ubuntu-latest
+    environment: release
+    container: espressif/idf:v5.5.2@sha256:05cbfc42ed2e987b8026722c15bf1d8523d3e4fd1b4ac04d2e4056f5e0918b99
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: ClawPal-firmware-payload
+          path: payload
+      - name: Sign firmware for Wi-Fi updates
+        shell: bash
+        env:
+          SIGNING_KEY: ${{ secrets.CLAWPAL_SIGNING_KEY }}
+        run: |
+          [ -n "$SIGNING_KEY" ] || { echo '::error::Add CLAWPAL_SIGNING_KEY to the release environment (docs/UPDATES.md)'; exit 1; }
+          . /opt/esp/idf/export.sh
+          key=$(mktemp)
+          trap 'rm -f "$key"' EXIT
+          printf '%s\n' "$SIGNING_KEY" > "$key"
+          python scripts/sign-firmware.py --payload --key "$key"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: ClawPal-firmware-payload
+          path: payload/
+          overwrite: true
+  windows:
+    needs: [firmware, sign]
+    # Runs after an approved signature on releases, and after a skipped one otherwise.
+    if: ${{ !cancelled() && !failure() }}
     runs-on: windows-latest
     permissions:
       contents: read

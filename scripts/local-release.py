@@ -1,5 +1,8 @@
-"""Local release packaging and explicit publication. Python standard library only.
+"""Release packaging and publication. Python standard library only.
 
+Locally it packages a release for review and pushes the release tag. GitHub
+Actions (.github/workflows/release.yml) builds and signs that tag, then runs
+`prepare --ci` and `publish --ci`, so there is exactly one publisher.
 No credentials, build outputs or private files are added to Git. Published
 application assets are never replaced. Interrupted draft uploads are resumable.
 """
@@ -146,16 +149,19 @@ def source_archive(name, destination, expected=None):
         require(any(member.isfile() for member in archive), 'Empty source archive: ' + name)
 
 
-def preflight():
-    require(git('branch', '--show-current') == 'main', 'Release from the main branch.')
+def preflight(ci=False):
+    if ci:
+        # Actions checks out the pushed tag, detached; it must name this version and be on main.
+        require(os.environ.get('GITHUB_REF') == 'refs/tags/v' + version(), 'The pushed tag does not match the companion version.')
+        require(subprocess.run(['git', 'merge-base', '--is-ancestor', 'HEAD', 'origin/main'], cwd=ROOT).returncode == 0,
+                'Release tags must point to a commit on main.')
+    else:
+        require(git('branch', '--show-current') == 'main', 'Release from the main branch.')
     origin = git('remote', 'get-url', 'origin').lower().rstrip('/')
     require(origin in ('https://github.com/kaayoos/clawpal.git', 'https://github.com/kaayoos/clawpal',
                        'git@github.com:kaayoos/clawpal.git'), 'Origin must be Kaayoos/clawpal.')
     require(not git('status', '--porcelain'), 'Commit your reviewed source changes before preparing a release. Nothing is auto-staged.')
     subprocess.run([sys.executable, str(ROOT / 'scripts/check-publication.py')], cwd=ROOT, check=True)
-    workflow_file = ROOT / '.github/workflows/release.yml'
-    workflow = workflow_file.read_text(encoding='utf-8') if workflow_file.exists() else ''
-    require('tags:' not in workflow, 'Commit the local-release workflow first to avoid a second cloud publisher.')
     return version(), git('rev-parse', 'HEAD')
 
 
@@ -222,8 +228,8 @@ def sdk_archive(destination):
     partial.replace(destination)
 
 
-def prepare(output=None):
-    ver, commit = preflight()
+def prepare(output=None, ci=False):
+    ver, commit = preflight(ci)
     catalog = json.loads((ROOT / 'boards/catalog.json').read_text(encoding='utf-8'))
     dist = ROOT / 'dist'
     names = validate_payload(dist, ver, catalog)
@@ -299,8 +305,31 @@ def ensure_asset(release_id, file, token):
         connection.close()
 
 
-def publish():
+def push_tag():
+    # Local half of a release: GitHub Actions builds, signs and publishes the pushed tag.
     ver, commit = preflight()
+    require((ROOT / 'docs/releases' / (ver + '.md')).is_file(), f'Write docs/releases/{ver}.md before releasing.')
+    tag = 'v' + ver
+    existing = request('/releases/tags/' + tag, optional=True)
+    require(not existing or existing['draft'], 'This version is already published. Bump the version for new binaries.')
+    # Check a tag before pushing anything. Never rewrite public or local tags.
+    local_tag = subprocess.run(['git', 'rev-parse', '--verify', f'refs/tags/{tag}^{{commit}}'], cwd=ROOT, capture_output=True, text=True)
+    require(local_tag.returncode != 0 or local_tag.stdout.strip() == commit, 'Existing tag points to another commit.')
+    remote_tag = git('ls-remote', '--tags', 'origin', f'refs/tags/{tag}', f'refs/tags/{tag}^{{}}')
+    if remote_tag:
+        refs = dict(line.split('\t', 1)[::-1] for line in remote_tag.splitlines())
+        require(refs.get(f'refs/tags/{tag}^{{}}', refs.get(f'refs/tags/{tag}')) == commit, 'Remote tag points to another commit.')
+    git('push', 'origin', 'HEAD:refs/heads/main')
+    if local_tag.returncode != 0:
+        git('tag', '-a', tag, '-m', 'ClawPal ' + ver)
+    git('push', 'origin', 'refs/tags/' + tag)
+    print(f'Pushed {tag}. GitHub Actions is building it; approve the "release" environment there to sign\n'
+          f'and publish it: https://github.com/{REPO}/actions/workflows/release.yml')
+
+
+def publish():
+    # Runs in GitHub Actions on the pushed tag, after `prepare --ci` in the same job.
+    ver, commit = preflight(ci=True)
     output = ROOT / 'dist/releases' / ('v' + ver)
     plan = json.loads((output / 'release-plan.json').read_text(encoding='utf-8'))
     require(plan['version'] == ver and plan['commit'] == commit, 'Prepared package does not match this commit. Rebuild first.')
@@ -314,18 +343,7 @@ def publish():
     token = auth()
     tag = 'v' + ver
     release = request('/releases/tags/' + tag, token=token, optional=True)
-    require(not release or release['draft'], 'This version is already published. Use -RepairCurrent for missing source archives, or bump the version for new binaries.')
-    # Check a tag before pushing anything. Never rewrite public or local tags.
-    local_tag = subprocess.run(['git', 'rev-parse', '--verify', f'refs/tags/{tag}^{{commit}}'], cwd=ROOT, capture_output=True, text=True)
-    require(local_tag.returncode != 0 or local_tag.stdout.strip() == commit, 'Existing tag points to another commit.')
-    remote_tag = git('ls-remote', '--tags', 'origin', f'refs/tags/{tag}', f'refs/tags/{tag}^{{}}')
-    if remote_tag:
-        refs = dict(line.split('\t', 1)[::-1] for line in remote_tag.splitlines())
-        require(refs.get(f'refs/tags/{tag}^{{}}', refs.get(f'refs/tags/{tag}')) == commit, 'Remote tag points to another commit.')
-    git('push', 'origin', 'HEAD:refs/heads/main')
-    if local_tag.returncode != 0:
-        git('tag', '-a', tag, '-m', 'ClawPal ' + ver)
-    git('push', 'origin', 'refs/tags/' + tag)
+    require(not release or release['draft'], 'This version is already published. Bump the version for new binaries.')
     if not release:
         release = request('/releases', method='POST', token=token, data={
             'tag_name': tag, 'target_commitish': commit, 'name': 'ClawPal ' + tag,
@@ -376,19 +394,19 @@ def repair(publish_now=False):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('action', choices=['preflight', 'prepare', 'publish', 'repair'])
+    parser.add_argument('action', choices=['preflight', 'prepare', 'tag', 'publish', 'repair'])
     parser.add_argument('--publish', action='store_true')
+    parser.add_argument('--ci', action='store_true', help='run in GitHub Actions on the pushed release tag')
     args = parser.parse_args()
     if args.action == 'preflight':
         ver, _ = preflight()
-        if args.publish:
-            existing = request('/releases/tags/v' + ver, optional=True)
-            require(not existing or existing['draft'],
-                    'This version is already published. Use -RepairCurrent -Publish to restore missing source archives, or bump the version.')
         print('Ready to build ClawPal ' + ver + ' locally.')
     elif args.action == 'prepare':
-        prepare()
+        prepare(ci=args.ci)
+    elif args.action == 'tag':
+        push_tag()
     elif args.action == 'publish':
+        require(args.ci, r'GitHub Actions publishes releases; run .\scripts\release.ps1 -Publish to push the tag.')
         publish()
     else:
         repair(args.publish)

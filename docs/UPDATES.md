@@ -1,49 +1,53 @@
-# Local releases
+# Releases
 
-Build on your Windows PC and publish the finished files directly to
-**https://github.com/Kaayoos/clawpal**. GitHub Actions checks source changes;
-it does not build or publish a second release when you push a tag.
+GitHub Actions builds, signs and publishes every release to
+**https://github.com/Kaayoos/clawpal** from a pushed `vX.Y.Z` tag
+(`.github/workflows/release.yml`). It is the only publisher; nothing is
+uploaded from a PC.
 
 ## One command after committing your changes
 
-From an ESP-IDF 5.5.2 PowerShell environment, with Python 3.12, .NET SDK 8.0.425
-and Git available:
+With Python 3.12 and Git available:
 
 ```powershell
 .\scripts\release.ps1 -Publish
 ```
 
-This builds all seven firmware profiles, runs the display simulations and
-companion tests, builds the installer, and packages the complete release locally.
-It then pushes the committed main branch and matching annotated tag, uploads
-the exact asset list to a draft, checks the uploads, and publishes the release.
-There is no manual file selection, checksum editing or GitHub Actions wait.
-It reuses your Git Credential Manager login. GitHub CLI authentication or a
-process-level GH_TOKEN/GITHUB_TOKEN also works; never save a token in this repo.
+This checks the clean main branch, the publication audit, the release notes and
+any existing tag, then pushes main and the matching annotated tag. It reuses your
+Git Credential Manager login. GitHub then:
 
-For a local package without publishing, omit `-Publish`:
+1. builds all seven firmware profiles and checks the parsers;
+2. waits for approval in the `release` environment, then signs the firmware in
+   a separate job that is the only one to receive the signing key;
+3. runs the display simulations and companion tests, builds the installer
+   around the signed firmware and attests the installer and firmware;
+4. packages the source bundle from the same ESP-IDF container, uploads the
+   exact asset list to a draft, checks the uploads, and publishes the release.
+
+Open the run under **Actions → Release ClawPal** and choose **Review
+deployments → Approve** when it reaches the signing job. If a later step fails,
+use **Re-run failed jobs**: it reuses the signed files, and uploads resume by
+skipping files whose size and SHA-256 match. Existing files with different bytes
+are never overwritten, so after **Re-run all jobs** (which signs new bytes)
+delete the leftover draft first. The updater cannot see a draft.
+
+For a local package to review or test, without publishing, run this from an
+ESP-IDF 5.5.2 PowerShell environment with .NET SDK 8.0.425:
 
 ```powershell
 .\scripts\release.ps1
 ```
 
-The reviewable output is `dist/releases/vX.Y.Z/assets/`. A release plan and notes
-sit beside that folder. After reviewing it, or to resume an interrupted upload:
-
-```powershell
-.\scripts\release.ps1 -UploadOnly
-```
-
-Uploads resume by skipping files whose size and SHA-256 match. Existing files
-with different bytes are never overwritten. A failed upload leaves a draft;
-the updater cannot see it until all files are uploaded and verified.
+The output is `dist/releases/vX.Y.Z/assets/`, with a release plan and notes
+beside it. Its firmware is signed only if `CLAWPAL_SIGNING_KEY` points to the key.
 
 ## Signing keys
 
 **Firmware (required for releases).** Displays only accept a Wi-Fi update signed
-with the key that signed the firmware they run. `release.ps1` refuses to build
-without it. Create the key once, offline, and keep two backups somewhere safe:
-losing it means every display can only be updated over USB.
+with the key that signed the firmware they run. Create the key once, offline,
+and keep two backups somewhere safe: losing it means every display can only be
+updated over USB.
 
 ```powershell
 python -m espsecure generate_signing_key --version 2 --scheme rsa3072 clawpal-release-key.pem
@@ -51,9 +55,24 @@ python scripts/sign-firmware.py --init --key clawpal-release-key.pem
 ```
 
 Commit the generated `firmware/release-signing-key.sha256` (the public digest,
-not the key). Before each release set `$env:CLAWPAL_SIGNING_KEY` to the key's
-path, for example in `.tools/release-env.ps1`. Builds refuse a key whose digest
-differs, so a release cannot switch keys by accident. Never commit the `.pem`.
+not the key). Signing refuses a key whose digest differs, so a release cannot
+switch keys by accident. Never commit the `.pem`.
+
+Give GitHub the key once, under **Settings → Environments → New environment**:
+
+1. Name it `release`.
+2. Under **Required reviewers**, add yourself. Every release then waits for your
+   approval before the key is used.
+3. Under **Deployment branches and tags**, choose **Selected branches and tags**
+   and add the tag rule `v*`, so no branch or pull request can use it.
+4. Under **Environment secrets**, add `CLAWPAL_SIGNING_KEY` with the full contents
+   of `clawpal-release-key.pem`, including the BEGIN and END lines.
+
+Keep the key only there and in your offline backups. Anyone who controls your
+GitHub account can approve a release, so protect it with a security key or an
+authenticator app. A tag ruleset that limits who can create `v*` tags adds
+another check. Pull requests, forks and branch builds never receive the key;
+their firmware is unsigned and installs over USB only.
 
 The first release with signed firmware also starts signed LAN requests, which
 older companions cannot send. `package-release.ps1` therefore sets
@@ -65,21 +84,22 @@ it is hashed when one of these is set: `CLAWPAL_SIGN_THUMBPRINT` (a certificate
 in your CurrentUser store, including EV hardware tokens) or `CLAWPAL_SIGN_DLIB`
 with `CLAWPAL_SIGN_METADATA` (Azure Trusted Signing). It needs `signtool.exe`
 from the Windows SDK. Pass `-RequireCodeSigning` to `build.ps1` to fail instead
-of warning. Open-source projects can apply for a free certificate through the
-SignPath Foundation.
+of warning. The release workflow does not set these yet, so released installers
+are unsigned until a certificate is added to it. Open-source projects can apply
+for a free certificate through the SignPath Foundation.
 
-**Provenance.** CI attests the installer and firmware it builds on `main`
-(`gh attestation verify <file> --repo Kaayoos/clawpal`). Locally published
-release assets are not covered; they rely on the signatures above and the
-SHA-256 values in `clawpal-release.json`.
+**Provenance.** CI attests the installer and firmware it builds on `main` and on
+release tags (`gh attestation verify <file> --repo Kaayoos/clawpal`).
 
 ## Preparing a new version
 
 Update the firmware and companion version, versioned user agent/log strings,
 and `docs/releases/X.Y.Z.md`. Review and commit the intended source changes.
 The release command requires a clean main branch and runs the publication audit;
-it never uses `git add .`, creates commits or force-pushes. Build-generated
-changes to the tracked default board profile are restored after packaging.
+it never uses `git add .`, creates commits or force-pushes. The release workflow
+also refuses a tag that does not match the companion version or is not on main.
+Build-generated changes to the tracked default board profile are restored after
+local packaging.
 
 Already-published versions cannot receive replacement installers or firmware.
 Use a new version for application changes. Tags are created only if absent and

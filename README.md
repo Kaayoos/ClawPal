@@ -119,7 +119,7 @@ Don't publish your pairing token, network passwords, local logs or device backup
 
 ## Building from source
 
-You need ESP-IDF 5.5.2, .NET SDK 8.0.425 and Python 3.12. Firmware binaries and downloaded tools aren't kept in Git. Run `./scripts/release.ps1 -Publish` to build, test, package and publish locally. GitHub Actions validates source changes independently; tag pushes do not publish a second release. See the release guide for toolchain setup and recovery.
+You need ESP-IDF 5.5.2, .NET SDK 8.0.425 and Python 3.12. Firmware binaries and downloaded tools aren't kept in Git. Run `./scripts/release.ps1 -Publish` to push a release tag; GitHub Actions then builds, tests and signs it and publishes the release once you approve the signing step. See the release guide for toolchain setup and recovery.
 
 - [Build instructions](docs/BUILDING.md)
 - [Release format and publishing](docs/UPDATES.md)

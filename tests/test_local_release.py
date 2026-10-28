@@ -13,6 +13,9 @@ import zipfile
 spec = importlib.util.spec_from_file_location('release', Path(__file__).resolve().parents[1] / 'scripts/local-release.py')
 release = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(release)
+spec = importlib.util.spec_from_file_location('signing', Path(__file__).resolve().parents[1] / 'scripts/sign-firmware.py')
+signing = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(signing)
 
 
 class ReleaseTests(unittest.TestCase):
@@ -138,14 +141,48 @@ class ReleaseTests(unittest.TestCase):
             self.assertEqual(call.kwargs['headers']['Content-Length'], '7')
             connection.return_value.close.assert_called_once()
 
-    def test_published_version_rejected_before_git_push(self):
+    def test_published_version_rejected_before_upload(self):
         self.plan()
         with patch.object(release, 'preflight', return_value=('1.2.3', 'abc')), \
                 patch.object(release, 'auth', return_value='test'), \
                 patch.object(release, 'request', return_value={'draft': False}), \
-                patch.object(release, 'git') as git:
+                patch.object(release, 'ensure_asset') as upload:
             with self.assertRaisesRegex(ValueError, 'already published'):
                 release.publish()
+            upload.assert_not_called()
+
+    def release_notes(self):
+        (self.root / 'docs/releases').mkdir(parents=True)
+        (self.root / 'docs/releases/1.2.3.md').write_text('Release notes')
+
+    def test_published_version_rejected_before_git_push(self):
+        self.release_notes()
+        with patch.object(release, 'preflight', return_value=('1.2.3', 'abc')), \
+                patch.object(release, 'request', return_value={'draft': False}), \
+                patch.object(release, 'git') as git:
+            with self.assertRaisesRegex(ValueError, 'already published'):
+                release.push_tag()
+            git.assert_not_called()
+
+    def test_tag_push_leaves_publishing_to_actions(self):
+        self.release_notes()
+        with patch.object(release, 'preflight', return_value=('1.2.3', 'abc')), \
+                patch.object(release, 'request', return_value=None), \
+                patch.object(release, 'git', return_value='') as git, \
+                patch.object(release.subprocess, 'run') as run, \
+                patch.object(release, 'ensure_asset') as upload:
+            run.return_value.returncode = 1
+            release.push_tag()
+        self.assertEqual([c.args[:2] for c in git.call_args_list if c.args[0] != 'ls-remote'],
+                         [('push', 'origin'), ('tag', '-a'), ('push', 'origin')])
+        self.assertEqual(git.call_args_list[-1].args[2], 'refs/tags/v1.2.3')
+        upload.assert_not_called()
+
+    def test_tag_push_needs_release_notes(self):
+        with patch.object(release, 'preflight', return_value=('1.2.3', 'abc')), \
+                patch.object(release, 'git') as git:
+            with self.assertRaisesRegex(ValueError, 'docs/releases/1.2.3.md'):
+                release.push_tag()
             git.assert_not_called()
 
     def test_failed_upload_keeps_draft(self):
@@ -183,6 +220,47 @@ class ReleaseTests(unittest.TestCase):
                 patch.object(release, 'ensure_asset', side_effect=lambda _, file, token: uploaded.append(file.name)):
             run.return_value.returncode = 1
             release.publish()
+
+    def signing_payload(self):
+        (self.root / 'boards').mkdir()
+        (self.root / 'payload/boards').mkdir(parents=True)
+        models = []
+        for i in range(2):
+            model = {'Id': f'board-{i}', 'MaxBytes': 1024}
+            image = self.root / f'payload/firmware/board-{i}/clawpal.bin'
+            image.parent.mkdir(parents=True)
+            image.write_bytes(b'unsigned')
+            parts = [{'File': f'firmware/board-{i}/bootloader.bin', 'Sha256': 'b' * 64},
+                     {'File': f'firmware/board-{i}/clawpal.bin', 'Sha256': hashlib.sha256(b'unsigned').hexdigest()}]
+            (self.root / f'payload/boards/board-{i}.json').write_text(json.dumps({**model, 'Parts': parts}))
+            models.append(model)
+        (self.root / 'boards/catalog.json').write_text(json.dumps({'Default': 'board-1', 'Boards': models}))
+
+    def test_payload_signing_updates_profile_hashes(self):
+        self.signing_payload()
+        with patch.object(signing, 'ROOT', self.root), \
+                patch.object(signing, 'sign', side_effect=lambda image, key, digest: image.write_bytes(b'signed')):
+            signing.sign_payload(Path('key.pem'), 'digest')
+        signed = hashlib.sha256(b'signed').hexdigest()
+        for name in ('boards/board-0.json', 'boards/board-1.json', 'board.json'):
+            parts = json.loads((self.root / 'payload' / name).read_text())['Parts']
+            self.assertEqual([p['Sha256'] for p in parts], ['b' * 64, signed])
+        self.assertEqual(json.loads((self.root / 'payload/board.json').read_text())['Id'], 'board-1')
+
+    def test_payload_signing_rejects_stale_image(self):
+        self.signing_payload()
+        (self.root / 'payload/firmware/board-0/clawpal.bin').write_bytes(b'rebuilt')
+        with patch.object(signing, 'ROOT', self.root), patch.object(signing, 'sign') as sign:
+            with self.assertRaisesRegex(SystemExit, 'does not match'):
+                signing.sign_payload(Path('key.pem'), 'digest')
+            sign.assert_not_called()
+
+    def test_payload_signing_rejects_oversized_image(self):
+        self.signing_payload()
+        with patch.object(signing, 'ROOT', self.root), \
+                patch.object(signing, 'sign', side_effect=lambda image, key, digest: image.write_bytes(bytes(2048))):
+            with self.assertRaisesRegex(SystemExit, 'OTA slot'):
+                signing.sign_payload(Path('key.pem'), 'digest')
 
     def test_repair_is_append_only(self):
         digest = hashlib.sha256(b'archive').hexdigest()

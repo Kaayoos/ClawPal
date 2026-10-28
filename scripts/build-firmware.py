@@ -3,11 +3,10 @@ from pathlib import Path
 import argparse,json,os,subprocess,sys
 root=Path(__file__).resolve().parents[1]
 catalog=json.loads((root/'boards/catalog.json').read_text(encoding='utf-8'))
-p=argparse.ArgumentParser();g=p.add_mutually_exclusive_group();g.add_argument('--board',default=catalog['Default']);g.add_argument('--all',action='store_true')
-# Releases are signed for Wi-Fi updates (scripts/sign-firmware.py); other builds stay unsigned and install over USB.
-p.add_argument('--require-signed',action='store_true');args=p.parse_args()
+p=argparse.ArgumentParser();g=p.add_mutually_exclusive_group();g.add_argument('--board',default=catalog['Default']);g.add_argument('--all',action='store_true');args=p.parse_args()
+# Release tags are signed in GitHub Actions (scripts/sign-firmware.py --payload). Local builds
+# sign only when CLAWPAL_SIGNING_KEY is set; unsigned builds install over USB.
 sign=bool(os.environ.get('CLAWPAL_SIGNING_KEY'))
-if args.require_signed and not sign:p.error('Set CLAWPAL_SIGNING_KEY to the release signing key (see docs/UPDATES.md)')
 ids=[b['Id'] for b in catalog['Boards']];selected=ids if args.all else [args.board]
 if any(b not in ids for b in selected):p.error('Unknown exact board ID')
 idf=Path(os.environ['IDF_PATH'])/'tools/idf.py';os.environ['IDF_COMPONENT_MANAGER']='0'
