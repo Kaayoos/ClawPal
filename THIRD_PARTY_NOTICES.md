@@ -62,6 +62,9 @@ Open-Meteo's [hosted API terms](https://open-meteo.com/en/terms) are separate fr
 the data license: its free service is for noncommercial use and has usage limits.
 Commercial deployments need an appropriate provider arrangement.
 
+Time zone rules in `companion/Assets/timezones.json` are derived from the
+[IANA tz database](https://www.iana.org/time-zones), which is in the public domain.
+
 ## Windows runtime and flashing
 
 - **.NET 8.0.31**, Microsoft and contributors: [license](LICENSES/dotnet-LICENSE.txt)

@@ -6,6 +6,9 @@ $default=Get-Content -LiteralPath (Join-Path $repo 'payload/board.json') -Raw | 
 if($Version -and $Version.TrimStart('v') -ne $default.Version){throw 'Release tag does not match the bundled firmware version'}
 $dist=Join-Path $repo 'dist'
 New-Item -ItemType Directory -Path $dist -Force | Out-Null
+# Signed LAN requests and signed firmware images started with the first release after
+# 0.9.1: a display running them refuses older companions, so they update first.
+$minCompanion=if([version]$default.Version -gt [version]'0.9.1'){$default.Version}else{'0.9.0'}
 $releases=@()
 foreach($model in $catalog.Boards){
  $board=Get-Content -LiteralPath (Join-Path $repo ('payload/boards/'+$model.Id+'.json')) -Raw | ConvertFrom-Json
@@ -18,7 +21,7 @@ foreach($model in $catalog.Boards){
  $length=(Get-Item -LiteralPath $image).Length
  if($length -gt $model.MaxBytes){throw 'Firmware exceeds its OTA slot'}
  Copy-Item -LiteralPath $image -Destination (Join-Path $dist $model.AssetName) -Force
- $releases+= [ordered]@{schema=1;version=$board.Version;board=$board.Id;layout=$model.Layout;min_companion='0.9.0';firmware=[ordered]@{file=$model.AssetName;bytes=$length;sha256=$hash}}
+ $releases+= [ordered]@{schema=1;version=$board.Version;board=$board.Id;layout=$model.Layout;min_companion=$minCompanion;firmware=[ordered]@{file=$model.AssetName;bytes=$length;sha256=$hash}}
 }
 $manifest=[ordered]@{schema=2;version=$default.Version;boards=$releases}
 $manifest | ConvertTo-Json -Depth 7 | Set-Content -LiteralPath (Join-Path $dist 'clawpal-release.json') -Encoding utf8

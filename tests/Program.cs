@@ -48,6 +48,7 @@ passed += await InstallerUpdateChecks.Run(directory, good, profile);
 passed += SettingsChecks.Run();
 passed += ClaudeChecks.Run(directory);
 passed += LocalizationChecks.Run();
+passed += TimeZoneChecks.Run();
 passed += UpdateChecks.Run();
 passed += BoardChecks.Run();
 passed += ChoiceBoxChecks.Run();

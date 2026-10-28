@@ -233,6 +233,42 @@ var gamingPayload = JsonSerializer.SerializeToUtf8Bytes(maximumActivitySample wi
 Check(gamingPayload.Length <= 4096, "maximum game, music, Codex and telemetry fit the device frame budget (" + gamingPayload.Length + " bytes)");
 var bothProviders = JsonSerializer.SerializeToUtf8Bytes(maximumActivitySample with { Claude=maximumActivitySample.Codex,Game=new(true,new string('"',95),2000,"unavailable"),AutoOpenApps=false },Protocol.Json);
 Check(bothProviders.Length<=6144,"both AI providers, escaped task titles, music, gaming and telemetry fit 6144 bytes ("+bothProviders.Length+" bytes)");
+// Signed requests. Vectors were computed independently with Python's hmac module and are
+// repeated in tests/firmware_host/test_auth.c, so the display and companion must agree.
+const string challenge = "0123456789abcdef0123456789abcdef";
+byte[] HelloV2(string proof, string c = challenge) => JsonSerializer.SerializeToUtf8Bytes(new { type = "buddy.hello", v = 2, id, name = "ClawPal", port = Protocol.MonitorPort, nonce, challenge = c, proof });
+var proofV2 = Protocol.Proof(token, nonce, id, challenge);
+Check(Protocol.Proof(token, "fedcba9876543210fedcba9876543210", id, challenge) == "d6c75188c12b1d1a23ef825dd6941504cab7c94a30df0dce5eaf47918743709a", "protocol 2 discovery proof matches the firmware vector");
+Check(Protocol.ValidateHello(HelloV2(proofV2), address, token, nonce, id)?.Challenge == challenge, "protocol 2 hello yields a signing challenge");
+Check(Protocol.ValidateHello(Hello(proof), address, token, nonce, id)?.Challenge is null, "protocol 1 hello keeps bearer authentication for older displays");
+Check(Protocol.ValidateHello(HelloV2(proof), address, token, nonce, id) is null, "protocol 2 hello with a protocol 1 proof is rejected");
+Check(Protocol.ValidateHello(HelloV2(proofV2, "fedcba9876543210fedcba9876543210"), address, token, nonce, id) is null, "swapped challenge is rejected");
+Check(Protocol.ValidateHello(HelloV2(Protocol.Proof(token, nonce, id, "0123456789ABCDEF0123456789ABCDEF"), "0123456789ABCDEF0123456789ABCDEF"), address, token, nonce, id) is null, "noncanonical challenge is rejected");
+Check(DeviceAuth.Signature(token, "GET", "/settings", challenge, 1, DeviceAuth.EmptyBodyHash) == "7572b295b456924266bca3396a16c3008767057b3535fbe493523fc42a88a11c", "GET signature matches the firmware vector");
+Check(DeviceAuth.BodyHash(Encoding.UTF8.GetBytes("{\"action\":\"wifi\"}")) == "82e9ccc751483310ef92e697844b03dcdb459ea5ebeb57bbfd0264b7a3450482", "body hash matches the firmware vector");
+Check(DeviceAuth.Signature(token, "POST", "/confirm", challenge, 7, "82e9ccc751483310ef92e697844b03dcdb459ea5ebeb57bbfd0264b7a3450482") == "d9da15113a88771cdffded553fb8a99c00f3136e092280bc26c062351d8dd04c", "POST signature matches the firmware vector");
+var signer = new DeviceAuth(token, challenge);
+var first = signer.Authorization("GET", "/settings", DeviceAuth.EmptyBodyHash);
+Check(first == "ClawPal-HMAC c=" + challenge + ",n=1,s=7572b295b456924266bca3396a16c3008767057b3535fbe493523fc42a88a11c", "first signed request uses counter 1");
+Check(signer.Authorization("GET", "/settings", DeviceAuth.EmptyBodyHash).Contains(",n=2,"), "every request gets a new counter");
+Check(!first.Contains(token) && new DeviceAuth(token, null).Authorization("GET", "/settings", DeviceAuth.EmptyBodyHash) == "Bearer " + token, "the token is sent only to protocol 1 displays");
+var seen = new List<HttpRequestMessage>();
+using (var http = new DeviceAuth(token, challenge).CreateClient(TimeSpan.FromSeconds(5), new RecordingHandler(seen)))
+{
+    using var body = new ByteArrayContent(Encoding.UTF8.GetBytes("{\"action\":\"wifi\"}"));
+    await http.PostAsync("http://192.168.1.10:42171/confirm", body);
+    await http.GetAsync("http://192.168.1.10:42171/settings");
+    using var upload = new HttpRequestMessage(HttpMethod.Post, "http://192.168.1.10:42171/firmware") { Content = new ByteArrayContent(new byte[] { 1, 2, 3 }) };
+    upload.Headers.Add("X-ClawPal-SHA256", new string('A', 64));
+    await http.SendAsync(upload);
+}
+string Header(HttpRequestMessage request, string name) => request.Headers.TryGetValues(name, out var values) ? values.Single() : "";
+Check(Header(seen[0], "Authorization").StartsWith("ClawPal-HMAC c=" + challenge + ",n=1,s=") && Header(seen[0], DeviceAuth.BodyHashHeader) == "82e9ccc751483310ef92e697844b03dcdb459ea5ebeb57bbfd0264b7a3450482", "client signs POST bodies with their hash");
+Check(Header(seen[1], "Authorization") == "ClawPal-HMAC c=" + challenge + ",n=2,s=" + DeviceAuth.Signature(token, "GET", "/settings", challenge, 2, DeviceAuth.EmptyBodyHash) && Header(seen[1], DeviceAuth.BodyHashHeader) == DeviceAuth.EmptyBodyHash, "client signs GET with the empty body hash");
+Check(Header(seen[2], DeviceAuth.BodyHashHeader) == new string('a', 64) && Header(seen[2], "Authorization").Contains(",n=3,"), "firmware upload is signed with its declared image hash");
+var legacy = new List<HttpRequestMessage>();
+using (var http = new DeviceAuth(token, null).CreateClient(TimeSpan.FromSeconds(5), new RecordingHandler(legacy))) await http.GetAsync("http://192.168.1.10:42171/settings");
+Check(Header(legacy[0], "Authorization") == "Bearer " + token && Header(legacy[0], DeviceAuth.BodyHashHeader) == "", "older displays keep receiving the bearer header only");
 if (args.Length == 2 && args[0] == "--presentmon-sample") {
     var lines = File.ReadAllLines(args[1]);
     var firstFrame = lines.Skip(1).Select(PresentMonFrames.Csv).First(v => v.Length > 2 && int.TryParse(v[1], out _));
@@ -244,3 +280,7 @@ if (args.Length == 2 && args[0] == "--presentmon-sample") {
 }
 Console.WriteLine($"{passed} checks passed.");
 
+sealed class RecordingHandler(List<HttpRequestMessage> seen) : HttpMessageHandler
+{
+    protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken) { seen.Add(request); return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)); }
+}

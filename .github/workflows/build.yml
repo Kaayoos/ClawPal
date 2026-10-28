@@ -22,6 +22,7 @@ jobs:
           git config --global --add safe.directory "$GITHUB_WORKSPACE"
           python scripts/check-publication.py
           python scripts/generate_languages.py --check
+          python scripts/generate_timezones.py --check
           # Parser checks use ESP-IDF's own cJSON; zig supplies a compiler if the image has none.
           command -v gcc >/dev/null || command -v cc >/dev/null || python -m pip install --require-hashes -r tests/simulator/requirements.txt
           python tests/firmware_host/run.py
@@ -35,6 +36,10 @@ jobs:
   windows:
     needs: firmware
     runs-on: windows-latest
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
@@ -56,6 +61,15 @@ jobs:
       - name: Test and package
         shell: pwsh
         run: ./scripts/build.ps1
+      # Records which commit and workflow produced these files; check with
+      # `gh attestation verify <file> --repo Kaayoos/clawpal`. Pull requests get no OIDC token.
+      - name: Attest build provenance
+        if: github.event_name != 'pull_request'
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: |
+            dist/ClawPal-Setup.exe
+            dist/clawpal-*.bin
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: ClawPal-release-files

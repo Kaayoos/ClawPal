@@ -336,6 +336,8 @@
     "australia_sydney_melbourne": "Australia · Sydney / Melbourne",
     "australia_brisbane": "Australia · Brisbane",
     "new_zealand": "Nowa Zelandia",
+    "location_time_zone_value": "Czas lokalizacji ({0})",
+    "saved_time_zone_value": "Zapisana strefa czasowa ({0})",
     "a_little_company_for_your_desk_30d149": "Trochę towarzystwa na biurku.",
     "continue": "Dalej",
     "back": "Wstecz",

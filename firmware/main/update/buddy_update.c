@@ -132,7 +132,7 @@ esp_err_t buddy_update_upload(httpd_req_t *request)
         esp_ota_abort(handle);return httpd_resp_send_err(request,HTTPD_400_BAD_REQUEST,"Incomplete or corrupted image; current firmware retained");
     }
     result=esp_ota_end(handle);
-    if(result!=ESP_OK)return httpd_resp_send_err(request,HTTPD_400_BAD_REQUEST,"Firmware validation failed; current firmware retained");
+    if(result!=ESP_OK)return httpd_resp_send_err(request,HTTPD_400_BAD_REQUEST,"Firmware validation failed: corrupt, or not signed with the ClawPal release key; current firmware retained");
     result=esp_ota_set_boot_partition(target);
     if(result!=ESP_OK)return httpd_resp_send_err(request,HTTPD_500_INTERNAL_SERVER_ERROR,"Could not activate new firmware");
     reboot_pending=true;httpd_resp_set_type(request,"application/json");

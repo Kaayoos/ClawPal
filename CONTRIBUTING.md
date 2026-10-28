@@ -11,8 +11,9 @@ copyright notices and document changes to third-party code. Do not submit
 assets unless their redistribution rights are known.
 
 Keep owned UI text in languages/*.json and run the language generator and
-tests. `python tests/firmware_host/run.py` checks the firmware's settings and
-weather parsers on your PC (it needs ESP-IDF's cJSON through `IDF_PATH`, or
+tests. `python tests/firmware_host/run.py` checks the firmware's settings, weather and
+telemetry parsers and its request signing on your PC, and fuzzes the telemetry
+parser (`--fuzz N` for a longer run) (it needs ESP-IDF's cJSON through `IDF_PATH`, or
 `--cjson DIR`). Follow docs/BUILDING.md for full builds. Do not commit generated
 executables, firmware images, credentials, device backups or local profiles.
 Use the real contributor's Git identity; do not add tool identities as authors

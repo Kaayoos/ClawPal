@@ -34,7 +34,7 @@ try {
         $profile = Join-Path $repo 'payload/board.json'
         $profileBefore = [IO.File]::ReadAllBytes($profile)
         try {
-            & $Python (Join-Path $PSScriptRoot 'build-firmware.py') --all
+            & $Python (Join-Path $PSScriptRoot 'build-firmware.py') --all --require-signed
             if ($LASTEXITCODE -ne 0) { throw 'Firmware build failed.' }
             & $Python -m pip install --require-hashes -r (Join-Path $repo 'tests/simulator/requirements.txt')
             if ($LASTEXITCODE -ne 0) { throw 'Simulator compiler setup failed.' }

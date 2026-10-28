@@ -109,7 +109,7 @@ With live limits enabled, the existing access token is decoded in memory and sen
 
 ## Privacy
 
-The PC and the display talk over your local network using plain HTTP and a pairing token. That traffic isn't encrypted, so keep the display on a network you trust.
+The PC and the display talk over your local network using plain HTTP. Every request is signed with your pairing key, which itself never crosses the network, so another device on the LAN can't send commands or replay old ones. The traffic isn't encrypted, though, so keep the display on a network you trust. Wi-Fi firmware updates must be signed by the ClawPal release key; your own builds still install over USB.
 
 Your location coordinates go to Open-Meteo for forecasts (location search uses its geocoding API too), and update checks contact GitHub. If you enable Live Claude limits, ClawPal sends an authenticated usage request to Anthropic. Codex data comes from your local Codex installation and may stop working if Codex changes.
 

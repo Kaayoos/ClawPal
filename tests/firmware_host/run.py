@@ -1,7 +1,8 @@
 """Build and run the firmware parser host tests.
 
-Usage: python tests/firmware_host/run.py [--cjson DIR]
+Usage: python tests/firmware_host/run.py [--cjson DIR] [--fuzz N]
 DIR holds cJSON.c/cJSON.h; it defaults to ESP-IDF's copy under $IDF_PATH.
+N is the number of mutated telemetry messages to try (default 200000).
 Uses $CC, gcc, cc or clang, falling back to `python -m ziglang cc`.
 """
 import argparse, importlib.util, os, pathlib, shutil, subprocess, sys, tempfile
@@ -26,12 +27,15 @@ def main():
     parser = argparse.ArgumentParser()
     idf = os.environ.get("IDF_PATH")
     parser.add_argument("--cjson", type=pathlib.Path, default=pathlib.Path(idf) / "components/json/cJSON" if idf else None)
+    parser.add_argument("--fuzz", type=int, default=200000, help="mutated telemetry messages to try")
     args = parser.parse_args()
     if not args.cjson or not (args.cjson / "cJSON.c").exists():
         sys.exit("cJSON source not found; pass --cjson or set IDF_PATH")
     sources = [HERE / "test_parsers.c", MAIN / "settings/buddy_settings.c",
-               MAIN / "weather/buddy_weather_parse.c", args.cjson / "cJSON.c"]
-    includes = [HERE / "shim", args.cjson, MAIN / "settings", MAIN / "weather", MAIN / "language"]
+               MAIN / "weather/buddy_weather_parse.c",
+               MAIN / "network/buddy_telemetry_parse.c", MAIN / "network/buddy_auth.c", args.cjson / "cJSON.c"]
+    includes = [HERE / "shim", args.cjson, MAIN / "settings", MAIN / "weather", MAIN / "language",
+                MAIN / "network", MAIN / "include"]
     with tempfile.TemporaryDirectory() as out:
         exe = pathlib.Path(out) / "firmware_parsers"
         command = [*compiler(), "-std=gnu17", "-O1", "-Wall", "-fsanitize=undefined", "-fno-sanitize-recover=all",
@@ -42,7 +46,7 @@ def main():
             command = [c for c in command if not c.startswith(("-fsanitize", "-fno-sanitize"))]
             if subprocess.run(command).returncode:
                 sys.exit("Firmware parser tests did not compile")
-        sys.exit(subprocess.run([str(exe)]).returncode)
+        sys.exit(subprocess.run([str(exe), str(args.fuzz)]).returncode)
 
 
 if __name__ == "__main__":

@@ -2,6 +2,8 @@
 #include "buddy_settings.h"
 #include "buddy_update.h"
 #include "buddy_network.h"
+#include "buddy_telemetry_parse.h"
+#include "buddy_auth.h"
 #include "esp_app_desc.h"
 #include "board.h"
 #include "buddy_ui.h"
@@ -34,7 +36,6 @@
 #include "freertos/semphr.h"
 #include "freertos/task.h"
 #include "lwip/inet.h"
-#include "mbedtls/md.h"
 #include "nvs.h"
 #include "lvgl.h"
 
@@ -46,7 +47,6 @@
 #define PC_TIMEOUT_US (10LL * 1000 * 1000)
 #define SETUP_FALLBACK_US (60LL * 1000 * 1000)
 #define CONTROL_QUEUE_TIMEOUT_US (3LL * 1000 * 1000)
-#define MUSIC_MAX_SECONDS (7U * 24 * 60 * 60)
 
 typedef enum {
     MUSIC_PLAY_PAUSE = 1,
@@ -89,9 +89,11 @@ static int64_t last_frame_us;
 static int64_t disconnected_since_us;
 static buddy_connection_state_t published_state = (buddy_connection_state_t)-1;
 static const char websocket_authorized;
+static SemaphoreHandle_t auth_mutex;
 
-/* Firmware and Wi-Fi changes need a tap on the display: the bearer token alone
- * crosses the LAN in plain HTTP, so it must not be enough to replace either. */
+/* Firmware and Wi-Fi changes need a tap on the display. Requests are signed (see
+ * buddy_auth.h), but LAN traffic is not encrypted, and someone who learned the
+ * pairing token elsewhere must still not be able to replace either remotely. */
 #define CONFIRM_PROMPT_US 60000000LL
 #define CONFIRM_GRANT_US 120000000LL
 #define CONFIRM_DENIED_US 15000000LL
@@ -169,28 +171,39 @@ static esp_err_t load_settings(void)
     return result;
 }
 
+static void auth_lock(void) { xSemaphoreTake(auth_mutex, portMAX_DELAY); }
+static void auth_unlock(void) { xSemaphoreGive(auth_mutex); }
+
+/* The body hash the request was signed with; no header means an empty body. */
+static bool declared_body_hash(httpd_req_t *request, char out[65])
+{
+    size_t length = httpd_req_get_hdr_value_len(request, "X-ClawPal-Body-SHA256");
+    if (length == 0) {
+        strlcpy(out, BUDDY_AUTH_EMPTY_BODY, 65);
+        return true;
+    }
+    return length == 64 && httpd_req_get_hdr_value_str(request, "X-ClawPal-Body-SHA256", out, 65) == ESP_OK &&
+           buddy_auth_is_hex(out, 64);
+}
+
 static bool authenticated(httpd_req_t *request)
 {
-    char authorization[sizeof("Bearer ") + 64];
+    char authorization[160], body_hash[65];
     size_t length = httpd_req_get_hdr_value_len(request, "Authorization");
-    if (length != 7 + 64 ||
-        httpd_req_get_hdr_value_str(request, "Authorization", authorization,
-                                   sizeof(authorization)) != ESP_OK ||
-        memcmp(authorization, "Bearer ", 7) != 0) {
-        return false;
-    }
-    unsigned char difference = 0;
-    for (size_t i = 0; i < 64; ++i) {
-        difference |= (unsigned char)authorization[7 + i] ^ (unsigned char)shared_token[i];
-    }
-    return difference == 0;
+    const char *method = request->method == HTTP_GET ? "GET" : request->method == HTTP_POST ? "POST" : NULL;
+    if (!method || length == 0 || length >= sizeof(authorization) ||
+        httpd_req_get_hdr_value_str(request, "Authorization", authorization, sizeof(authorization)) != ESP_OK ||
+        !declared_body_hash(request, body_hash)) return false;
+    buddy_auth_result_t result = buddy_auth_verify(authorization, method, request->uri, body_hash, esp_timer_get_time());
+    if (result != BUDDY_AUTH_OK) ESP_LOGW(TAG, "Refused %s %s (%d)", method, request->uri, (int)result);
+    return result == BUDDY_AUTH_OK;
 }
 
 static esp_err_t require_auth(httpd_req_t *request)
 {
     if (authenticated(request)) return ESP_OK;
     httpd_resp_set_status(request, "401 Unauthorized");
-    httpd_resp_set_hdr(request, "WWW-Authenticate", "Bearer");
+    httpd_resp_set_hdr(request, "WWW-Authenticate", "ClawPal-HMAC");
     httpd_resp_sendstr(request, BT(BT_AUTHENTICATION_REQUIRED));
     return ESP_FAIL;
 }
@@ -233,314 +246,6 @@ static esp_err_t websocket_auth(httpd_req_t *request)
     request->sess_ctx = (void *)&websocket_authorized;
     request->free_ctx = preserve_auth_marker;
     return ESP_OK;
-}
-
-static bool valid_display_utf8(const char *value, size_t length)
-{
-    for (size_t i = 0; i < length;) {
-        unsigned char first = (unsigned char)value[i++];
-        uint32_t point;
-        unsigned remaining;
-        uint32_t minimum;
-        if (first < 0x80) {
-            point = first;
-            remaining = 0;
-            minimum = 0;
-        } else if (first >= 0xC2 && first <= 0xDF) {
-            point = first & 0x1F;
-            remaining = 1;
-            minimum = 0x80;
-        } else if (first >= 0xE0 && first <= 0xEF) {
-            point = first & 0x0F;
-            remaining = 2;
-            minimum = 0x800;
-        } else if (first >= 0xF0 && first <= 0xF4) {
-            point = first & 0x07;
-            remaining = 3;
-            minimum = 0x10000;
-        } else return false;
-        if (i + remaining > length) return false;
-        while (remaining--) {
-            unsigned char next = (unsigned char)value[i++];
-            if ((next & 0xC0) != 0x80) return false;
-            point = (point << 6) | (next & 0x3F);
-        }
-        if (point < minimum || point > 0x10FFFF ||
-            (point >= 0xD800 && point <= 0xDFFF) || point < 32 ||
-            (point >= 0x7F && point <= 0x9F) || point == 0x2028 || point == 0x2029) return false;
-    }
-    return true;
-}
-
-static bool copy_json_string(const cJSON *object, const char *key, char *out, size_t size)
-{
-    const cJSON *value = cJSON_GetObjectItemCaseSensitive(object, key);
-    if (!value || cJSON_IsNull(value)) {
-        out[0] = '\0';
-        return true;
-    }
-    if (!cJSON_IsString(value) || !value->valuestring) return false;
-    size_t length = strlen(value->valuestring);
-    if (length >= size || !valid_display_utf8(value->valuestring, length)) return false;
-    strlcpy(out, value->valuestring, size);
-    return true;
-}
-
-static bool get_metric(const cJSON *object, const char *key, double min, double max, double *out)
-{
-    const cJSON *value = cJSON_GetObjectItemCaseSensitive(object, key);
-    if (!value || cJSON_IsNull(value)) {
-        *out = NAN;
-        return true;
-    }
-    if (!cJSON_IsNumber(value) || !isfinite(value->valuedouble) ||
-        value->valuedouble < min || value->valuedouble > max) return false;
-    *out = value->valuedouble;
-    return true;
-}
-
-static bool get_float_metric(const cJSON *object, const char *key, double min, double max, float *out)
-{
-    double value;
-    if (!get_metric(object, key, min, max, &value)) return false;
-    *out = (float)value;
-    return true;
-}
-
-static bool get_uint64(const cJSON *object, const char *key, uint64_t *out)
-{
-    double value;
-    if (!get_metric(object, key, 0, 9007199254740991.0, &value) ||
-        !isfinite(value) || floor(value) != value) return false;
-    *out = (uint64_t)value;
-    return true;
-}
-
-static bool get_optional_boolean(const cJSON *object, const char *key, bool *out)
-{
-    const cJSON *value = cJSON_GetObjectItemCaseSensitive(object, key);
-    if (!value) {
-        *out = false;
-        return true;
-    }
-    if (!cJSON_IsBool(value)) return false;
-    *out = cJSON_IsTrue(value);
-    return true;
-}
-
-static bool get_optional_uint32(const cJSON *object, const char *key, uint32_t maximum, uint32_t *out)
-{
-    const cJSON *value = cJSON_GetObjectItemCaseSensitive(object, key);
-    if (!value) {
-        *out = 0;
-        return true;
-    }
-    if (!cJSON_IsNumber(value) || !isfinite(value->valuedouble) || value->valuedouble < 0 ||
-        value->valuedouble > maximum || floor(value->valuedouble) != value->valuedouble) return false;
-    *out = (uint32_t)value->valuedouble;
-    return true;
-}
-
-static bool parse_music(const cJSON *root, buddy_music_t *music)
-{
-    memset(music, 0, sizeof(*music));
-    const cJSON *value = cJSON_GetObjectItemCaseSensitive(root, "music");
-    if (!value || cJSON_IsNull(value)) return true;
-    return cJSON_IsObject(value) &&
-           get_optional_boolean(value, "running", &music->running) &&
-           get_optional_boolean(value, "available", &music->available) &&
-           get_optional_boolean(value, "playing", &music->playing) &&
-           get_optional_boolean(value, "can_play_pause", &music->can_play_pause) &&
-           get_optional_boolean(value, "can_next", &music->can_next) &&
-           get_optional_boolean(value, "can_previous", &music->can_previous) &&
-           copy_json_string(value, "title", music->title, sizeof(music->title)) &&
-           copy_json_string(value, "artist", music->artist, sizeof(music->artist)) &&
-           copy_json_string(value, "album", music->album, sizeof(music->album)) &&
-           get_optional_uint32(value, "position_s", MUSIC_MAX_SECONDS, &music->position_s) &&
-           get_optional_uint32(value, "duration_s", MUSIC_MAX_SECONDS, &music->duration_s) &&
-           get_optional_uint32(value, "control_id", INT_MAX, &music->control_id) &&
-           get_optional_boolean(value, "control_ok", &music->control_ok) &&
-           copy_json_string(value, "control_error", music->control_error, sizeof(music->control_error));
-}
-
-static bool parse_codex_window(const cJSON *codex, const char *key, buddy_codex_window_t *window)
-{
-    memset(window, 0, sizeof(*window));
-    const cJSON *value = cJSON_GetObjectItemCaseSensitive(codex, key);
-    if (!value || cJSON_IsNull(value)) return true;
-    /* Present Codex objects have a complete typed schema. Availability, not
-     * the numeric value, distinguishes an absent limit from zero remaining. */
-    return cJSON_IsObject(value) &&
-           cJSON_IsBool(cJSON_GetObjectItemCaseSensitive(value, "available")) &&
-           get_optional_boolean(value, "available", &window->available) &&
-           cJSON_IsNumber(cJSON_GetObjectItemCaseSensitive(value, "remaining_percent")) &&
-           get_float_metric(value, "remaining_percent", 0, 100, &window->remaining_percent) &&
-           cJSON_IsNumber(cJSON_GetObjectItemCaseSensitive(value, "window_minutes")) &&
-           get_optional_uint32(value, "window_minutes", 525600, &window->window_minutes) &&
-           cJSON_IsString(cJSON_GetObjectItemCaseSensitive(value, "reset_text")) &&
-           copy_json_string(value, "reset_text", window->reset_text, sizeof(window->reset_text)) &&
-           get_optional_uint32(value,"resets_at",UINT32_MAX,&window->resets_at);
-}
-
-static bool parse_codex_task(const cJSON *value, buddy_codex_task_t *task)
-{
-    if (!(cJSON_IsObject(value) &&
-          cJSON_IsString(cJSON_GetObjectItemCaseSensitive(value, "title")) &&
-          copy_json_string(value, "title", task->title, sizeof(task->title)) &&
-          cJSON_IsString(cJSON_GetObjectItemCaseSensitive(value, "project")) &&
-          copy_json_string(value, "project", task->project, sizeof(task->project)) &&
-          cJSON_IsString(cJSON_GetObjectItemCaseSensitive(value, "state")) &&
-          copy_json_string(value, "state", task->state, sizeof(task->state)) &&
-          cJSON_IsNumber(cJSON_GetObjectItemCaseSensitive(value, "age_s")) &&
-          get_optional_uint32(value, "age_s", 31536000, &task->age_s))) return false;
-    return strcmp(task->state, "working") == 0 || strcmp(task->state, "completed") == 0 ||
-           strcmp(task->state, "interrupted") == 0 || strcmp(task->state, "recent") == 0 ||
-           strcmp(task->state, "unknown") == 0 || strcmp(task->state, "waiting") == 0;
-}
-
-static bool parse_codex_activity(const cJSON *codex, buddy_codex_activity_t *activity)
-{
-    memset(activity, 0, sizeof(*activity));
-    const cJSON *value = cJSON_GetObjectItemCaseSensitive(codex, "activity");
-    if (!value || cJSON_IsNull(value)) return true;
-    if (!(cJSON_IsObject(value) &&
-          cJSON_IsBool(cJSON_GetObjectItemCaseSensitive(value, "available")) &&
-          get_optional_boolean(value, "available", &activity->available) &&
-          cJSON_IsBool(cJSON_GetObjectItemCaseSensitive(value, "stale")) &&
-          get_optional_boolean(value, "stale", &activity->stale) &&
-          cJSON_IsString(cJSON_GetObjectItemCaseSensitive(value, "status")) &&
-          copy_json_string(value, "status", activity->status, sizeof(activity->status)) &&
-          cJSON_IsNumber(cJSON_GetObjectItemCaseSensitive(value, "age_s")) &&
-          get_optional_uint32(value, "age_s", 31536000, &activity->age_s) &&
-          cJSON_IsNumber(cJSON_GetObjectItemCaseSensitive(value, "working_count")) &&
-          get_optional_uint32(value, "working_count", 1000, &activity->working_count) &&
-          cJSON_IsNumber(cJSON_GetObjectItemCaseSensitive(value, "total_count")) &&
-          get_optional_uint32(value, "total_count", 1000, &activity->total_count))) return false;
-    if (strcmp(activity->status, "local") != 0 && strcmp(activity->status, "partial") != 0 &&
-        strcmp(activity->status, "waiting") != 0 && strcmp(activity->status, "unavailable") != 0 &&
-        strcmp(activity->status, "closed") != 0 && strcmp(activity->status, "error") != 0) return false;
-
-    const cJSON *items = cJSON_GetObjectItemCaseSensitive(value, "items");
-    if (!cJSON_IsArray(items)) return false;
-    int count = cJSON_GetArraySize(items);
-    if (count < 0 || count > sizeof(activity->items) / sizeof(activity->items[0])) return false;
-    const cJSON *item;
-    cJSON_ArrayForEach(item, items) {
-        if (!parse_codex_task(item, &activity->items[activity->item_count])) return false;
-        ++activity->item_count;
-    }
-    return true;
-}
-
-static bool parse_codex(const cJSON *root, const char *provider, buddy_codex_t *codex)
-{
-    memset(codex, 0, sizeof(*codex));
-    const cJSON *value = cJSON_GetObjectItemCaseSensitive(root, provider);
-    if (!value || cJSON_IsNull(value)) return true;
-    return cJSON_IsObject(value) &&
-           cJSON_IsBool(cJSON_GetObjectItemCaseSensitive(value, "running")) &&
-           get_optional_boolean(value, "running", &codex->running) &&
-           cJSON_IsBool(cJSON_GetObjectItemCaseSensitive(value, "available")) &&
-           get_optional_boolean(value, "available", &codex->available) &&
-           cJSON_IsBool(cJSON_GetObjectItemCaseSensitive(value, "stale")) &&
-           get_optional_boolean(value, "stale", &codex->stale) &&
-           cJSON_IsString(cJSON_GetObjectItemCaseSensitive(value, "status")) &&
-           copy_json_string(value, "status", codex->status, sizeof(codex->status)) &&
-           cJSON_IsString(cJSON_GetObjectItemCaseSensitive(value, "plan")) &&
-           copy_json_string(value, "plan", codex->plan, sizeof(codex->plan)) &&
-           cJSON_IsNumber(cJSON_GetObjectItemCaseSensitive(value, "age_s")) &&
-           get_optional_uint32(value, "age_s", 31536000, &codex->age_s) &&
-           parse_codex_window(value, "primary", &codex->primary) &&
-           parse_codex_window(value, "secondary", &codex->secondary) &&
-           parse_codex_activity(value, &codex->activity);
-}
-
-static bool bounded_json(const char *payload, size_t length)
-{
-    unsigned depth = 0;
-    bool in_string = false;
-    bool escaped = false;
-    for (size_t i = 0; i < length; ++i) {
-        unsigned char c = (unsigned char)payload[i];
-        if (c == '\0') return false;
-        if (in_string) {
-            if (escaped) {
-                /* cJSON strings are NUL-terminated; do not allow an escaped
-                 * NUL to conceal the rest of a decoded field. */
-                if (c == 'u' && i + 4 < length && memcmp(payload + i + 1, "0000", 4) == 0) return false;
-                escaped = false;
-            }
-            else if (c == '\\') escaped = true;
-            else if (c == '"') in_string = false;
-        } else if (c == '"') {
-            in_string = true;
-        } else if (c == '{' || c == '[') {
-            if (++depth > 8) return false;
-        } else if (c == '}' || c == ']') {
-            if (!depth) return false;
-            --depth;
-        }
-    }
-    return !in_string && depth == 0;
-}
-
-static bool parse_game(const cJSON *root, buddy_game_t *game)
-{
-    memset(game, 0, sizeof(*game));
-    game->fps = NAN;
-    const cJSON *value = cJSON_GetObjectItemCaseSensitive(root, "game");
-    if (!value || cJSON_IsNull(value)) return true;
-    return cJSON_IsObject(value) && get_optional_boolean(value, "active", &game->active) &&
-        copy_json_string(value, "name", game->name, sizeof(game->name)) &&
-        copy_json_string(value, "status", game->status, sizeof(game->status)) &&
-        get_float_metric(value, "fps", 0, 2000, &game->fps) &&
-        (!game->active || game->name[0]);
-}
-
-static bool parse_stats(const char *payload, size_t length, buddy_stats_t *stats)
-{
-    if (!bounded_json(payload, length)) return false;
-    cJSON *root = cJSON_ParseWithLengthOpts(payload, length + 1, NULL, true);
-    if (!root) return false;
-    const cJSON *type = cJSON_GetObjectItemCaseSensitive(root, "type");
-    const cJSON *version = cJSON_GetObjectItemCaseSensitive(root, "v");
-    const cJSON *cpu = cJSON_GetObjectItemCaseSensitive(root, "cpu");
-    const cJSON *gpu = cJSON_GetObjectItemCaseSensitive(root, "gpu");
-    const cJSON *memory = cJSON_GetObjectItemCaseSensitive(root, "memory");
-    const cJSON *network = cJSON_GetObjectItemCaseSensitive(root, "network");
-    const cJSON *auto_open = cJSON_GetObjectItemCaseSensitive(root, "auto_open_apps");
-    memset(stats, 0, sizeof(*stats));
-    /* Older companions omit this setting and keep their existing behavior. */
-    stats->auto_open_apps = !auto_open || cJSON_IsTrue(auto_open);
-    uint64_t timestamp;
-    bool valid = cJSON_IsObject(root) && cJSON_IsString(type) &&
-                 strcmp(type->valuestring, "pc.stats") == 0 &&
-                 cJSON_IsNumber(version) && version->valuedouble == 1 &&
-                 cJSON_IsObject(cpu) && cJSON_IsObject(gpu) &&
-                 cJSON_IsObject(memory) && cJSON_IsObject(network) &&
-                 (!auto_open || cJSON_IsBool(auto_open)) &&
-                 copy_json_string(root, "hostname", stats->hostname, sizeof(stats->hostname)) &&
-                 copy_json_string(cpu, "name", stats->cpu_name, sizeof(stats->cpu_name)) &&
-                 copy_json_string(gpu, "name", stats->gpu_name, sizeof(stats->gpu_name)) &&
-                 get_uint64(root, "seq", &stats->sequence) &&
-                 get_uint64(root, "timestamp", &timestamp) &&
-                 get_uint64(root, "uptime_s", &stats->uptime_s) &&
-                 get_float_metric(cpu, "usage", 0, 100, &stats->cpu_usage) &&
-                 get_float_metric(cpu, "temperature", -100, 200, &stats->cpu_temperature) &&
-                 get_float_metric(gpu, "usage", 0, 100, &stats->gpu_usage) &&
-                 get_float_metric(gpu, "temperature", -100, 200, &stats->gpu_temperature) &&
-                 get_float_metric(gpu, "vram_used_mb", 0, 1e9, &stats->vram_used_mb) &&
-                 get_float_metric(gpu, "vram_total_mb", 0, 1e9, &stats->vram_total_mb) &&
-                 get_float_metric(memory, "usage", 0, 100, &stats->memory_usage) &&
-                 get_float_metric(memory, "used_mb", 0, 1e9, &stats->memory_used_mb) &&
-                 get_float_metric(memory, "total_mb", 0, 1e9, &stats->memory_total_mb) &&
-                 get_metric(network, "rx_bps", 0, 1e15, &stats->network_rx_bps) &&
-                 get_metric(network, "tx_bps", 0, 1e15, &stats->network_tx_bps) &&
-                 parse_music(root, &stats->music) &&
-                 parse_codex(root, "codex", &stats->codex) && parse_codex(root, "claude", &stats->claude) && parse_game(root, &stats->game);
-    if (valid) stats->timestamp_ms = (int64_t)timestamp;
-    cJSON_Delete(root);
-    return valid;
 }
 
 static void invalidate_companion_locked(void)
@@ -722,7 +427,7 @@ static esp_err_t websocket_handler(httpd_req_t *request)
     frame.payload = payload;
     result = httpd_ws_recv_frame(request, &frame, frame.len);
     buddy_stats_t stats;
-    if (result == ESP_OK && !parse_stats((const char *)payload, frame.len, &stats)) result = ESP_ERR_INVALID_ARG;
+    if (result == ESP_OK && !buddy_telemetry_parse((const char *)payload, frame.len, &stats)) result = ESP_ERR_INVALID_ARG;
     free(payload);
     if (result != ESP_OK) return result;
     xSemaphoreTake(state_lock, portMAX_DELAY);
@@ -877,6 +582,10 @@ static cJSON *read_settings_json(httpd_req_t *request)
         received += n;
     }
     body[received] = 0;
+    /* The signature covers the declared hash; these must be the bytes it described. */
+    char declared[65], actual[65];
+    if (!declared_body_hash(request, declared) || !buddy_auth_body_hash(body, (size_t)received, actual) ||
+        strcmp(declared, actual) != 0) return NULL;
     return cJSON_ParseWithLength(body, received + 1);
 }
 
@@ -970,8 +679,23 @@ static esp_err_t wifi_settings_handler(httpd_req_t *request)
 
 static esp_err_t firmware_get_handler(httpd_req_t *request)
 { if(require_auth(request)!=ESP_OK)return ESP_FAIL;return buddy_update_info(request); }
+/* The upload streams too much to buffer, so it is signed with the image hash it
+ * declares; buddy_update_upload then refuses any image that does not match it. */
+static bool firmware_body_declared(httpd_req_t *request)
+{
+    char declared[65], image[65];
+    return declared_body_hash(request, declared) &&
+           httpd_req_get_hdr_value_str(request, "X-ClawPal-SHA256", image, sizeof(image)) == ESP_OK &&
+           strcmp(declared, image) == 0;
+}
 static esp_err_t firmware_post_handler(httpd_req_t *request)
-{ if(require_auth(request)!=ESP_OK || require_confirmation(request,BUDDY_CONFIRM_FIRMWARE)!=ESP_OK)return ESP_FAIL;return buddy_update_upload(request); }
+{
+    if (require_auth(request) != ESP_OK) return ESP_FAIL;
+    if (!firmware_body_declared(request))
+        return httpd_resp_send_err(request, HTTPD_400_BAD_REQUEST, "Signed body hash must match the image hash");
+    if (require_confirmation(request, BUDDY_CONFIRM_FIRMWARE) != ESP_OK) return ESP_FAIL;
+    return buddy_update_upload(request);
+}
 
 static esp_err_t start_monitor_server(void)
 {
@@ -1041,23 +765,18 @@ static void discovery_task(void *argument)
                 memcmp(request, prefix, sizeof(prefix) - 1) != 0) continue;
             const char *nonce = request + sizeof(prefix) - 1;
             if (!is_hex_string(nonce, 32)) continue;
-            /* Encode the validated protocol widths explicitly for both safety
-             * and GCC's compile-time format-truncation analysis. */
-            char message[32 + 1 + 12 + 1 + 5 + 1];
-            int message_length = snprintf(message, sizeof(message), "%.32s|%.12s|%d",
-                                          nonce, device_id, MONITOR_PORT);
-            if (message_length != sizeof(message) - 1) continue;
-            uint8_t digest[32];
-            const mbedtls_md_info_t *algorithm = mbedtls_md_info_from_type(MBEDTLS_MD_SHA256);
-            if (!algorithm || mbedtls_md_hmac(algorithm, (const uint8_t *)shared_token, 64,
-                                              (const uint8_t *)message, (size_t)message_length, digest) != 0) continue;
-            char proof[65];
-            for (size_t i = 0; i < sizeof(digest); ++i) snprintf(proof + i * 2, 3, "%02x", digest[i]);
+            /* Protocol 2: the reply hands out a challenge for signed requests, and
+             * the proof covers it so it cannot be swapped on the way. */
+            uint8_t random_bytes[16];
+            esp_fill_random(random_bytes, sizeof(random_bytes));
+            char challenge[33], proof[65];
+            buddy_auth_challenge(nonce, random_bytes, esp_timer_get_time(), challenge);
+            if (!buddy_auth_hello_proof(nonce, device_id, MONITOR_PORT, challenge, proof)) continue;
             char response[280];
             int response_length = snprintf(response, sizeof(response),
-                "{\"type\":\"buddy.hello\",\"v\":1,\"id\":\"%.12s\",\"name\":\"ClawPal\","
-                "\"port\":%d,\"nonce\":\"%.32s\",\"proof\":\"%.64s\"}",
-                device_id, MONITOR_PORT, nonce, proof);
+                "{\"type\":\"buddy.hello\",\"v\":2,\"id\":\"%.12s\",\"name\":\"ClawPal\","
+                "\"port\":%d,\"nonce\":\"%.32s\",\"challenge\":\"%.32s\",\"proof\":\"%.64s\"}",
+                device_id, MONITOR_PORT, nonce, challenge, proof);
             if (response_length <= 0 || response_length >= sizeof(response)) continue;
             sendto(socket_fd, response, response_length, 0, (struct sockaddr *)&source, source_size);
         }
@@ -1333,8 +1052,10 @@ esp_err_t buddy_network_start(const buddy_network_callbacks_t *requested_callbac
     snprintf(setup_ssid, sizeof(setup_ssid), "ClawPal-%s", device_id + 6);
     events = xEventGroupCreate();
     state_lock = xSemaphoreCreateMutex();
+    auth_mutex = xSemaphoreCreateMutex();
     music_command_queue = xQueueCreate(1, sizeof(uint32_t));
-    if (!events || !state_lock || !music_command_queue) return ESP_ERR_NO_MEM;
+    if (!events || !state_lock || !auth_mutex || !music_command_queue) return ESP_ERR_NO_MEM;
+    buddy_auth_init(shared_token, auth_lock, auth_unlock);
     ESP_RETURN_ON_ERROR(esp_netif_init(), TAG, "Network stack");
     esp_err_t result = esp_event_loop_create_default();
     if (result != ESP_OK && result != ESP_ERR_INVALID_STATE) return result;

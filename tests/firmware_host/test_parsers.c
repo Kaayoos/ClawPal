@@ -20,6 +20,9 @@ static void check(bool value, const char *name)
     else { ++failed; printf("FAIL: %s\n", name); }
 }
 
+#include "test_telemetry.c"
+#include "test_auth.c"
+
 static bool settings(const char *city, const char *timezone, int schema, int apps, buddy_settings_t *out)
 {
     char json[1024];
@@ -93,10 +96,13 @@ static void weather_checks(void)
     check(!buddy_weather_parse(truncated, sizeof(truncated) - 1, now, &parsed), "unterminated buffer is rejected");
 }
 
-int main(void)
+int main(int argc, char **argv)
 {
     settings_checks();
     weather_checks();
+    telemetry_checks();
+    auth_checks();
+    telemetry_fuzz(argc > 1 ? (unsigned)strtoul(argv[1], NULL, 10) : 200000);
     printf("%d firmware parser checks passed, %d failed\n", passed, failed);
     return failed ? 1 : 0;
 }

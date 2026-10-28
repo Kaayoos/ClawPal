@@ -20,6 +20,9 @@ public static class Protocol
 
     public static string Proof(string token, string nonce, string id) =>
         Convert.ToHexString(HMACSHA256.HashData(Encoding.UTF8.GetBytes(token), Encoding.UTF8.GetBytes($"{nonce}|{id}|{MonitorPort}"))).ToLowerInvariant();
+    // Protocol 2 hellos also carry a fresh challenge for signed requests; the proof covers it.
+    public static string Proof(string token, string nonce, string id, string challenge) =>
+        Convert.ToHexString(HMACSHA256.HashData(Encoding.UTF8.GetBytes(token), Encoding.UTF8.GetBytes($"{nonce}|{id}|{MonitorPort}|{challenge}"))).ToLowerInvariant();
 
     public static DeviceEndpoint? ValidateHello(ReadOnlySpan<byte> payload, IPAddress sender, string token, string nonce, string expectedId)
     {
@@ -30,12 +33,14 @@ public static class Protocol
             var root = doc.RootElement;
             var id = root.GetProperty("id").GetString();
             var proof = root.GetProperty("proof").GetString();
-            if (root.GetProperty("type").GetString() != "buddy.hello" || root.GetProperty("v").GetInt32() != 1 ||
+            int version = root.GetProperty("v").GetInt32();
+            string? challenge = version == 2 ? root.GetProperty("challenge").GetString() : null;
+            if (root.GetProperty("type").GetString() != "buddy.hello" || version is not (1 or 2) || (version == 2 && !IsLowerHex(challenge, 32)) ||
                 root.GetProperty("port").GetInt32() != MonitorPort || root.GetProperty("nonce").GetString() != nonce ||
                 !IsLowerHex(id, 12) || (!string.IsNullOrEmpty(expectedId) && id != expectedId) || !IsLowerHex(proof, 64)) return null;
             var supplied = Convert.FromHexString(proof!);
-            var actual = Convert.FromHexString(Proof(token, nonce, id!));
-            return CryptographicOperations.FixedTimeEquals(supplied, actual) ? new DeviceEndpoint(sender, id!) : null;
+            var actual = Convert.FromHexString(challenge is null ? Proof(token, nonce, id!) : Proof(token, nonce, id!, challenge));
+            return CryptographicOperations.FixedTimeEquals(supplied, actual) ? new DeviceEndpoint(sender, id!, challenge) : null;
         }
         catch (Exception error) when (error is JsonException or InvalidOperationException or KeyNotFoundException or FormatException or OverflowException) { return null; }
     }
@@ -115,7 +120,8 @@ public sealed class TextMessageBuffer
     }
 }
 
-public sealed record DeviceEndpoint(IPAddress Address, string Id);
+// Challenge is set for displays that accept signed requests (see DeviceAuth).
+public sealed record DeviceEndpoint(IPAddress Address, string Id, string? Challenge = null);
 public sealed record CpuStats(double? Usage, double? Temperature, string Name);
 public sealed record GpuStats(double? Usage, double? Temperature, double? VramUsedMb, double? VramTotalMb, string Name);
 public sealed record MemoryStats(double UsedMb, double TotalMb, double Usage);
