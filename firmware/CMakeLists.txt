@@ -9,7 +9,7 @@ endif()
 add_compile_definitions(CLAWPAL_PROFILE=${CLAWPAL_PROFILE})
 set(SDKCONFIG_DEFAULTS "${CMAKE_CURRENT_LIST_DIR}/boards/${CLAWPAL_BOARD}.defaults")
 
-set(PROJECT_VER "0.9.1")
+set(PROJECT_VER "0.10.0")
 set(EXTRA_COMPONENT_DIRS
     "${CMAKE_CURRENT_LIST_DIR}/../vendor/components"
 )
