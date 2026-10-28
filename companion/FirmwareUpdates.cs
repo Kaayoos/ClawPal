@@ -139,8 +139,7 @@ public sealed class FirmwareUpdates(Configuration config,DeviceSettingsClient se
     private async Task<(HttpClient,Uri)> Open(CancellationToken token)
     {
         var endpoint=await Connection.DiscoverAsync(config,token)??throw new IOException(L.Text("display_offline_connect_it_to_the_same_local_network"));
-        var http=new HttpClient(new HttpClientHandler{UseProxy=false,AllowAutoRedirect=false}){Timeout=TimeSpan.FromMinutes(3)};
-        http.DefaultRequestHeaders.Authorization=new AuthenticationHeaderValue("Bearer",config.Token);
+        var http=DeviceAuth.For(endpoint,config.Token).CreateClient(TimeSpan.FromMinutes(3));
         return (http,new Uri($"http://{endpoint.Address}:{Protocol.MonitorPort}/firmware"));
     }
     public async Task<FirmwareInfo> ReadDevice(CancellationToken token)

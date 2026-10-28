@@ -16,10 +16,12 @@ typedef struct {
  * setup_key. Secrets are never written to logs. */
 esp_err_t buddy_network_start(const buddy_network_callbacks_t *callbacks);
 
-/* Nonblocking request for play_pause, next or previous. False means offline,
- * unsupported, or busy. Acceptance means queued, not confirmed execution;
- * music.control_id/control_ok/control_error in telemetry confirm the result. */
-bool buddy_network_music_control(const char *action);
+/* Nonblocking request for play_pause, next, previous, shuffle, repeat, mute,
+ * seek (value in seconds) or volume (value 0..100); toggles ignore the value.
+ * False means offline, unsupported, or busy. Acceptance means queued, not
+ * confirmed execution; music.control_id/control_ok/control_error in telemetry
+ * confirm the result. */
+bool buddy_network_music_control(const char *action, uint32_t value);
 
 /* Record the touch-screen answer to a pending confirmation. Safe from the UI task. */
 void buddy_network_confirm_result(buddy_confirm_action_t action, bool approved);

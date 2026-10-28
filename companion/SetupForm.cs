@@ -74,14 +74,6 @@ internal sealed class SetupForm : ClawWindow
     private string? backupFolder;
     private Place? selected;
     private readonly bool preview;
-    internal static (string Name, string Posix)[] Timezones => [
-        (L.Text("utc"), "UTC0"), (L.Text("central_europe_warsaw_berlin"), "CET-1CEST,M3.5.0,M10.5.0/3"),
-        (L.Text("uk_ireland"), "GMT0BST,M3.5.0/1,M10.5.0"), (L.Text("eastern_europe"), "EET-2EEST,M3.5.0/3,M10.5.0/4"),
-        (L.Text("us_canada_eastern"), "EST5EDT,M3.2.0,M11.1.0"), (L.Text("us_canada_central"), "CST6CDT,M3.2.0,M11.1.0"),
-        (L.Text("us_canada_mountain"), "MST7MDT,M3.2.0,M11.1.0"), (L.Text("us_canada_pacific"), "PST8PDT,M3.2.0,M11.1.0"),
-        (L.Text("india"), "IST-5:30"), (L.Text("china_singapore"), "CST-8"), (L.Text("japan_korea"), "JST-9"),
-        (L.Text("australia_sydney_melbourne"), "AEST-10AEDT,M10.1.0,M4.1.0/3"), (L.Text("australia_brisbane"), "AEST-10"),
-        (L.Text("new_zealand"), "NZST-12NZDT,M9.5.0,M4.1.0/3") ];
     public SetupForm(Configuration config, Connection connection, bool preview = false)
     {
         this.config = config; this.connection = connection; this.preview = preview;
@@ -125,10 +117,9 @@ internal sealed class SetupForm : ClawWindow
         displayLanguages.SelectedIndex=L.Languages.ToList().FindIndex(l=>l.Code==L.Normalize(config.DisplaySettings?.Language));
         pcLanguages.SelectedIndexChanged+=(_,_)=>{if(pcLanguages.SelectedItem is LanguageChoice language){config.CompanionLanguage=language.Code;config.Save();L.SetLanguage(language.Code);}};
         L.Changed+=LanguageChanged;
-        foreach (var zone in Timezones) zones.Items.Add(zone.Name);
-        zones.SelectedIndex = Math.Max(0, Array.FindIndex(Timezones, z => z.Posix == config.Timezone));
+        TimeZones.Fill(zones, config.Timezone);
         if (config.City.Length > 0) { selected = new(config.City,"","",config.Latitude,config.Longitude,""); places.Items.Add(selected); places.SelectedIndex = 0; city.Text = config.City; }
-        places.SelectedIndexChanged += (_, _) => { selected = places.SelectedItem as Place; };
+        places.SelectedIndexChanged += (_, _) => { selected = places.SelectedItem as Place; if (selected is not null) TimeZones.SelectFor(zones, selected); };
         next.Click += async (_,_) => await Next(); back.Click += (_,_) => { if (step > 0 && !busy) { step--; ShowStep(); } };
         FormClosing += (_, e) => { if (busy) { e.Cancel = true; status.Text = L.Text("keep_clawpal_open_until_the_usb_operation_finishes"); } };
         stateTimer.Tick += (_,_) => { if (step == 4 && installed) status.Text = connection.IsConnected ? L.Text("connected_over_wi_fi_your_desk_companion_is_ready") : L.Text("installed_connection", connection.Status); };
@@ -276,8 +267,8 @@ internal sealed class SetupForm : ClawWindow
             next.Enabled = false;
         }
     }
-    private void LanguageChanged(){if(IsDisposed)return;L.RefreshControls(this);for(int i=0;i<zones.Items.Count;i++)zones.Items[i]=Timezones[i].Name;zones.Text=zones.SelectedItem?.ToString()??"";ShowStep();}
-    private SetupOptions Options() => new(SelectedDevice?.Port ?? "",ssid.Text,password.Text,selected?.Name ?? "",selected?.Latitude ?? double.NaN,selected?.Longitude ?? double.NaN,Timezones[zones.SelectedIndex].Posix,fps.Checked,auto.Checked,startup.Checked,backup.Checked,((LanguageChoice)pcLanguages.SelectedItem!).Code,((LanguageChoice)displayLanguages.SelectedItem!).Code,SelectedBoard.Id);
+    private void LanguageChanged(){if(IsDisposed)return;L.RefreshControls(this);zones.Text=zones.SelectedItem?.ToString()??"";ShowStep();}
+    private SetupOptions Options() => new(SelectedDevice?.Port ?? "",ssid.Text,password.Text,selected?.Name ?? "",selected?.Latitude ?? double.NaN,selected?.Longitude ?? double.NaN,(zones.SelectedItem as TimeZoneChoice)?.Posix ?? "",fps.Checked,auto.Checked,startup.Checked,backup.Checked,((LanguageChoice)pcLanguages.SelectedItem!).Code,((LanguageChoice)displayLanguages.SelectedItem!).Code,SelectedBoard.Id);
     private async Task Next()
     {
         try {

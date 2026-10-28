@@ -193,10 +193,11 @@ internal sealed class SettingsForm : ClawWindow
         Put(p,L.Text("weather_location"),0,178,400,12,true);
         var city=ClawTheme.Input(L.Text("find_a_city_or_village"));city.Text=draft.City=="Weather"?"":draft.City;city.SetBounds(0,216,p.Width-167,44);city.Anchor=AnchorStyles.Left|AnchorStyles.Top|AnchorStyles.Right;
         var search=new ClawButton(){Text=L.Text("find_location"),Location=new(p.Width-155,216),Width=155,Anchor=AnchorStyles.Right|AnchorStyles.Top};
+        var zones=new ChoiceBox(){Location=new(0,401),Width=p.Width,Anchor=AnchorStyles.Left|AnchorStyles.Top|AnchorStyles.Right};
         var choices=new ChoiceBox(){Location=new(0,274),Width=p.Width,Anchor=AnchorStyles.Left|AnchorStyles.Top|AnchorStyles.Right};
         choices.Items.Add(new Place(draft.City,"","",draft.Latitude,draft.Longitude,""));choices.SelectedIndex=0;
         var feedback=Put(p,L.Text("search_then_choose_the_location_that_matches"),0,325,p.Width,9,false,35);
-        choices.SelectedIndexChanged+=(_,_)=>{if(choices.SelectedItem is Place place)SetDraft(draft with{City=place.Name,Latitude=place.Latitude,Longitude=place.Longitude});};
+        choices.SelectedIndexChanged+=(_,_)=>{if(choices.SelectedItem is Place place){SetDraft(draft with{City=place.Name,Latitude=place.Latitude,Longitude=place.Longitude});TimeZones.SelectFor(zones,place);}};
         search.Click+=async(_,_)=>{
             if(city.Text.Trim().Length<2){feedback.Text=L.Text("type_at_least_two_letters");return;}search.Enabled=false;feedback.Text=L.Text("looking_for_your_corner_of_the_world");crab.State="thinking";
             try{
@@ -214,10 +215,8 @@ internal sealed class SettingsForm : ClawWindow
         };
         p.Controls.AddRange([city,search,choices]);
         Put(p,L.Text("time_zone"),0,361,300,12,true);
-        var zones=new ChoiceBox(){Location=new(0,401),Width=p.Width,Anchor=AnchorStyles.Left|AnchorStyles.Top|AnchorStyles.Right};
-        foreach(var zone in SetupForm.Timezones)zones.Items.Add(zone.Name);
-        zones.SelectedIndex=Math.Max(0,Array.FindIndex(SetupForm.Timezones,z=>z.Posix==draft.Timezone));
-        zones.SelectedIndexChanged+=(_,_)=>{if(zones.SelectedIndex>=0)SetDraft(draft with{Timezone=SetupForm.Timezones[zones.SelectedIndex].Posix});};p.Controls.Add(zones);
+        TimeZones.Fill(zones,draft.Timezone);
+        zones.SelectedIndexChanged+=(_,_)=>{if(zones.SelectedItem is TimeZoneChoice zone)SetDraft(draft with{Timezone=zone.Posix});};p.Controls.Add(zones);
         Put(p,L.Text("weather_temperature_unit"),0,469,p.Width,12,true);
         var celsius=new ClawButton{Text=L.Text("celsius"),Location=new(0,508),Width=195,Selected=!draft.WeatherFahrenheit};
         var fahrenheit=new ClawButton{Text=L.Text("fahrenheit"),Location=new(207,508),Width=205,Selected=draft.WeatherFahrenheit};

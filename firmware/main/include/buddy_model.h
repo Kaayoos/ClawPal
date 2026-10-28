@@ -33,6 +33,16 @@ typedef struct {
     uint32_t control_id;
     bool control_ok;
     char control_error[32];
+    /* Optional controls; older companions omit them, which hides the control. */
+    bool can_shuffle;
+    bool shuffle;
+    bool can_repeat;
+    uint32_t repeat; /* 0 off, 1 current track, 2 whole list */
+    bool can_seek;
+    bool can_volume;
+    uint32_t volume; /* Spotify's Windows mixer level, 0..100 */
+    bool muted;
+    uint32_t art_color; /* 0xRRGGBB from the album cover; 0 keeps the theme accent */
 } buddy_music_t;
 
 typedef struct {

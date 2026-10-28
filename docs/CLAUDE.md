@@ -22,8 +22,11 @@ hook sessions, the interval is five minutes. HTTP failures back off; a 429 obeys
 `Retry-After`, or waits five minutes when no delay is provided. Network calls
 time out after twelve seconds and responses are capped at 64 KiB.
 
-Desktop detection covers `%APPDATA%/Claude` and the Store's per-user
-`Packages/Claude_*/LocalCache/Roaming/Claude` folder. ClawPal reads the current
+Desktop detection covers `%LOCALAPPDATA%/Claude-Data/<install>`, where Desktop
+releases from October 2026 keep their data, then the older `%APPDATA%/Claude` and
+the Store's per-user `Packages/Claude_*/LocalCache/Roaming/Claude` folders.
+Folders that Desktop marked with `.user-data-left.*` after moving its data are
+skipped, so a stale copy cannot supply an old token. ClawPal reads the current
 account marker and matches the active session's organization. The encrypted
 Desktop token cache is decoded in memory through the same user's Windows DPAPI
 key and authenticated AES-GCM. V2 caches are preferred; legacy account-scoped

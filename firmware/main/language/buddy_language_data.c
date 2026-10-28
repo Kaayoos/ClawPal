@@ -100,6 +100,7 @@ static const char text_0_don_t_worry_i_ve_got_it[] = "don’t worry, I’ve got 
 static const char text_0_down[] = "Down";
 static const char text_0_dreaming_of_warmer_waters[] = "dreaming of warmer waters";
 static const char text_0_drizzle[] = "Drizzle";
+static const char text_0_ends_at_s[] = "Ends at %s";
 static const char text_0_enjoying_a_brief_moment_of_nothing[] = "enjoying a brief moment of nothing";
 static const char text_0_experimental_hardware[] = "Experimental hardware - not tested on this board";
 static const char text_0_feels_like[] = "Feels like";
@@ -115,6 +116,7 @@ static const char text_0_freezing_rain[] = "Freezing rain";
 static const char text_0_game_activity_fps_unavailable[] = "Game activity / FPS unavailable";
 static const char text_0_game_activity_live_frame_rate[] = "Game activity / live frame rate";
 static const char text_0_game_activity_measuring_fps[] = "Game activity / measuring FPS...";
+static const char text_0_gauge_left[] = "left";
 static const char text_0_give_me_a_sec_i_m_cooking[] = "give me a sec, I’m cooking";
 static const char text_0_gpu[] = "GPU";
 static const char text_0_gpu_load_60_seconds[] = "GPU load  /  60 seconds";
@@ -123,6 +125,7 @@ static const char text_0_heavy_lifting_in_progress[] = "heavy lifting in progres
 static const char text_0_hey_that_s_me[] = "Hey, that's me!";
 static const char text_0_high_low[] = "High / low";
 static const char text_0_high_low_units_precipitation_chance[] = "High / low in %s / precipitation chance";
+static const char text_0_high_s_low_s[] = "High %s  ·  Low %s";
 static const char text_0_hmm_clawsome_question[] = "hmm. clawsome question.";
 static const char text_0_home[] = "Home";
 static const char text_0_hours[] = "Hours";
@@ -142,7 +145,9 @@ static const char text_0_keep_clawpal_running_in_your_pc_s_tray_recorded[] = "Ke
 static const char text_0_last_activity_s[] = "Last activity %s";
 static const char text_0_last_reading_u_min_ago_reconnecting[] = "Last reading %u min ago. Reconnecting...";
 static const char text_0_last_reading_u_s_ago_reconnecting[] = "Last reading %u s ago. Reconnecting...";
+static const char text_0_lasts_until_reset[] = "Lasts until reset";
 static const char text_0_let_s_connect_your_buddy[] = "Let's connect your Buddy.";
+static const char text_0_limit_reached[] = "Limit reached";
 static const char text_0_limits_from_your_claude_account[] = "Limits from your Claude Code account";
 static const char text_0_limits_from_your_codex_account[] = "Limits from your Codex account";
 static const char text_0_limits_from_your_pc[] = "Limits from your PC";
@@ -154,9 +159,12 @@ static const char text_0_loading_weather[] = "Loading weather";
 static const char text_0_local_snapshot[] = "Local snapshot";
 static const char text_0_local_time[] = "Local time";
 static const char text_0_lu_d_ago[] = "%lu d ago";
+static const char text_0_lu_d_lu_h[] = "%lu d %lu h";
 static const char text_0_lu_day_limit[] = "%lu-day limit";
 static const char text_0_lu_h_ago[] = "%lu h ago";
+static const char text_0_lu_h_lu_min[] = "%lu h %lu min";
 static const char text_0_lu_hour_limit[] = "%lu-hour limit";
+static const char text_0_lu_min[] = "%lu min";
 static const char text_0_lu_min_ago[] = "%lu min ago";
 static const char text_0_lu_minute_limit[] = "%lu-minute limit";
 static const char text_0_lu_recently_working[] = "%lu recently working";
@@ -249,12 +257,14 @@ static const char text_0_recorded_locally_not_live_task_status[] = "Recorded loc
 static const char text_0_remaining[] = "remaining";
 static const char text_0_reset[] = "Reset";
 static const char text_0_reset_time_unavailable[] = "Reset time unavailable";
+static const char text_0_resets_in_s[] = "Resets in %s";
 static const char text_0_resets_value[] = "Resets %s";
 static const char text_0_resume[] = "Resume";
 static const char text_0_resume_to_continue_or_reset_to_adjust[] = "Resume to continue, or Reset to adjust";
 static const char text_0_running[] = "Running";
 static const char text_0_running_12d2cf[] = " / running";
 static const char text_0_running_in_background[] = "Running in background";
+static const char text_0_runs_out_around_s[] = "Runs out around %s";
 static const char text_0_s_lu_d_ago[] = "%s %lu d ago";
 static const char text_0_s_lu_h_ago[] = "%s %lu h ago";
 static const char text_0_s_lu_min_ago[] = "%s %lu min ago";
@@ -477,6 +487,7 @@ static const char text_1_don_t_worry_i_ve_got_it[] = "spokojnie, mam to";
 static const char text_1_down[] = "Pobieranie";
 static const char text_1_dreaming_of_warmer_waters[] = "śnię o cieplejszej wodzie";
 static const char text_1_drizzle[] = "Mżawka";
+static const char text_1_ends_at_s[] = "Koniec o %s";
 static const char text_1_enjoying_a_brief_moment_of_nothing[] = "chwila słodkiego nic";
 static const char text_1_experimental_hardware[] = "Sprzęt eksperymentalny - bez testów na tej płytce";
 static const char text_1_feels_like[] = "Odczuwalna";
@@ -492,6 +503,7 @@ static const char text_1_freezing_rain[] = "Marznący deszcz";
 static const char text_1_game_activity_fps_unavailable[] = "Gra / FPS niedostępne";
 static const char text_1_game_activity_live_frame_rate[] = "Gra / klatki na sekundę";
 static const char text_1_game_activity_measuring_fps[] = "Gra / mierzę FPS...";
+static const char text_1_gauge_left[] = "zostało";
 static const char text_1_give_me_a_sec_i_m_cooking[] = "chwilka, coś kombinuję";
 static const char text_1_gpu[] = "GPU";
 static const char text_1_gpu_load_60_seconds[] = "Obciążenie GPU  /  60 sekund";
@@ -500,6 +512,7 @@ static const char text_1_heavy_lifting_in_progress[] = "ciężka praca w toku";
 static const char text_1_hey_that_s_me[] = "Hej, to ja!";
 static const char text_1_high_low[] = "Maks. / min.";
 static const char text_1_high_low_units_precipitation_chance[] = "Maks. / min. w %s / szansa opadów";
+static const char text_1_high_s_low_s[] = "Maks. %s  ·  Min. %s";
 static const char text_1_hmm_clawsome_question[] = "hmm, szczypiące pytanie";
 static const char text_1_home[] = "Dom";
 static const char text_1_hours[] = "Godziny";
@@ -519,7 +532,9 @@ static const char text_1_keep_clawpal_running_in_your_pc_s_tray_recorded[] = "Po
 static const char text_1_last_activity_s[] = "Ostatnia aktywność: %s";
 static const char text_1_last_reading_u_min_ago_reconnecting[] = "Odczyt sprzed %u min. Łączę ponownie...";
 static const char text_1_last_reading_u_s_ago_reconnecting[] = "Odczyt sprzed %u s. Łączę ponownie...";
+static const char text_1_lasts_until_reset[] = "Wystarczy do odnowienia";
 static const char text_1_let_s_connect_your_buddy[] = "Połączmy Twojego Buddy.";
+static const char text_1_limit_reached[] = "Limit wyczerpany";
 static const char text_1_limits_from_your_claude_account[] = "Limity z Twojego konta Claude Code";
 static const char text_1_limits_from_your_codex_account[] = "Limity z Twojego konta Codex";
 static const char text_1_limits_from_your_pc[] = "Limity z Twojego PC";
@@ -531,9 +546,12 @@ static const char text_1_loading_weather[] = "Wczytuję pogodę";
 static const char text_1_local_snapshot[] = "Lokalny zapis";
 static const char text_1_local_time[] = "Czas lokalny";
 static const char text_1_lu_d_ago[] = "%lu dni temu";
+static const char text_1_lu_d_lu_h[] = "%lu dni %lu godz.";
 static const char text_1_lu_day_limit[] = "Limit na %lu dni";
 static const char text_1_lu_h_ago[] = "%lu godz. temu";
+static const char text_1_lu_h_lu_min[] = "%lu godz. %lu min";
 static const char text_1_lu_hour_limit[] = "Limit na %lu godz.";
+static const char text_1_lu_min[] = "%lu min";
 static const char text_1_lu_min_ago[] = "%lu min temu";
 static const char text_1_lu_minute_limit[] = "Limit na %lu min";
 static const char text_1_lu_recently_working[] = "Ostatnio pracowało: %lu";
@@ -626,12 +644,14 @@ static const char text_1_recorded_locally_not_live_task_status[] = "Zapis lokaln
 static const char text_1_remaining[] = "pozostało";
 static const char text_1_reset[] = "Wyzeruj";
 static const char text_1_reset_time_unavailable[] = "Czas odnowienia nieznany";
+static const char text_1_resets_in_s[] = "Odnowienie za %s";
 static const char text_1_resets_value[] = "Odnowienie: %s";
 static const char text_1_resume[] = "Wznów";
 static const char text_1_resume_to_continue_or_reset_to_adjust[] = "Wznów odliczanie lub wyzeruj, aby zmienić czas";
 static const char text_1_running[] = "Odliczam";
 static const char text_1_running_12d2cf[] = " / odliczam";
 static const char text_1_running_in_background[] = "Działa w tle";
+static const char text_1_runs_out_around_s[] = "Skończy się ok. %s";
 static const char text_1_s_lu_d_ago[] = "%s %lu dni temu";
 static const char text_1_s_lu_h_ago[] = "%s %lu godz. temu";
 static const char text_1_s_lu_min_ago[] = "%s %lu min temu";
@@ -856,6 +876,7 @@ const char *const buddy_language_texts[][BT_COUNT] = {
         text_0_down,
         text_0_dreaming_of_warmer_waters,
         text_0_drizzle,
+        text_0_ends_at_s,
         text_0_enjoying_a_brief_moment_of_nothing,
         text_0_experimental_hardware,
         text_0_feels_like,
@@ -871,6 +892,7 @@ const char *const buddy_language_texts[][BT_COUNT] = {
         text_0_game_activity_fps_unavailable,
         text_0_game_activity_live_frame_rate,
         text_0_game_activity_measuring_fps,
+        text_0_gauge_left,
         text_0_give_me_a_sec_i_m_cooking,
         text_0_gpu,
         text_0_gpu_load_60_seconds,
@@ -879,6 +901,7 @@ const char *const buddy_language_texts[][BT_COUNT] = {
         text_0_hey_that_s_me,
         text_0_high_low,
         text_0_high_low_units_precipitation_chance,
+        text_0_high_s_low_s,
         text_0_hmm_clawsome_question,
         text_0_home,
         text_0_hours,
@@ -898,7 +921,9 @@ const char *const buddy_language_texts[][BT_COUNT] = {
         text_0_last_activity_s,
         text_0_last_reading_u_min_ago_reconnecting,
         text_0_last_reading_u_s_ago_reconnecting,
+        text_0_lasts_until_reset,
         text_0_let_s_connect_your_buddy,
+        text_0_limit_reached,
         text_0_limits_from_your_claude_account,
         text_0_limits_from_your_codex_account,
         text_0_limits_from_your_pc,
@@ -910,9 +935,12 @@ const char *const buddy_language_texts[][BT_COUNT] = {
         text_0_local_snapshot,
         text_0_local_time,
         text_0_lu_d_ago,
+        text_0_lu_d_lu_h,
         text_0_lu_day_limit,
         text_0_lu_h_ago,
+        text_0_lu_h_lu_min,
         text_0_lu_hour_limit,
+        text_0_lu_min,
         text_0_lu_min_ago,
         text_0_lu_minute_limit,
         text_0_lu_recently_working,
@@ -1005,12 +1033,14 @@ const char *const buddy_language_texts[][BT_COUNT] = {
         text_0_remaining,
         text_0_reset,
         text_0_reset_time_unavailable,
+        text_0_resets_in_s,
         text_0_resets_value,
         text_0_resume,
         text_0_resume_to_continue_or_reset_to_adjust,
         text_0_running,
         text_0_running_12d2cf,
         text_0_running_in_background,
+        text_0_runs_out_around_s,
         text_0_s_lu_d_ago,
         text_0_s_lu_h_ago,
         text_0_s_lu_min_ago,
@@ -1235,6 +1265,7 @@ const char *const buddy_language_texts[][BT_COUNT] = {
         text_1_down,
         text_1_dreaming_of_warmer_waters,
         text_1_drizzle,
+        text_1_ends_at_s,
         text_1_enjoying_a_brief_moment_of_nothing,
         text_1_experimental_hardware,
         text_1_feels_like,
@@ -1250,6 +1281,7 @@ const char *const buddy_language_texts[][BT_COUNT] = {
         text_1_game_activity_fps_unavailable,
         text_1_game_activity_live_frame_rate,
         text_1_game_activity_measuring_fps,
+        text_1_gauge_left,
         text_1_give_me_a_sec_i_m_cooking,
         text_1_gpu,
         text_1_gpu_load_60_seconds,
@@ -1258,6 +1290,7 @@ const char *const buddy_language_texts[][BT_COUNT] = {
         text_1_hey_that_s_me,
         text_1_high_low,
         text_1_high_low_units_precipitation_chance,
+        text_1_high_s_low_s,
         text_1_hmm_clawsome_question,
         text_1_home,
         text_1_hours,
@@ -1277,7 +1310,9 @@ const char *const buddy_language_texts[][BT_COUNT] = {
         text_1_last_activity_s,
         text_1_last_reading_u_min_ago_reconnecting,
         text_1_last_reading_u_s_ago_reconnecting,
+        text_1_lasts_until_reset,
         text_1_let_s_connect_your_buddy,
+        text_1_limit_reached,
         text_1_limits_from_your_claude_account,
         text_1_limits_from_your_codex_account,
         text_1_limits_from_your_pc,
@@ -1289,9 +1324,12 @@ const char *const buddy_language_texts[][BT_COUNT] = {
         text_1_local_snapshot,
         text_1_local_time,
         text_1_lu_d_ago,
+        text_1_lu_d_lu_h,
         text_1_lu_day_limit,
         text_1_lu_h_ago,
+        text_1_lu_h_lu_min,
         text_1_lu_hour_limit,
+        text_1_lu_min,
         text_1_lu_min_ago,
         text_1_lu_minute_limit,
         text_1_lu_recently_working,
@@ -1384,12 +1422,14 @@ const char *const buddy_language_texts[][BT_COUNT] = {
         text_1_remaining,
         text_1_reset,
         text_1_reset_time_unavailable,
+        text_1_resets_in_s,
         text_1_resets_value,
         text_1_resume,
         text_1_resume_to_continue_or_reset_to_adjust,
         text_1_running,
         text_1_running_12d2cf,
         text_1_running_in_background,
+        text_1_runs_out_around_s,
         text_1_s_lu_d_ago,
         text_1_s_lu_h_ago,
         text_1_s_lu_min_ago,

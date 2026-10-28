@@ -131,7 +131,7 @@ public sealed class Connection : IDisposable
     public static async Task<ClientWebSocket> ConnectAsync(DeviceEndpoint endpoint, string token, CancellationToken cancellationToken)
     {
         var socket = new ClientWebSocket();
-        socket.Options.SetRequestHeader("Authorization", "Bearer " + token);
+        socket.Options.SetRequestHeader("Authorization", DeviceAuth.For(endpoint, token).Authorization("GET", "/monitor", DeviceAuth.EmptyBodyHash));
         socket.Options.KeepAliveInterval = TimeSpan.FromSeconds(5);
         socket.Options.Proxy = null;
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);

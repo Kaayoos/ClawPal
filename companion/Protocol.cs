@@ -20,6 +20,9 @@ public static class Protocol
 
     public static string Proof(string token, string nonce, string id) =>
         Convert.ToHexString(HMACSHA256.HashData(Encoding.UTF8.GetBytes(token), Encoding.UTF8.GetBytes($"{nonce}|{id}|{MonitorPort}"))).ToLowerInvariant();
+    // Protocol 2 hellos also carry a fresh challenge for signed requests; the proof covers it.
+    public static string Proof(string token, string nonce, string id, string challenge) =>
+        Convert.ToHexString(HMACSHA256.HashData(Encoding.UTF8.GetBytes(token), Encoding.UTF8.GetBytes($"{nonce}|{id}|{MonitorPort}|{challenge}"))).ToLowerInvariant();
 
     public static DeviceEndpoint? ValidateHello(ReadOnlySpan<byte> payload, IPAddress sender, string token, string nonce, string expectedId)
     {
@@ -30,12 +33,14 @@ public static class Protocol
             var root = doc.RootElement;
             var id = root.GetProperty("id").GetString();
             var proof = root.GetProperty("proof").GetString();
-            if (root.GetProperty("type").GetString() != "buddy.hello" || root.GetProperty("v").GetInt32() != 1 ||
+            int version = root.GetProperty("v").GetInt32();
+            string? challenge = version == 2 ? root.GetProperty("challenge").GetString() : null;
+            if (root.GetProperty("type").GetString() != "buddy.hello" || version is not (1 or 2) || (version == 2 && !IsLowerHex(challenge, 32)) ||
                 root.GetProperty("port").GetInt32() != MonitorPort || root.GetProperty("nonce").GetString() != nonce ||
                 !IsLowerHex(id, 12) || (!string.IsNullOrEmpty(expectedId) && id != expectedId) || !IsLowerHex(proof, 64)) return null;
             var supplied = Convert.FromHexString(proof!);
-            var actual = Convert.FromHexString(Proof(token, nonce, id!));
-            return CryptographicOperations.FixedTimeEquals(supplied, actual) ? new DeviceEndpoint(sender, id!) : null;
+            var actual = Convert.FromHexString(challenge is null ? Proof(token, nonce, id!) : Proof(token, nonce, id!, challenge));
+            return CryptographicOperations.FixedTimeEquals(supplied, actual) ? new DeviceEndpoint(sender, id!, challenge) : null;
         }
         catch (Exception error) when (error is JsonException or InvalidOperationException or KeyNotFoundException or FormatException or OverflowException) { return null; }
     }
@@ -64,11 +69,16 @@ public static class Protocol
             if (root.ValueKind != JsonValueKind.Object) return null;
             var fields = new HashSet<string>(StringComparer.Ordinal);
             foreach (var field in root.EnumerateObject())
-                if (field.Name is not ("type" or "v" or "id" or "action") || !fields.Add(field.Name)) return null;
-            if (fields.Count != 4 || root.GetProperty("type").GetString() != "buddy.control" ||
+                if (field.Name is not ("type" or "v" or "id" or "action" or "value") || !fields.Add(field.Name)) return null;
+            bool valued = fields.Contains("value");
+            if (fields.Count != (valued ? 5 : 4) || root.GetProperty("type").GetString() != "buddy.control" ||
                 root.GetProperty("v").GetInt32() != 1 || !root.GetProperty("id").TryGetInt32(out var id) || id <= 0) return null;
             var action = root.GetProperty("action").GetString();
-            return action is "play_pause" or "next" or "previous" ? new DeviceControl(id, action) : null;
+            // Seek (seconds) and volume (percent) carry a value; toggles never do.
+            if (valued != (action is "seek" or "volume")) return null;
+            int value = 0;
+            if (valued && (!root.GetProperty("value").TryGetInt32(out value) || value < 0 || value > (action == "volume" ? 100 : 604800))) return null;
+            return action is "play_pause" or "next" or "previous" or "shuffle" or "repeat" or "mute" or "seek" or "volume" ? new DeviceControl(id, action, value) : null;
         }
         catch (Exception error) when (error is JsonException or InvalidOperationException or KeyNotFoundException or FormatException or OverflowException) { return null; }
     }
@@ -115,7 +125,8 @@ public sealed class TextMessageBuffer
     }
 }
 
-public sealed record DeviceEndpoint(IPAddress Address, string Id);
+// Challenge is set for displays that accept signed requests (see DeviceAuth).
+public sealed record DeviceEndpoint(IPAddress Address, string Id, string? Challenge = null);
 public sealed record CpuStats(double? Usage, double? Temperature, string Name);
 public sealed record GpuStats(double? Usage, double? Temperature, double? VramUsedMb, double? VramTotalMb, string Name);
 public sealed record MemoryStats(double UsedMb, double TotalMb, double Usage);
@@ -126,9 +137,13 @@ public sealed record PcStats(string Type, int V, long Seq, string Hostname, long
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] CodexStats? Claude = null,
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] GameStats? Game = null,
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] bool? AutoOpenApps = null);
+// Repeat follows MediaPlaybackAutoRepeatMode: 0 off, 1 track, 2 list. ArtColor is
+// 0xRRGGBB picked from the album cover, or 0 when the display should keep its accent.
 public sealed record MusicStats(bool Running, bool Available, string Title, string Artist, string Album, bool Playing,
-    long PositionS, long DurationS, bool CanPlayPause, bool CanNext, bool CanPrevious, int ControlId = 0, bool ControlOk = false, string ControlError = "");
-public sealed record DeviceControl(int Id, string Action);
+    long PositionS, long DurationS, bool CanPlayPause, bool CanNext, bool CanPrevious, int ControlId = 0, bool ControlOk = false, string ControlError = "",
+    bool CanShuffle = false, bool Shuffle = false, bool CanRepeat = false, int Repeat = 0, bool CanSeek = false,
+    bool CanVolume = false, int Volume = 0, bool Muted = false, int ArtColor = 0);
+public sealed record DeviceControl(int Id, string Action, int Value = 0);
 public sealed record MusicControlResult(int Id, bool Ok, string Error);
 
 public sealed class ControlSequence
@@ -164,6 +179,50 @@ public static class MusicContract
     }
 
     public static long Seconds(double value) => double.IsFinite(value) ? (long)Math.Clamp(Math.Floor(value), 0, 604800) : 0;
+
+    // Picks the dominant vivid hue of a small BGRA cover thumbnail and lifts it into a
+    // range that reads on the display's dark background. Grey covers return 0.
+    public static int AccentColor(ReadOnlySpan<byte> bgra)
+    {
+        int pixels = bgra.Length / 4;
+        if (pixels == 0) return 0;
+        Span<double> bins = stackalloc double[12 * 4];
+        double total = 0;
+        for (int i = 0; i < pixels * 4; i += 4)
+        {
+            double b = bgra[i] / 255.0, g = bgra[i + 1] / 255.0, r = bgra[i + 2] / 255.0, alpha = bgra[i + 3] / 255.0;
+            double max = Math.Max(r, Math.Max(g, b)), min = Math.Min(r, Math.Min(g, b)), chroma = max - min;
+            // Vivid mid-tones count most; highlights, shadows and greys barely register.
+            double weight = chroma * chroma * (1 - Math.Abs(max + min - 1)) * alpha;
+            if (weight <= 0) continue;
+            int bin = (int)(Hue(r, g, b, max, chroma) * 2) % 12;
+            bins[bin * 4] += weight; bins[bin * 4 + 1] += r * weight; bins[bin * 4 + 2] += g * weight; bins[bin * 4 + 3] += b * weight;
+            total += weight;
+        }
+        if (total < pixels * 0.004) return 0;
+        int best = 0;
+        for (int bin = 1; bin < 12; ++bin) if (bins[bin * 4] > bins[best * 4]) best = bin;
+        double weightSum = bins[best * 4], red = bins[best * 4 + 1] / weightSum, green = bins[best * 4 + 2] / weightSum, blue = bins[best * 4 + 3] / weightSum;
+        double high = Math.Max(red, Math.Max(green, blue)), low = Math.Min(red, Math.Min(green, blue)), lightness = (high + low) / 2;
+        double saturation = high == low ? 0 : (high - low) / (1 - Math.Abs(2 * lightness - 1));
+        double hue = Hue(red, green, blue, high, high - low);
+        return Rgb(hue, Math.Clamp(saturation, 0.5, 0.85), Math.Clamp(lightness, 0.58, 0.7));
+    }
+
+    private static double Hue(double r, double g, double b, double max, double chroma)
+    {
+        if (chroma <= 0) return 0;
+        double hue = max == r ? (g - b) / chroma : max == g ? (b - r) / chroma + 2 : (r - g) / chroma + 4;
+        return hue < 0 ? hue + 6 : hue;
+    }
+
+    private static int Rgb(double hue, double saturation, double lightness)
+    {
+        double chroma = (1 - Math.Abs(2 * lightness - 1)) * saturation, x = chroma * (1 - Math.Abs(hue % 2 - 1)), m = lightness - chroma / 2;
+        (double r, double g, double b) = (int)hue switch { 0 => (chroma, x, 0.0), 1 => (x, chroma, 0.0), 2 => (0.0, chroma, x), 3 => (0.0, x, chroma), 4 => (x, 0.0, chroma), _ => (chroma, 0.0, x) };
+        int Channel(double value) => (int)Math.Round(Math.Clamp(value + m, 0, 1) * 255);
+        return Channel(r) << 16 | Channel(g) << 8 | Channel(b);
+    }
 }
 
 public static class CounterMath

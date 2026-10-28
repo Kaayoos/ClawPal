@@ -104,14 +104,20 @@ internal static class Program
     }
     private static async Task MusicDiagnostics(string path, string? action)
     {
-        if (action is not (null or "play_pause" or "next" or "previous")) throw new ArgumentException(L.Text("unsupported_spotify_diagnostic_command"));
+        // Valued commands are written as seek:SECONDS or volume:PERCENT.
+        string[] parts = (action ?? "").Split(':', 2);
+        int value = 0;
+        bool valid = action is null ||
+            (parts.Length == 1 && parts[0] is "play_pause" or "next" or "previous" or "shuffle" or "repeat" or "mute") ||
+            (parts.Length == 2 && parts[0] is "seek" or "volume" && int.TryParse(parts[1], out value) && value >= 0 && value <= (parts[0] == "volume" ? 100 : 604800));
+        if (!valid) throw new ArgumentException(L.Text("unsupported_spotify_diagnostic_command"));
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(12));
         var media = new SpotifyMedia();
         var before = await media.RefreshAsync(timeout.Token);
         MusicControlResult? command = null;
         if (action is not null)
         {
-            command = await media.ExecuteAsync(new(1, action), timeout.Token);
+            command = await media.ExecuteAsync(new(1, parts[0], value), timeout.Token);
             await Task.Delay(500, timeout.Token);
         }
         var after = action is null ? before : await media.RefreshAsync(timeout.Token);

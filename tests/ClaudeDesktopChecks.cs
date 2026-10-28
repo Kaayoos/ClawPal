@@ -69,6 +69,14 @@ internal static class ClaudeDesktopChecks
         Check(ClaudeDesktop.ReadAt(root, row, now) is { Primary.Available: false }, "oversized history is bounded");
         File.WriteAllText(session, "{\"cliSessionId\":\"desktop-session\",\"isArchived\":true}");
         Check(ClaudeDesktop.ReadAt(root, row, now) is null, "archived Desktop sessions cannot select quota");
+        string roaming = Path.Combine(directory, "claude-roots", "Roaming"), local = Path.Combine(directory, "claude-roots", "Local");
+        string moved = Path.Combine(local, "Claude-Data", "claude_example"), legacy = Path.Combine(roaming, "Claude");
+        string packaged = Path.Combine(local, "Packages", "Claude_example", "LocalCache", "Roaming", "Claude");
+        foreach (string folder in new[] { moved, legacy, packaged }) Directory.CreateDirectory(folder);
+        Check(ClaudeDesktop.Roots(roaming, local).First() == moved, "searches the moved Claude-Data folder first");
+        File.WriteAllText(Path.Combine(legacy, ".user-data-left.claude_example"), "");
+        File.WriteAllText(Path.Combine(packaged, ".user-data-left.claude_example"), "");
+        Check(ClaudeDesktop.Roots(roaming, local).SequenceEqual([moved]), "never reads folders Desktop has moved away from");
         return passed;
     }
 }

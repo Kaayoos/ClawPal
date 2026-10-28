@@ -7,7 +7,7 @@
     <Nullable>enable</Nullable>
     <AssemblyName>ClawPal.Companion</AssemblyName>
     <RootNamespace>ClawPal.Companion</RootNamespace>
-    <Version>0.9.1</Version>
+    <Version>0.10.0</Version>
     <Authors>MinimalPulse</Authors>
     <Company>MinimalPulse</Company>
     <Copyright>Copyright © 2026 MinimalPulse and contributors</Copyright>
@@ -22,6 +22,7 @@
 <ItemGroup><EmbeddedResource Include="../assets/mascot/*.png" /><EmbeddedResource Include="../assets/logos/*.png" /><EmbeddedResource Include="Payload.zip" Condition="Exists('Payload.zip')" LogicalName="ClawPal.Payload" /></ItemGroup>
   <ItemGroup><EmbeddedResource Include="../languages/*.json" LogicalName="ClawPal.Languages.%(Filename).json" /></ItemGroup>
   <ItemGroup><EmbeddedResource Include="../boards/catalog.json" LogicalName="ClawPal.Boards" /></ItemGroup>
+  <ItemGroup><EmbeddedResource Include="Assets/timezones.json" LogicalName="ClawPal.TimeZones" /></ItemGroup>
 </Project>
 
 

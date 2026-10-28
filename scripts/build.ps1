@@ -1,8 +1,10 @@
-param([string]$Dotnet = 'dotnet', [string]$Python = 'python', [switch]$SkipTests)
+param([string]$Dotnet = 'dotnet', [string]$Python = 'python', [switch]$SkipTests, [switch]$RequireCodeSigning)
 $ErrorActionPreference = 'Stop'
 $repo = Split-Path -Parent $PSScriptRoot
 & $Python (Join-Path $PSScriptRoot 'generate_languages.py') --check
 if ($LASTEXITCODE -ne 0) { throw 'Language catalog validation failed' }
+& $Python (Join-Path $PSScriptRoot 'generate_timezones.py') --check
+if ($LASTEXITCODE -ne 0) { throw 'Time zone table validation failed' }
 $payload = Join-Path $repo 'payload'
 $archive = Join-Path $repo '.downloads/esptool.zip'
 $tool = Join-Path $payload 'tools/esptool.exe'
@@ -43,6 +45,8 @@ if (-not $SkipTests) {
 }
 & $Dotnet publish (Join-Path $repo 'companion/ClawPal.Companion.csproj') -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:EnableCompressionInSingleFile=true -p:DebugType=None -o (Join-Path $repo 'dist')
 if ($LASTEXITCODE -ne 0) { throw 'Publish failed' }
+# Sign before copying and hashing, so the release manifest describes the signed installer.
+& (Join-Path $PSScriptRoot 'sign-windows.ps1') -Path (Join-Path $repo 'dist/ClawPal.Companion.exe') -Require:$RequireCodeSigning
 Copy-Item (Join-Path $repo 'dist/ClawPal.Companion.exe') (Join-Path $repo 'dist/ClawPal-Setup.exe') -Force
 Write-Host 'Ready: dist/ClawPal-Setup.exe'
 

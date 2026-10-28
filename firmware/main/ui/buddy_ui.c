@@ -19,7 +19,9 @@
 #include "buddy_ui_motion.h"
 #include "buddy_home.h"
 #include "buddy_app_icons.h"
+#include "buddy_home_logos.h"
 #include "buddy_weather_page.h"
+#include "buddy_weather_icon.h"
 
 /* Broadcast meter bridge: real channels, shared time, restrained state ink. */
 #define C_BG       BUDDY_COLOR_BG
@@ -39,16 +41,47 @@
 #define C_CLOCK_TEXT BUDDY_COLOR_CLOCK_TEXT
 #define C_CLOCK_DATE BUDDY_COLOR_MUTED
 #define MUSIC_COMMAND_TIMEOUT_MS 5000U
+#define MUSIC_SENDING_DELAY_MS 700U
+#define MUSIC_HOLD_MS 3000U
 
+/* Player controls in transport order; the two sliders follow the buttons. */
+enum {
+    MUSIC_SHUFFLE_BUTTON, MUSIC_PREVIOUS_BUTTON, MUSIC_PLAY_BUTTON, MUSIC_NEXT_BUTTON, MUSIC_REPEAT_BUTTON, MUSIC_MUTE_BUTTON,
+    MUSIC_BUTTON_COUNT, MUSIC_SEEK_CONTROL = MUSIC_BUTTON_COUNT, MUSIC_VOLUME_CONTROL, MUSIC_CONTROL_COUNT
+};
+
+/* A tappable CPU or GPU card: load gauge, temperature and model name. */
 typedef struct {
     lv_obj_t *button;
     lv_obj_t *name;
+    lv_obj_t *gauge;
     lv_obj_t *usage;
+    lv_obj_t *usage_caption;
     lv_obj_t *temperature;
+    lv_obj_t *temperature_caption;
     lv_obj_t *model;
-    lv_obj_t *bar;
-    lv_obj_t *selection;
 } channel_t;
+
+/* Codex and Claude Code share one account page; only identity and copy differ. */
+typedef struct {
+    const lv_img_dsc_t *logo;
+    uint32_t accent;
+    buddy_text_key_t title, update_needed, open_on_pc, open_body, sign_in_body, update_body, no_limits_body, reading_body;
+} agent_copy_t;
+
+typedef struct {
+    const buddy_codex_t *data;
+    const agent_copy_t *copy;
+    lv_obj_t *page, *logo, *heading, *plan, *status, *age, *mascot;
+    lv_obj_t *tab_track, *tabs[2], *tab_labels[2];
+    lv_obj_t *usage_body, *tasks_body, *empty_title, *empty_body, *tasks_empty_title, *tasks_empty_body;
+    /* One card per usage window: a gauge of what is left, a marker for time left, and its reset. */
+    lv_obj_t *cards[2], *gauges[2], *time_marks[2], *remaining[2], *remaining_captions[2];
+    lv_obj_t *window_names[2], *countdowns[2], *resets[2], *paces[2];
+    lv_obj_t *task_rows[3], *task_dots[3], *task_titles[3], *task_details[3], *task_states[3];
+    int card_top, card_step, card_single_top, gauge_size;
+    bool working[3], chip_on_details, tasks_selected, tab_initialized, tab_manual;
+} agent_view_t;
 
 static struct {
     lv_obj_t *screen, *overview, *details, *empty;
@@ -58,25 +91,15 @@ static struct {
     lv_obj_t *clock_large, *clock_date, *clock_mascot;
     lv_obj_t *weather_row, *weather_icon, *weather_text, *weather_note;
     buddy_weather_t weather;
-    lv_obj_t *music_page, *music_mascot, *music_buddy, *music_status, *music_title, *music_artist, *music_album;
+    lv_obj_t *music_page, *music_logo, *music_heading, *music_status, *music_eq, *music_eq_bars[3];
+    lv_obj_t *music_cover, *music_rings[2], *music_buddy, *music_meta, *music_title, *music_artist, *music_album;
     lv_obj_t *music_progress, *music_elapsed, *music_duration, *music_feedback;
-    lv_obj_t *music_buttons[3], *music_button_labels[3];
-    lv_obj_t *timer_page, *timer_mascot, *timer_status, *timer_time, *timer_progress;
-    lv_obj_t *timer_buttons[2], *timer_button_labels[2], *timer_adjust[6], *timer_units[3];
-    lv_obj_t *codex_page, *codex_mascot, *codex_status, *codex_plan, *codex_age;
-    lv_obj_t *claude_page, *claude_mascot, *claude_status, *claude_plan, *claude_age;
-    lv_obj_t *codex_windows[2], *codex_window_names[2], *codex_remaining[2], *codex_bars[2], *codex_resets[2];
-    lv_obj_t *claude_windows[2], *claude_window_names[2], *claude_remaining[2], *claude_bars[2], *claude_resets[2];
-    lv_obj_t *codex_empty_title, *codex_empty_body;
-    lv_obj_t *claude_empty_title, *claude_empty_body;
-    lv_obj_t *codex_usage_body, *codex_tasks_body, *codex_tabs[2], *codex_tab_labels[2];
-    lv_obj_t *claude_usage_body, *claude_tasks_body, *claude_tabs[2], *claude_tab_labels[2];
-    lv_obj_t *codex_task_summary, *codex_task_rows[3], *codex_task_titles[3];
-    lv_obj_t *claude_task_summary, *claude_task_rows[3], *claude_task_titles[3];
-    lv_obj_t *codex_task_projects[3], *codex_task_states[3], *codex_task_ages[3];
-    lv_obj_t *claude_task_projects[3], *claude_task_states[3], *claude_task_ages[3];
-    lv_obj_t *codex_tasks_empty_title, *codex_tasks_empty_body;
-    lv_obj_t *claude_tasks_empty_title, *claude_tasks_empty_body;
+    lv_obj_t *music_buttons[MUSIC_BUTTON_COUNT], *music_button_labels[MUSIC_BUTTON_COUNT];
+    lv_obj_t *music_toggle_dots[2], *music_repeat_one, *music_volume, *music_volume_label;
+    lv_obj_t *timer_page, *timer_heading, *timer_mascot, *timer_status, *timer_time, *timer_ring, *timer_end;
+    lv_obj_t *timer_buttons[2], *timer_button_labels[2], *timer_adjust[6], *timer_units[3], *timer_captions[3];
+    lv_obj_t *timer_presets[4], *timer_preset_labels[4];
+    agent_view_t codex, claude;
     lv_obj_t *apps_button, *apps_text, *nav_button;
     lv_obj_t *app_rows[BUDDY_APP_COUNT], *app_current[BUDDY_APP_COUNT];
     lv_obj_t *app_description[BUDDY_APP_COUNT], *app_hint[BUDDY_APP_COUNT], *app_mascots[BUDDY_APP_COUNT];
@@ -86,6 +109,7 @@ static struct {
     lv_obj_t *host, *clock, *date, *status, *dot;
     lv_obj_t *footer, *nav_text, *details_button, *details_text;
     lv_obj_t *memory, *memory_percent, *vram, *vram_note;
+    lv_obj_t *tiles[3], *tile_names[3], *memory_bar, *vram_bar, *net_captions[2], *chart_card, *chart_range, *game_fps_unit;
     lv_obj_t *rx, *tx;
     lv_obj_t *chart, *chart_title, *chart_time;
     lv_chart_series_t *cpu_series, *gpu_series;
@@ -109,9 +133,12 @@ static struct {
     bool music_automatic, music_seen_running, music_launch_pending, music_command_pending;
     bool codex_automatic, codex_seen_running, codex_launch_pending;
     bool claude_automatic, claude_seen_running, claude_launch_pending;
-    bool codex_tasks_selected, codex_tab_initialized, codex_tab_manual;
-    bool claude_tasks_selected, claude_tab_initialized, claude_tab_manual;
     uint32_t music_command_tick, music_command_control_id;
+    /* Slider gestures and the values shown until Spotify reports them back. */
+    bool music_feedback_error, music_seeking, music_volume_dragging, music_seek_hold, music_volume_hold;
+    uint32_t music_accent, music_seek_target, music_volume_target, music_seek_tick, music_volume_tick;
+    uint32_t music_title_lines, music_deferred_value;
+    unsigned music_deferred; /* Slider control + 1 waiting for the pending command, or 0. */
     buddy_music_control_callback_t music_control_callback;
     buddy_confirm_callback_t confirm_callback;
     buddy_confirm_action_t confirm_action;
@@ -137,6 +164,10 @@ static void refresh_display_power(void);
 static void refresh_footer(void);
 static void maybe_auto_app(void);
 static void refresh_music(void);
+static lv_obj_t *usage_gauge(lv_obj_t *parent);
+static lv_obj_t *surface_card(lv_obj_t *parent, int radius);
+static lv_obj_t *progress_bar(lv_obj_t *parent, int x, int y, int width);
+static void set_music_feedback(const char *message, bool error);
 static void refresh_timer(void);
 static void refresh_codex(void);
 static void refresh_claude(void);
@@ -365,63 +396,73 @@ static void countdown_text(char *buffer, size_t size, uint32_t seconds)
                   (unsigned long)(seconds % 60U));
 }
 
-static bool codex_window_available(const buddy_codex_window_t *window)
+static bool usage_window_available(const buddy_codex_window_t *window)
 {
     return window->available && isfinite(window->remaining_percent) &&
         window->remaining_percent >= 0 && window->remaining_percent <= 100;
 }
 
-static bool claude_window_available(const buddy_codex_window_t *window)
+static bool agent_has_windows(const buddy_codex_t *data)
 {
-    return window->available && isfinite(window->remaining_percent) &&
-        window->remaining_percent >= 0 && window->remaining_percent <= 100;
+    return ui.have_stats && data->available &&
+        (usage_window_available(&data->primary) || usage_window_available(&data->secondary));
 }
 
-static bool codex_has_windows(void)
+static bool agent_stale(const buddy_codex_t *data)
 {
-    return ui.have_stats && ui.stats.codex.available &&
-        (codex_window_available(&ui.stats.codex.primary) || codex_window_available(&ui.stats.codex.secondary));
+    return agent_has_windows(data) && (data->stale || !music_connected());
 }
 
-static bool claude_has_windows(void)
+static bool agent_tasks_available(const buddy_codex_t *data)
 {
-    return ui.have_stats && ui.stats.claude.available &&
-        (claude_window_available(&ui.stats.claude.primary) || claude_window_available(&ui.stats.claude.secondary));
+    return ui.have_stats && data->activity.available;
 }
 
-static bool codex_stale(void)
+static bool agent_tasks_stale(const buddy_codex_t *data)
 {
-    return codex_has_windows() && (ui.stats.codex.stale || !music_connected());
+    return agent_tasks_available(data) && (data->activity.stale || !music_connected() ||
+        strcmp(data->activity.status, "closed") == 0 ||
+        (uint64_t)data->activity.age_s + lv_tick_elaps(ui.last_stats_tick) / 1000U > 30U);
 }
 
-static bool claude_stale(void)
+/* Accents follow each product's logo; everything else uses the shared theme. */
+static const agent_copy_t codex_copy = {
+    &buddy_logo_codex, 0x8A9CF8, BT_CODEX, BT_CODEX_UPDATE_NEEDED, BT_OPEN_CODEX_ON_YOUR_PC,
+    BT_OPEN_CODEX_OR_CHATGPT_ON_YOUR_PC_YOUR_AVAILABLE, BT_SIGN_IN_TO_CODEX_ON_YOUR_PC_BUDDY_WILL,
+    BT_UPDATE_OR_INSTALL_CODEX_ON_YOUR_PC_BUDDY_NEEDS, BT_YOUR_ACCOUNT_DID_NOT_REPORT_A_USAGE_WINDOW_BUDDY,
+    BT_READING_YOUR_CODEX_ACCOUNT_ON_THE_PC_YOUR_LIMITS,
+};
+static const agent_copy_t claude_copy = {
+    &buddy_logo_claude, 0xDE7656, BT_CLAUDE, BT_CLAUDE_UPDATE_NEEDED, BT_OPEN_CLAUDE_ON_YOUR_PC,
+    BT_OPEN_CLAUDE_OR_CHATGPT_ON_YOUR_PC_YOUR_AVAILABLE, BT_SIGN_IN_TO_CLAUDE_ON_YOUR_PC_BUDDY_WILL,
+    BT_UPDATE_OR_INSTALL_CLAUDE_ON_YOUR_PC_BUDDY_NEEDS, BT_CLAUDE_NO_LIMITS,
+    BT_READING_YOUR_CLAUDE_ACCOUNT_ON_THE_PC_YOUR_LIMITS,
+};
+
+static const char *agent_status_text(const buddy_codex_t *data, const agent_copy_t *copy)
 {
-    return claude_has_windows() && (ui.stats.claude.stale || !music_connected());
+    if (agent_has_windows(data)) return agent_stale(data) ? BT(BT_CACHED_LIMITS) : BT(BT_ACCOUNT_LIMITS);
+    if (!music_connected()) return BT(BT_WAITING_FOR_PC);
+    const char *status = data->status;
+    if (strcmp(status, "signed_out") == 0 || strcmp(status, "unauthorized") == 0 ||
+        strcmp(status, "sign_in") == 0) return BT(BT_SIGN_IN_ON_YOUR_PC);
+    if (strcmp(status, "runtime_missing") == 0) return BT(copy->update_needed);
+    if (strcmp(status, "no_limits") == 0) return BT(BT_NO_LIMITS_REPORTED);
+    if (strcmp(status, "error") == 0 || strcmp(status, "failed") == 0 ||
+        (strcmp(status, "unavailable") == 0 && data->running)) return BT(BT_LIMITS_UNAVAILABLE);
+    return data->running ? BT(BT_WAITING_FOR_LIMITS) : BT(copy->open_on_pc);
 }
 
-static bool codex_tasks_available(void)
-{
-    return ui.have_stats && ui.stats.codex.activity.available;
-}
-
-static bool claude_tasks_available(void)
-{
-    return ui.have_stats && ui.stats.claude.activity.available;
-}
-
-static bool codex_tasks_stale(void)
-{
-    return codex_tasks_available() && (ui.stats.codex.activity.stale || !music_connected() ||
-        strcmp(ui.stats.codex.activity.status, "closed") == 0 ||
-        (uint64_t)ui.stats.codex.activity.age_s + lv_tick_elaps(ui.last_stats_tick) / 1000U > 30U);
-}
-
-static bool claude_tasks_stale(void)
-{
-    return claude_tasks_available() && (ui.stats.claude.activity.stale || !music_connected() ||
-        strcmp(ui.stats.claude.activity.status, "closed") == 0 ||
-        (uint64_t)ui.stats.claude.activity.age_s + lv_tick_elaps(ui.last_stats_tick) / 1000U > 30U);
-}
+static bool codex_has_windows(void) { return agent_has_windows(&ui.stats.codex); }
+static bool claude_has_windows(void) { return agent_has_windows(&ui.stats.claude); }
+static bool codex_stale(void) { return agent_stale(&ui.stats.codex); }
+static bool claude_stale(void) { return agent_stale(&ui.stats.claude); }
+static bool codex_tasks_available(void) { return agent_tasks_available(&ui.stats.codex); }
+static bool claude_tasks_available(void) { return agent_tasks_available(&ui.stats.claude); }
+static bool codex_tasks_stale(void) { return agent_tasks_stale(&ui.stats.codex); }
+static bool claude_tasks_stale(void) { return agent_tasks_stale(&ui.stats.claude); }
+static const char *codex_status_text(void) { return agent_status_text(&ui.stats.codex, &codex_copy); }
+static const char *claude_status_text(void) { return agent_status_text(&ui.stats.claude, &claude_copy); }
 
 static void activity_age_text(char *buffer, size_t size, uint32_t source_age)
 {
@@ -432,47 +473,7 @@ static void activity_age_text(char *buffer, size_t size, uint32_t source_age)
     else snprintf(buffer, size, BT(BT_LU_D_AGO), (unsigned long)(age / 86400U));
 }
 
-static const char *codex_status_text(void)
-{
-    if (codex_has_windows()) return codex_stale() ? BT(BT_CACHED_LIMITS) : BT(BT_ACCOUNT_LIMITS);
-    if (!music_connected()) return BT(BT_WAITING_FOR_PC);
-    const char *status = ui.stats.codex.status;
-    if (strcmp(status, "signed_out") == 0 || strcmp(status, "unauthorized") == 0 ||
-        strcmp(status, "sign_in") == 0) return BT(BT_SIGN_IN_ON_YOUR_PC);
-    if (strcmp(status, "runtime_missing") == 0) return BT(BT_CODEX_UPDATE_NEEDED);
-    if (strcmp(status, "no_limits") == 0) return BT(BT_NO_LIMITS_REPORTED);
-    if (strcmp(status, "error") == 0 || strcmp(status, "failed") == 0 ||
-        (strcmp(status, "unavailable") == 0 && ui.stats.codex.running)) return BT(BT_LIMITS_UNAVAILABLE);
-    return ui.stats.codex.running ? BT(BT_WAITING_FOR_LIMITS) : BT(BT_OPEN_CODEX_ON_YOUR_PC);
-}
-
-static const char *claude_status_text(void)
-{
-    if (claude_has_windows()) return claude_stale() ? BT(BT_CACHED_LIMITS) : BT(BT_ACCOUNT_LIMITS);
-    if (!music_connected()) return BT(BT_WAITING_FOR_PC);
-    const char *status = ui.stats.claude.status;
-    if (strcmp(status, "signed_out") == 0 || strcmp(status, "unauthorized") == 0 ||
-        strcmp(status, "sign_in") == 0) return BT(BT_SIGN_IN_ON_YOUR_PC);
-    if (strcmp(status, "runtime_missing") == 0) return BT(BT_CLAUDE_UPDATE_NEEDED);
-    if (strcmp(status, "no_limits") == 0) return BT(BT_NO_LIMITS_REPORTED);
-    if (strcmp(status, "error") == 0 || strcmp(status, "failed") == 0 ||
-        (strcmp(status, "unavailable") == 0 && ui.stats.claude.running)) return BT(BT_LIMITS_UNAVAILABLE);
-    return ui.stats.claude.running ? BT(BT_WAITING_FOR_LIMITS) : BT(BT_OPEN_CLAUDE_ON_YOUR_PC);
-}
-
-static void codex_window_name(char *buffer, size_t size, uint32_t minutes)
-{
-    if (minutes == 10080U) snprintf(buffer, size, BT(BT_WEEKLY_LIMIT));
-    else if (minutes == 1440U) snprintf(buffer, size, BT(BT_DAILY_LIMIT));
-    else if (minutes && minutes % 1440U == 0)
-        snprintf(buffer, size, BT(BT_LU_DAY_LIMIT), (unsigned long)(minutes / 1440U));
-    else if (minutes && minutes % 60U == 0)
-        snprintf(buffer, size, BT(BT_LU_HOUR_LIMIT), (unsigned long)(minutes / 60U));
-    else if (minutes) snprintf(buffer, size, BT(BT_LU_MINUTE_LIMIT), (unsigned long)minutes);
-    else snprintf(buffer, size, BT(BT_USAGE_LIMIT));
-}
-
-static void claude_window_name(char *buffer, size_t size, uint32_t minutes)
+static void usage_window_name(char *buffer, size_t size, uint32_t minutes)
 {
     if (minutes == 10080U) snprintf(buffer, size, BT(BT_WEEKLY_LIMIT));
     else if (minutes == 1440U) snprintf(buffer, size, BT(BT_DAILY_LIMIT));
@@ -515,7 +516,7 @@ static void refresh_app_cards(void)
     set_label_if_changed(ui.app_hint[BUDDY_APP_TIMER], ui.timer_running ? BT(BT_RUNNING_IN_BACKGROUND) :
         ui.timer_completed ? BT(BT_TIME_S_UP) : ui.timer_started ? BT(BT_PAUSED) : BT(BT_READY_TO_START));
     if (codex_has_windows()) {
-        const buddy_codex_window_t *window = codex_window_available(&ui.stats.codex.primary) ?
+        const buddy_codex_window_t *window = usage_window_available(&ui.stats.codex.primary) ?
             &ui.stats.codex.primary : &ui.stats.codex.secondary;
         snprintf(value, sizeof(value), BT(BT_0F_REMAINING), window->remaining_percent);
     } else snprintf(value, sizeof(value), "%s", codex_status_text());
@@ -527,7 +528,7 @@ static void refresh_app_cards(void)
         set_label_if_changed(ui.app_hint[BUDDY_APP_CODEX], BT(BT_RECORDED_LOCALLY));
     }
     if (claude_has_windows()) {
-        const buddy_codex_window_t *window = claude_window_available(&ui.stats.claude.primary) ?
+        const buddy_codex_window_t *window = usage_window_available(&ui.stats.claude.primary) ?
             &ui.stats.claude.primary : &ui.stats.claude.secondary;
         snprintf(value, sizeof(value), BT(BT_0F_REMAINING), window->remaining_percent);
     } else snprintf(value, sizeof(value), "%s", claude_status_text());
@@ -606,7 +607,7 @@ static buddy_mascot_state_t mascot_state(void)
         return ui.timer_running ? BUDDY_MASCOT_TYPING : BUDDY_MASCOT_IDLE;
     }
     if (ui.active_app == BUDDY_APP_MUSIC)
-        return ui.music_feedback && lv_label_get_text(ui.music_feedback)[0] ? BUDDY_MASCOT_ERROR : BUDDY_MASCOT_MUSIC;
+        return ui.music_feedback_error ? BUDDY_MASCOT_ERROR : BUDDY_MASCOT_MUSIC;
     if (ui.active_app == BUDDY_APP_CODEX) {
         if (music_connected() && (strcmp(ui.stats.codex.status, "error") == 0 || strcmp(ui.stats.codex.status, "failed") == 0))
             return BUDDY_MASCOT_ERROR;
@@ -652,8 +653,8 @@ static void update_large_frame(const lv_img_dsc_t *source)
     lv_obj_t *target_image = ui.startup_mascot ? ui.startup_mascot :
         ui.active_app == BUDDY_APP_CLOCK ? ui.clock_mascot :
         ui.active_app == BUDDY_APP_TIMER ? ui.timer_mascot :
-        ui.active_app == BUDDY_APP_CODEX ? ui.codex_mascot :
-        ui.active_app == BUDDY_APP_CLAUDE ? ui.claude_mascot :
+        ui.active_app == BUDDY_APP_CODEX ? ui.codex.mascot :
+        ui.active_app == BUDDY_APP_CLAUDE ? ui.claude.mascot :
         ui.active_app == BUDDY_APP_MUSIC ? ui.music_buddy : ui.transition_image;
     lv_img_set_src(target_image, &ui.startup_frame);
     lv_obj_invalidate(target_image);
@@ -667,8 +668,13 @@ static void mascot_tick(lv_timer_t *timer)
         ui.timer_celebrating = false;
     if (ui.music_command_pending && lv_tick_elaps(ui.music_command_tick) >= MUSIC_COMMAND_TIMEOUT_MS) {
         ui.music_command_pending = false;
-        lv_label_set_text(ui.music_feedback, BT(BT_NO_REPLY_FROM_SPOTIFY_TRY_AGAIN));
+        ui.music_deferred = 0;
+        set_music_feedback(BT(BT_NO_REPLY_FROM_SPOTIFY_TRY_AGAIN), true);
         refresh_music();
+    } else if (ui.music_command_pending && lv_tick_elaps(ui.music_command_tick) >= MUSIC_SENDING_DELAY_MS &&
+               !lv_label_get_text(ui.music_feedback)[0]) {
+        /* Quick replies stay silent; only a slow one says it is still on its way. */
+        set_music_feedback(BT(BT_SENDING_TO_SPOTIFY), false);
     }
     if (ui.startup && lv_tick_elaps(ui.startup_started) >= 2000) {
         dismiss_startup();
@@ -681,15 +687,29 @@ static void mascot_tick(lv_timer_t *timer)
     buddy_home_tick();
     refresh_activity();
     if (ui.active_app == BUDDY_APP_WEATHER && !ui.menu_open) buddy_weather_page_tick();
+    /* Playback indicators, not measured audio levels. Stop when hidden. */
+    static const uint8_t heights[] = { 4, 7, 10, 13, 10, 7 };
+    unsigned beat = (lv_tick_get() / 160U) % 6U;
     if (ui.music_link_shown) {
-        /* A playback indicator, not measured audio levels. Stop when hidden. */
-        static const uint8_t heights[] = { 4, 7, 10, 13, 10, 7 };
-        unsigned beat = (lv_tick_get() / 160U) % 6U;
         for (unsigned i = 0; i < 3; ++i) {
             unsigned height = heights[(beat + i * 2) % 6];
             lv_obj_set_height(ui.music_link_bars[i], height);
             lv_obj_set_y(ui.music_link_bars[i], 22 - (int)height);
         }
+    }
+    if (ui.active_app == BUDDY_APP_MUSIC && !ui.menu_open && ui.music_eq && !lv_obj_has_flag(ui.music_eq, LV_OBJ_FLAG_HIDDEN)) {
+        for (unsigned i = 0; i < 3; ++i) {
+            unsigned height = heights[(beat + i * 2) % 6] + 1U;
+            lv_obj_set_height(ui.music_eq_bars[i], height);
+            lv_obj_set_y(ui.music_eq_bars[i], 14 - (int)height);
+        }
+    }
+    /* Tasks that are working right now breathe; the others stay still. */
+    agent_view_t *agent = ui.active_app == BUDDY_APP_CODEX ? &ui.codex : ui.active_app == BUDDY_APP_CLAUDE ? &ui.claude : NULL;
+    if (agent && agent->page && agent->tasks_selected && !ui.menu_open) {
+        lv_opa_t pulse = (lv_tick_get() / 600U) % 2U ? LV_OPA_COVER : LV_OPA_40;
+        for (unsigned i = 0; i < 3; ++i)
+            if (agent->working[i]) lv_obj_set_style_bg_opa(agent->task_dots[i], pulse, 0);
     }
     buddy_mascot_state_t state = mascot_state();
     if (state != ui.mascot_state) {
@@ -702,8 +722,6 @@ static void mascot_tick(lv_timer_t *timer)
         frame = 0;
     const lv_img_dsc_t *source = &buddy_mascot_frames[state][frame];
     if (ui.active_app == BUDDY_APP_MONITOR && !ui.menu_open) lv_img_set_src(ui.mascot, source);
-    if (ui.active_app == BUDDY_APP_MUSIC && !ui.menu_open)
-        lv_img_set_src(ui.music_mascot, &buddy_mascot_frames[BUDDY_MASCOT_IDLE][frame]);
     if (ui.startup_mascot || (!ui.menu_open &&
         (ui.active_app == BUDDY_APP_CLOCK || ui.active_app == BUDDY_APP_TIMER ||
          ui.active_app == BUDDY_APP_MUSIC || ui.active_app == BUDDY_APP_CODEX || ui.active_app == BUDDY_APP_CLAUDE || ui.transition_active)))
@@ -750,15 +768,15 @@ static void refresh_visibility(void)
     }
     visible(ui.music_page, ui.active_app == BUDDY_APP_MUSIC && !ui.menu_open);
     visible(ui.timer_page, ui.active_app == BUDDY_APP_TIMER && !ui.menu_open);
-    visible(ui.codex_page, ui.active_app == BUDDY_APP_CODEX && !ui.menu_open);
+    visible(ui.codex.page, ui.active_app == BUDDY_APP_CODEX && !ui.menu_open);
     if (ui.active_app != BUDDY_APP_CODEX || ui.menu_open) {
-        buddy_ui_motion_cancel(ui.codex_usage_body);
-        buddy_ui_motion_cancel(ui.codex_tasks_body);
+        buddy_ui_motion_cancel(ui.codex.usage_body);
+        buddy_ui_motion_cancel(ui.codex.tasks_body);
     }
-    visible(ui.claude_page, ui.active_app == BUDDY_APP_CLAUDE && !ui.menu_open);
+    visible(ui.claude.page, ui.active_app == BUDDY_APP_CLAUDE && !ui.menu_open);
     if (ui.active_app != BUDDY_APP_CLAUDE || ui.menu_open) {
-        buddy_ui_motion_cancel(ui.claude_usage_body);
-        buddy_ui_motion_cancel(ui.claude_tasks_body);
+        buddy_ui_motion_cancel(ui.claude.usage_body);
+        buddy_ui_motion_cancel(ui.claude.tasks_body);
     }
     visible(ui.chooser, ui.menu_open);
     visible(ui.nav_button, !ui.menu_open && !need_setup && (ui.active_app != BUDDY_APP_HOME || app_enabled(BUDDY_APP_CLOCK)));
@@ -835,10 +853,10 @@ static void refresh_footer(void)
     } else if (ui.active_app == BUDDY_APP_MUSIC) {
         lv_label_set_text(ui.footer, BT(BT_PLAYBACK_FOLLOWS_SPOTIFY_ON_YOUR_PC));
     } else if (ui.active_app == BUDDY_APP_CODEX) {
-        lv_label_set_text(ui.footer, ui.codex_tasks_selected ? BT(BT_RECORDED_LOCALLY_NOT_LIVE_TASK_STATUS) :
+        lv_label_set_text(ui.footer, ui.codex.tasks_selected ? BT(BT_RECORDED_LOCALLY_NOT_LIVE_TASK_STATUS) :
             codex_stale() ? BT(BT_SAVED_LIMITS_WAITING_FOR_AN_UPDATE) : BT(BT_LIMITS_FROM_YOUR_CODEX_ACCOUNT));
     } else if (ui.active_app == BUDDY_APP_CLAUDE) {
-        lv_label_set_text(ui.footer, ui.claude_tasks_selected ? BT(BT_RECORDED_LOCALLY_NOT_LIVE_TASK_STATUS) :
+        lv_label_set_text(ui.footer, ui.claude.tasks_selected ? BT(BT_RECORDED_LOCALLY_NOT_LIVE_TASK_STATUS) :
             claude_stale() ? BT(BT_SAVED_LIMITS_WAITING_FOR_AN_UPDATE) : BT(BT_LIMITS_FROM_YOUR_CLAUDE_ACCOUNT));
     } else if (ui.active_app == BUDDY_APP_WEATHER) {
         lv_label_set_text(ui.footer, BT(BT_WEATHER_BY_OPEN_METEO));
@@ -871,8 +889,8 @@ static void mascot_set_y(void *obj, int32_t value)
 
 static void animate_destination(void)
 {
-    lv_obj_t *objects[] = { ui.overview, ui.details, ui.empty, ui.music_page, ui.timer_page, ui.codex_page, ui.claude_page, ui.home_page, ui.weather_page,
-        ui.codex_usage_body, ui.codex_tasks_body, ui.claude_usage_body, ui.claude_tasks_body,
+    lv_obj_t *objects[] = { ui.overview, ui.details, ui.empty, ui.music_page, ui.timer_page, ui.codex.page, ui.claude.page, ui.home_page, ui.weather_page,
+        ui.codex.usage_body, ui.codex.tasks_body, ui.claude.usage_body, ui.claude.tasks_body,
         ui.clock_large, ui.clock_date };
     for (unsigned i = 0; i < sizeof(objects) / sizeof(objects[0]); ++i)
         buddy_ui_motion_cancel(objects[i]);
@@ -885,8 +903,8 @@ static void animate_destination(void)
         buddy_ui_motion_enter(ui.clock_date, 6, 180, 20);
     } else {
         lv_obj_t *destination = ui.active_app == BUDDY_APP_WEATHER ? ui.weather_page : ui.active_app == BUDDY_APP_HOME ? ui.home_page : ui.active_app == BUDDY_APP_MUSIC ? ui.music_page :
-            ui.active_app == BUDDY_APP_CODEX ? ui.codex_page :
-            ui.active_app == BUDDY_APP_CLAUDE ? ui.claude_page :
+            ui.active_app == BUDDY_APP_CODEX ? ui.codex.page :
+            ui.active_app == BUDDY_APP_CLAUDE ? ui.claude.page :
             ui.active_app == BUDDY_APP_TIMER ? ui.timer_page : ui.details_visible ? ui.details :
             ui.have_stats && ui.connection != BUDDY_PROVISIONING ? ui.overview : ui.empty;
         buddy_ui_motion_enter(destination, 8, 200, 0);
@@ -1082,10 +1100,11 @@ static void refresh_connection(void)
 static void select_channel(bool gpu)
 {
     ui.gpu_selected = gpu;
-    visible(ui.cpu.selection, !gpu);
-    visible(ui.gpu.selection, gpu);
-    lv_obj_set_style_text_color(ui.cpu.name, color(gpu ? C_MUTED : C_ACCENT), 0);
-    lv_obj_set_style_text_color(ui.gpu.name, color(gpu ? C_ACCENT : C_MUTED), 0);
+    /* The selected card wears an accent outline and drives the history chart. */
+    lv_obj_set_style_border_opa(ui.cpu.button, gpu ? LV_OPA_TRANSP : LV_OPA_COVER, 0);
+    lv_obj_set_style_border_opa(ui.gpu.button, gpu ? LV_OPA_COVER : LV_OPA_TRANSP, 0);
+    lv_obj_set_style_text_color(ui.cpu.name, color(gpu ? C_TEXT : C_ACCENT), 0);
+    lv_obj_set_style_text_color(ui.gpu.name, color(gpu ? C_ACCENT : C_TEXT), 0);
     lv_chart_hide_series(ui.chart, ui.cpu_series, gpu);
     lv_chart_hide_series(ui.chart, ui.gpu_series, !gpu);
     lv_label_set_text(ui.chart_title, gpu ? BT(BT_GPU_LOAD_60_SECONDS) : BT(BT_CPU_LOAD_60_SECONDS));
@@ -1112,36 +1131,112 @@ static void details_clicked(lv_event_t *event)
     animate_destination();
 }
 
-static void create_channel(channel_t *channel, int x, const char *name, bool gpu)
+static void create_channel(channel_t *channel, const char *name, bool gpu)
 {
-    channel->button = box(ui.overview, x, 0, 360, 132);
+    channel->button = surface_card(ui.overview, 16);
     lv_obj_add_flag(channel->button, LV_OBJ_FLAG_CLICKABLE);
     lv_obj_set_style_bg_color(channel->button, color(C_PRESSED), LV_STATE_PRESSED);
-    lv_obj_set_style_bg_opa(channel->button, LV_OPA_COVER, LV_STATE_PRESSED);
-    lv_obj_set_style_radius(channel->button, 8, 0);
-    lv_obj_add_event_cb(channel->button, channel_clicked, LV_EVENT_CLICKED,
-                        gpu ? (void *)1 : NULL);
-    channel->name = text(channel->button, name, 0, 0, 110, &buddy_language_font_20, C_ACCENT);
-    channel->usage = text(channel->button, "--", 0, 31, 158, &buddy_language_font_48, C_TEXT);
-    text(channel->button, BT(BT_LOAD), 161, 55, 76, &buddy_language_font_14, C_MUTED);
-    channel->temperature = text(channel->button, "--", 260, 43, 96, &buddy_language_font_24, C_TEXT);
-    lv_obj_set_style_text_align(channel->temperature, LV_TEXT_ALIGN_RIGHT, 0);
-    text(channel->button, BT(BT_TEMPERATURE), 241, 75, 115, &buddy_language_font_14, C_MUTED);
-    channel->model = text(channel->button, BT(BT_WAITING_FOR_SENSORS), 0, 92, 356, &buddy_language_font_14, C_MUTED);
-    channel->bar = lv_bar_create(channel->button);
-    lv_obj_remove_style_all(channel->bar);
-    lv_obj_set_pos(channel->bar, 0, 122);
-    lv_obj_set_size(channel->bar, 356, 4);
-    lv_bar_set_range(channel->bar, 0, 100);
-    lv_obj_set_style_bg_opa(channel->bar, LV_OPA_COVER, LV_PART_MAIN);
-    lv_obj_set_style_bg_color(channel->bar, color(C_RULE), LV_PART_MAIN);
-    lv_obj_set_style_bg_opa(channel->bar, LV_OPA_COVER, LV_PART_INDICATOR);
-    lv_obj_set_style_bg_color(channel->bar, color(C_ACCENT), LV_PART_INDICATOR);
-    channel->selection = box(channel->button, 0, 25, 44, 2);
-    lv_obj_set_style_bg_color(channel->selection, color(C_ACCENT), 0);
-    lv_obj_set_style_bg_opa(channel->selection, LV_OPA_COVER, 0);
-    /* Children never consume the 360 x 132 touch target. */
-    lv_obj_clear_flag(channel->bar, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_set_style_border_color(channel->button, color(C_ACCENT), 0);
+    lv_obj_set_style_border_width(channel->button, 2, 0);
+    lv_obj_set_style_border_opa(channel->button, LV_OPA_TRANSP, 0);
+    lv_obj_add_event_cb(channel->button, channel_clicked, LV_EVENT_CLICKED, gpu ? (void *)1 : NULL);
+    channel->gauge = usage_gauge(channel->button);
+    lv_arc_set_range(channel->gauge, 0, 1000);
+    channel->usage = lv_label_create(channel->gauge);
+    lv_label_set_text(channel->usage, "--");
+    channel->usage_caption = lv_label_create(channel->gauge);
+    lv_label_set_text(channel->usage_caption, BT(BT_LOAD));
+    lv_obj_set_style_text_font(channel->usage_caption, &buddy_language_font_14, 0);
+    lv_obj_set_style_text_color(channel->usage_caption, color(C_MUTED), 0);
+    channel->name = text(channel->button, name, 0, 0, 100, &buddy_language_font_20, C_TEXT);
+    channel->temperature = text(channel->button, "--", 0, 0, 100, &buddy_language_font_32, C_TEXT);
+    channel->temperature_caption = text(channel->button, BT(BT_TEMPERATURE), 0, 0, 100, &buddy_language_font_14, C_MUTED);
+    channel->model = text(channel->button, BT(BT_WAITING_FOR_SENSORS), 0, 0, 100, &buddy_language_font_14, C_MUTED);
+}
+
+/* Card interior: the load gauge on the left, name, temperature and model beside it. */
+static void channel_layout(channel_t *channel, int x, int y, int width, int height, int gauge,
+                           const lv_font_t *usage_font, const lv_font_t *temperature_font)
+{
+    lv_obj_set_pos(channel->button, x, y);
+    lv_obj_set_size(channel->button, width, height);
+    int pad = (height - gauge) / 2, text_x = pad + gauge + 18, text_w = width - text_x - 14;
+    lv_obj_set_pos(channel->gauge, pad, pad);
+    lv_obj_set_size(channel->gauge, gauge, gauge);
+    lv_obj_set_style_arc_width(channel->gauge, gauge / 10, LV_PART_MAIN);
+    lv_obj_set_style_arc_width(channel->gauge, gauge / 10, LV_PART_INDICATOR);
+    lv_obj_set_style_text_font(channel->usage, usage_font, 0);
+    lv_obj_align(channel->usage, LV_ALIGN_CENTER, 0, -8);
+    lv_obj_align(channel->usage_caption, LV_ALIGN_CENTER, 0, lv_font_get_line_height(usage_font) / 2 + 2);
+    int temperature_h = lv_font_get_line_height(temperature_font), y_text = pad + 2;
+    lv_obj_set_pos(channel->name, text_x, y_text);
+    lv_obj_set_size(channel->name, text_w, 26);
+    lv_obj_set_pos(channel->temperature, text_x, y_text + 28);
+    lv_obj_set_size(channel->temperature, text_w, temperature_h);
+    lv_obj_set_style_text_font(channel->temperature, temperature_font, 0);
+    lv_obj_set_pos(channel->temperature_caption, text_x, y_text + 28 + temperature_h);
+    lv_obj_set_size(channel->temperature_caption, text_w, 20);
+    /* Shorter compact cards keep the model line and drop the caption. */
+    visible(channel->temperature_caption, height >= 130);
+    lv_obj_set_pos(channel->model, text_x, height - pad - 20);
+    lv_obj_set_size(channel->model, text_w, 20);
+}
+
+static lv_obj_t *meter_bar(lv_obj_t *parent)
+{
+    lv_obj_t *bar = progress_bar(parent, 0, 0, 10);
+    lv_obj_set_style_radius(bar, LV_RADIUS_CIRCLE, LV_PART_MAIN);
+    lv_obj_set_style_radius(bar, LV_RADIUS_CIRCLE, LV_PART_INDICATOR);
+    lv_bar_set_range(bar, 0, 100);
+    return bar;
+}
+
+/* Memory, GPU memory and network tiles: name, reading, and a usage bar or rates. */
+static void tile_layout(unsigned i, int x, int y, int width, int height)
+{
+    lv_obj_set_pos(ui.tiles[i], x, y);
+    lv_obj_set_size(ui.tiles[i], width, height);
+    lv_obj_set_pos(ui.tile_names[i], 14, 12);
+    lv_obj_set_size(ui.tile_names[i], i == 2 ? width - 28 : width - 28 - 92, 20);
+    if (i == 2) {
+        int row = (height - 34 - 8) / 2;
+        for (unsigned k = 0; k < 2; ++k) {
+            lv_obj_t *value = k ? ui.tx : ui.rx;
+            lv_obj_set_pos(ui.net_captions[k], 14, 38 + (int)k * row + 4);
+            lv_obj_set_size(ui.net_captions[k], 80, 20);
+            lv_obj_set_pos(value, 94, 38 + (int)k * row);
+            lv_obj_set_size(value, width - 108, 26);
+        }
+        return;
+    }
+    lv_obj_t *note = i ? ui.vram_note : ui.memory_percent, *value = i ? ui.vram : ui.memory, *bar = i ? ui.vram_bar : ui.memory_bar;
+    lv_obj_set_pos(note, width - 14 - 88, 12);
+    lv_obj_set_size(note, 88, 20);
+    lv_obj_set_pos(value, 14, 34);
+    lv_obj_set_size(value, width - 28, 32);
+    lv_obj_set_pos(bar, 14, height - 20);
+    lv_obj_set_size(bar, width - 28, 6);
+}
+
+/* The history chart and the game panel share one card. */
+static void chart_layout(int x, int y, int width, int height)
+{
+    lv_obj_t *cards[] = { ui.chart_card, ui.game_panel };
+    for (unsigned i = 0; i < 2; ++i) {
+        lv_obj_set_pos(cards[i], x, y);
+        lv_obj_set_size(cards[i], width, height);
+    }
+    lv_obj_set_pos(ui.chart_title, 14, 10);
+    lv_obj_set_size(ui.chart_title, width - 28 - 110, 20);
+    lv_obj_set_pos(ui.chart_range, width - 14 - 110, 10);
+    lv_obj_set_pos(ui.chart, 14, 34);
+    lv_obj_set_size(ui.chart, width - 28, height - 44);
+    lv_obj_set_pos(ui.game_title, 14, 10);
+    lv_obj_set_size(ui.game_title, width - 28 - 150, 27);
+    lv_obj_set_pos(ui.game_status, 14, height - 30);
+    lv_obj_set_size(ui.game_status, width - 28 - 150, 20);
+    lv_obj_set_pos(ui.game_fps, width - 14 - 150, (height - 70) / 2);
+    lv_obj_set_pos(ui.game_fps_unit, width - 14 - 150, (height - 70) / 2 + 52);
 }
 
 static lv_coord_t history_value(float value)
@@ -1231,12 +1326,26 @@ static bool music_connected(void)
            lv_tick_elaps(ui.last_stats_tick) < CLOCK_DELAY_MS;
 }
 
-static bool music_can_control(unsigned action)
+/* Whether Spotify offers a control right now, ignoring any command in flight. */
+static bool music_control_available(unsigned control)
 {
     const buddy_music_t *music = &ui.stats.music;
-    if (!music_connected() || !music->running || !music->available ||
-        !ui.music_control_callback || ui.music_command_pending) return false;
-    return action == 0 ? music->can_previous : action == 1 ? music->can_play_pause : music->can_next;
+    if (!music_connected() || !music->running || !music->available) return false;
+    switch (control) {
+    case MUSIC_SHUFFLE_BUTTON: return music->can_shuffle;
+    case MUSIC_PREVIOUS_BUTTON: return music->can_previous;
+    case MUSIC_PLAY_BUTTON: return music->can_play_pause;
+    case MUSIC_NEXT_BUTTON: return music->can_next;
+    case MUSIC_REPEAT_BUTTON: return music->can_repeat;
+    case MUSIC_SEEK_CONTROL: return music->can_seek && music->duration_s;
+    case MUSIC_MUTE_BUTTON: case MUSIC_VOLUME_CONTROL: return music->can_volume;
+    default: return false;
+    }
+}
+
+static bool music_can_control(unsigned control)
+{
+    return music_control_available(control) && ui.music_control_callback && !ui.music_command_pending;
 }
 
 static void playback_time(char *buffer, size_t size, uint32_t seconds)
@@ -1244,98 +1353,398 @@ static void playback_time(char *buffer, size_t size, uint32_t seconds)
     snprintf(buffer, size, "%lu:%02lu", (unsigned long)(seconds / 60), (unsigned long)(seconds % 60));
 }
 
+static void set_music_feedback(const char *message, bool error)
+{
+    if (!ui.music_feedback) return;
+    ui.music_feedback_error = error && message[0];
+    lv_obj_set_style_text_color(ui.music_feedback, color(error ? C_WARNING : C_MUTED), 0);
+    set_label_if_changed(ui.music_feedback, message);
+}
+
+/* One command is in flight at a time. A slider moved meanwhile keeps only its
+ * newest value and sends it once Spotify answers; taps are simply ignored. */
+static void music_send(unsigned control, uint32_t value)
+{
+    static const char *const actions[MUSIC_CONTROL_COUNT] = { "shuffle", "previous", "play_pause", "next", "repeat", "mute", "seek", "volume" };
+    if (control >= MUSIC_CONTROL_COUNT || !music_control_available(control) || !ui.music_control_callback) return;
+    if (ui.music_command_pending) {
+        if (control >= MUSIC_BUTTON_COUNT) {
+            ui.music_deferred = control + 1U;
+            ui.music_deferred_value = value;
+        }
+        return;
+    }
+    if (ui.music_control_callback(actions[control], value)) {
+        ui.music_command_pending = true;
+        ui.music_command_tick = lv_tick_get();
+        ui.music_command_control_id = ui.stats.music.control_id;
+        set_music_feedback("", false);
+    } else {
+        set_music_feedback(BT(BT_COULDN_T_SEND_TRY_AGAIN), true);
+    }
+}
+
+/* The cover, play button and meters take the album's color when the PC sends one. */
+static void apply_music_accent(uint32_t accent)
+{
+    ui.music_accent = accent;
+    lv_color_t ink = color(accent);
+    lv_obj_set_style_bg_color(ui.music_cover, lv_color_mix(ink, color(C_BG), 118), 0);
+    lv_obj_set_style_bg_grad_color(ui.music_cover, lv_color_mix(ink, color(C_BG), 34), 0);
+    for (unsigned i = 0; i < 2; ++i) lv_obj_set_style_border_color(ui.music_rings[i], ink, 0);
+    lv_obj_set_style_bg_color(ui.music_buttons[MUSIC_PLAY_BUTTON], ink, 0);
+    lv_obj_set_style_bg_color(ui.music_buttons[MUSIC_PLAY_BUTTON], lv_color_darken(ink, LV_OPA_30), LV_STATE_PRESSED);
+    lv_obj_set_style_bg_color(ui.music_progress, ink, LV_PART_INDICATOR);
+    lv_obj_set_style_bg_color(ui.music_volume, ink, LV_PART_INDICATOR);
+    for (unsigned i = 0; i < 3; ++i) lv_obj_set_style_bg_color(ui.music_eq_bars[i], ink, 0);
+    for (unsigned i = 0; i < 2; ++i) lv_obj_set_style_bg_color(ui.music_toggle_dots[i], ink, 0);
+    lv_obj_set_style_bg_color(ui.music_repeat_one, ink, 0);
+}
+
+/* Titles wrap up to the layout's line limit; artist and album follow directly.
+ * Measure the source text: LONG_DOT rewrites the label's own copy with dots. */
+static void music_layout_meta(const char *title)
+{
+    lv_coord_t width = lv_obj_get_width(ui.music_meta);
+    const lv_font_t *title_font = lv_obj_get_style_text_font(ui.music_title, 0);
+    lv_coord_t line = lv_font_get_line_height(title_font);
+    lv_point_t size;
+    lv_txt_get_size(&size, title, title_font, 0, 5, width, LV_TEXT_FLAG_NONE);
+    uint32_t lines = (uint32_t)((size.y + 5) / (line + 5));
+    if (lines < 1) lines = 1;
+    if (lines > ui.music_title_lines) lines = ui.music_title_lines;
+    lv_coord_t title_height = (lv_coord_t)(lines * line + (lines - 1) * 5);
+    lv_coord_t artist_height = lv_font_get_line_height(lv_obj_get_style_text_font(ui.music_artist, 0));
+    lv_coord_t album_height = lv_font_get_line_height(lv_obj_get_style_text_font(ui.music_album, 0));
+    lv_obj_set_size(ui.music_title, width, title_height);
+    lv_obj_set_pos(ui.music_artist, 0, title_height + 8);
+    lv_obj_set_size(ui.music_artist, width, artist_height);
+    lv_obj_set_pos(ui.music_album, 0, title_height + 12 + artist_height);
+    lv_obj_set_size(ui.music_album, width, album_height);
+}
+
+/* The equalizer sits just left of the right-aligned status text. */
+static void music_place_eq(void)
+{
+    const char *status = lv_label_get_text(ui.music_status);
+    const lv_font_t *font = lv_obj_get_style_text_font(ui.music_status, 0);
+    lv_coord_t box = lv_obj_get_width(ui.music_status);
+    lv_coord_t width = lv_txt_get_width(status, (uint32_t)strlen(status), font, 0, LV_TEXT_FLAG_NONE);
+    if (width > box) width = box;
+    lv_obj_set_pos(ui.music_eq, lv_obj_get_x(ui.music_status) + box - width - 24,
+                   lv_obj_get_y(ui.music_status) + (lv_font_get_line_height(font) - 14) / 2);
+}
+
+static void music_volume_text(uint32_t volume)
+{
+    char buffer[8];
+    snprintf(buffer, sizeof(buffer), "%lu%%", (unsigned long)volume);
+    set_label_if_changed(ui.music_volume_label, buffer);
+}
+
 static void refresh_music(void)
 {
     if (!ui.music_page) return;
     const buddy_music_t *music = &ui.stats.music;
-    bool connected = music_connected();
+    bool connected = music_connected(), live = connected && music->running && music->available;
+    uint32_t accent = live && music->art_color ? music->art_color : C_ACCENT;
+    if (accent != ui.music_accent) apply_music_accent(accent);
     const char *status = !connected ? BT(BT_PC_OFFLINE) : !music->running ? BT(BT_NOT_RUNNING) :
                          !music->available ? BT(BT_WAITING_FOR_PLAYBACK) : music->playing ? BT(BT_PLAYING) : BT(BT_PAUSED);
-    lv_label_set_text(ui.music_status, status);
-    lv_obj_set_style_text_color(ui.music_status, color(!connected ? C_WARNING : C_ACCENT), 0);
+    set_label_if_changed(ui.music_status, status);
+    lv_obj_set_style_text_color(ui.music_status, color(!connected ? C_WARNING : live && music->playing ? accent : C_MUTED), 0);
+    visible(ui.music_eq, live && music->playing);
+    music_place_eq();
+    const char *title = music->available ? (music->title[0] ? music->title : BT(BT_UNTITLED_TRACK)) :
+        !connected ? BT(BT_WAITING_FOR_YOUR_PC) : music->running ? BT(BT_WAITING_FOR_PLAYBACK) : BT(BT_OPEN_SPOTIFY_ON_YOUR_PC);
+    music_layout_meta(title);
+    set_label_if_changed(ui.music_title, title);
     if (music->available) {
-        lv_label_set_text(ui.music_title, music->title[0] ? music->title : BT(BT_UNTITLED_TRACK));
-        lv_label_set_text(ui.music_artist, music->artist);
-        lv_label_set_text(ui.music_album, music->album);
+        set_label_if_changed(ui.music_artist, music->artist);
+        set_label_if_changed(ui.music_album, music->album);
     } else {
-        lv_label_set_text(ui.music_title, !connected ? BT(BT_WAITING_FOR_YOUR_PC) :
-            music->running ? BT(BT_WAITING_FOR_PLAYBACK) : BT(BT_OPEN_SPOTIFY_ON_YOUR_PC));
-        lv_label_set_text(ui.music_artist, !connected ? BT(BT_PLAYBACK_RETURNS_WHEN_YOUR_PC_RECONNECTS) :
+        set_label_if_changed(ui.music_artist, !connected ? BT(BT_PLAYBACK_RETURNS_WHEN_YOUR_PC_RECONNECTS) :
             music->running ? BT(BT_START_A_TRACK_IN_SPOTIFY) : BT(BT_YOUR_MUSIC_WILL_APPEAR_HERE_AUTOMATICALLY));
-        lv_label_set_text(ui.music_album, "");
+        set_label_if_changed(ui.music_album, "");
     }
+    lv_obj_set_style_text_color(ui.music_artist, color(music->available ? C_TEXT : C_MUTED), 0);
+
     char buffer[24];
-    uint32_t position = music->position_s;
-    if (music->duration_s && position > music->duration_s) position = music->duration_s;
-    if (music->available) playback_time(buffer, sizeof(buffer), position);
+    uint32_t duration = live ? music->duration_s : 0, position = music->position_s;
+    if (duration && position > duration) position = duration;
+    /* After a seek, show the chosen spot until Spotify reports it (or gives up). */
+    if (ui.music_seek_hold) {
+        uint32_t gap = position > ui.music_seek_target ? position - ui.music_seek_target : ui.music_seek_target - position;
+        if (!live || gap <= 2 || lv_tick_elaps(ui.music_seek_tick) >= MUSIC_HOLD_MS) ui.music_seek_hold = false;
+        else position = ui.music_seek_target;
+    }
+    if (!ui.music_seeking) {
+        lv_slider_set_range(ui.music_progress, 0, duration ? (int32_t)duration : 1);
+        lv_slider_set_value(ui.music_progress, duration ? (int32_t)position : 0, LV_ANIM_OFF);
+        if (connected && music->available) playback_time(buffer, sizeof(buffer), position);
+        else snprintf(buffer, sizeof(buffer), "--:--");
+        set_label_if_changed(ui.music_elapsed, buffer);
+    }
+    if (duration) playback_time(buffer, sizeof(buffer), duration);
     else snprintf(buffer, sizeof(buffer), "--:--");
-    lv_label_set_text(ui.music_elapsed, buffer);
-    if (music->available && music->duration_s) playback_time(buffer, sizeof(buffer), music->duration_s);
-    else snprintf(buffer, sizeof(buffer), "--:--");
-    lv_label_set_text(ui.music_duration, buffer);
-    lv_bar_set_value(ui.music_progress, music->available && music->duration_s ?
-        (int)((uint64_t)position * 1000 / music->duration_s) : 0, LV_ANIM_OFF);
-    lv_label_set_text(ui.music_button_labels[1], music->available && music->playing ? BT(BT_PAUSE) : BT(BT_PLAY));
-    for (unsigned i = 0; i < 3; ++i) button_enabled(ui.music_buttons[i], music_can_control(i));
+    set_label_if_changed(ui.music_duration, buffer);
+    bool seekable = music_control_available(MUSIC_SEEK_CONTROL);
+    if (seekable) lv_obj_add_flag(ui.music_progress, LV_OBJ_FLAG_CLICKABLE);
+    else lv_obj_clear_flag(ui.music_progress, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_set_style_bg_opa(ui.music_progress, seekable ? LV_OPA_COVER : LV_OPA_TRANSP, LV_PART_KNOB);
+
+    set_label_if_changed(ui.music_button_labels[MUSIC_PLAY_BUTTON], live && music->playing ? LV_SYMBOL_PAUSE : LV_SYMBOL_PLAY);
+    for (unsigned i = 0; i < MUSIC_BUTTON_COUNT; ++i) button_enabled(ui.music_buttons[i], music_control_available(i));
+    visible(ui.music_buttons[MUSIC_SHUFFLE_BUTTON], live && music->can_shuffle);
+    visible(ui.music_buttons[MUSIC_REPEAT_BUTTON], live && music->can_repeat);
+    lv_obj_set_style_text_color(ui.music_button_labels[MUSIC_SHUFFLE_BUTTON], color(music->shuffle ? accent : C_MUTED), 0);
+    lv_obj_set_style_text_color(ui.music_button_labels[MUSIC_REPEAT_BUTTON], color(music->repeat ? accent : C_MUTED), 0);
+    visible(ui.music_toggle_dots[0], music->shuffle);
+    visible(ui.music_toggle_dots[1], music->repeat != 0);
+    visible(ui.music_repeat_one, music->repeat == 1);
+
+    bool mixer = live && music->can_volume;
+    visible(ui.music_buttons[MUSIC_MUTE_BUTTON], mixer);
+    visible(ui.music_volume, mixer);
+    visible(ui.music_volume_label, mixer);
+    uint32_t volume = music->volume > 100 ? 100 : music->volume;
+    if (ui.music_volume_hold) {
+        if (!mixer || volume == ui.music_volume_target || lv_tick_elaps(ui.music_volume_tick) >= MUSIC_HOLD_MS) ui.music_volume_hold = false;
+        else volume = ui.music_volume_target;
+    }
+    if (!ui.music_volume_dragging) {
+        lv_slider_set_value(ui.music_volume, (int32_t)volume, LV_ANIM_OFF);
+        music_volume_text(volume);
+    }
+    bool silent = music->muted || volume == 0;
+    set_label_if_changed(ui.music_button_labels[MUSIC_MUTE_BUTTON], silent ? LV_SYMBOL_MUTE : volume < 50 ? LV_SYMBOL_VOLUME_MID : LV_SYMBOL_VOLUME_MAX);
+    lv_obj_set_style_text_color(ui.music_button_labels[MUSIC_MUTE_BUTTON], color(silent ? C_MUTED : C_TEXT), 0);
+    lv_obj_set_style_opa(ui.music_volume, music->muted ? LV_OPA_50 : LV_OPA_COVER, 0);
 }
 
 static void music_clicked(lv_event_t *event)
 {
-    static const char *actions[] = { "previous", "play_pause", "next" };
-    unsigned action = (unsigned)(uintptr_t)lv_event_get_user_data(event);
-    if (action >= 3 || !music_can_control(action)) return;
-    if (ui.music_control_callback(actions[action])) {
-        ui.music_command_pending = true;
-        ui.music_command_tick = lv_tick_get();
-        ui.music_command_control_id = ui.stats.music.control_id;
-        lv_label_set_text(ui.music_feedback, BT(BT_SENDING_TO_SPOTIFY));
-    } else {
-        lv_label_set_text(ui.music_feedback, BT(BT_COULDN_T_SEND_TRY_AGAIN));
-    }
+    unsigned control = (unsigned)(uintptr_t)lv_event_get_user_data(event);
+    if (control >= MUSIC_BUTTON_COUNT || !music_can_control(control)) return;
+    music_send(control, 0);
     refresh_music();
 }
 
-static void refresh_codex_tasks(void)
+/* Sliders follow the finger locally and send one command on release. A vertical
+ * swipe that scrolls a compact page instead cancels the gesture and restores the value. */
+static void music_slider_event(lv_event_t *event)
 {
-    const buddy_codex_activity_t *activity = &ui.stats.codex.activity;
-    bool available = codex_tasks_available();
-    bool stale = codex_tasks_stale();
+    bool seek = lv_event_get_target(event) == ui.music_progress;
+    bool *dragging = seek ? &ui.music_seeking : &ui.music_volume_dragging;
+    lv_event_code_t code = lv_event_get_code(event);
+    lv_indev_t *pointer = lv_indev_get_act();
+    if (*dragging && pointer && lv_indev_get_scroll_obj(pointer)) {
+        *dragging = false;
+        refresh_music();
+        return;
+    }
+    if (code == LV_EVENT_PRESSED) {
+        *dragging = music_control_available(seek ? MUSIC_SEEK_CONTROL : MUSIC_VOLUME_CONTROL);
+    } else if (code == LV_EVENT_VALUE_CHANGED && !*dragging) {
+        refresh_music();
+    } else if (code == LV_EVENT_VALUE_CHANGED) {
+        uint32_t value = (uint32_t)lv_slider_get_value(lv_event_get_target(event));
+        char buffer[24];
+        if (seek) {
+            playback_time(buffer, sizeof(buffer), value);
+            set_label_if_changed(ui.music_elapsed, buffer);
+        } else music_volume_text(value);
+    } else if (code == LV_EVENT_PRESS_LOST && *dragging) {
+        *dragging = false;
+        refresh_music();
+    } else if (code == LV_EVENT_RELEASED && *dragging) {
+        *dragging = false;
+        uint32_t value = (uint32_t)lv_slider_get_value(lv_event_get_target(event));
+        if (seek) {
+            ui.music_seek_hold = true;
+            ui.music_seek_target = value;
+            ui.music_seek_tick = lv_tick_get();
+        } else {
+            ui.music_volume_hold = true;
+            ui.music_volume_target = value;
+            ui.music_volume_tick = lv_tick_get();
+        }
+        music_send(seek ? MUSIC_SEEK_CONTROL : MUSIC_VOLUME_CONTROL, value);
+        refresh_music();
+    }
+}
+
+/* Wall-clock seconds, or 0 until SNTP has set a plausible date. */
+static int64_t wall_clock(void)
+{
+    time_t now = time(NULL);
+    return now >= 1700000000 ? (int64_t)now : 0;
+}
+
+static void duration_text(char *buffer, size_t size, int64_t seconds)
+{
+    uint64_t minutes = seconds > 0 ? ((uint64_t)seconds + 59U) / 60U : 0;
+    if (minutes >= 1440U) snprintf(buffer, size, BT(BT_LU_D_LU_H), (unsigned long)(minutes / 1440U), (unsigned long)(minutes / 60U % 24U));
+    else if (minutes >= 60U) snprintf(buffer, size, BT(BT_LU_H_LU_MIN), (unsigned long)(minutes / 60U), (unsigned long)(minutes % 60U));
+    else snprintf(buffer, size, BT(BT_LU_MIN), (unsigned long)(minutes ? minutes : 1U));
+}
+
+static void hour_text(char *buffer, size_t size, const struct tm *local)
+{
+    char hour[24];
+    strftime(hour, sizeof(hour), view_settings.use_24h ? "%H:%M" : "%I:%M", local);
+    snprintf(buffer, size, "%s%s%s", hour, view_settings.use_24h ? "" : " ",
+             view_settings.use_24h ? "" : BT(local->tm_hour < 12 ? BT_AM : BT_PM));
+}
+
+static void reset_stamp(char *buffer, size_t size, uint32_t resets_at)
+{
+    time_t timestamp = resets_at;
+    struct tm local;
+    localtime_r(&timestamp, &local);
+    char date[96], hour[40];
+    buddy_date(date, sizeof(date), &local, true);
+    hour_text(hour, sizeof(hour), &local);
+    snprintf(buffer, size, "%s %s", date, hour);
+}
+
+/* Projects the window's average use so far. False while it is too early (or the
+ * clock is unknown) to say; *runs_out stays 0 when the rest lasts until reset. */
+static bool usage_pace(const buddy_codex_window_t *window, int64_t now, int64_t *runs_out)
+{
+    *runs_out = 0;
+    if (!now || !window->resets_at || !window->window_minutes || (int64_t)window->resets_at <= now) return false;
+    int64_t length = (int64_t)window->window_minutes * 60, left = (int64_t)window->resets_at - now;
+    if (left > length || length - left < length / 10) return false;
+    double used = 100.0 - window->remaining_percent;
+    if (used <= 0) return true;
+    double lasts = window->remaining_percent / (used / (double)(length - left));
+    if ((double)now + lasts < (double)window->resets_at) *runs_out = now + (int64_t)lasts;
+    return true;
+}
+
+/* A 270-degree gauge, open at the bottom and filled clockwise from the lower left. */
+#define GAUGE_START 135
+#define GAUGE_SWEEP 270
+
+static lv_obj_t *usage_gauge(lv_obj_t *parent)
+{
+    lv_obj_t *arc = lv_arc_create(parent);
+    lv_obj_remove_style_all(arc);
+    lv_arc_set_bg_angles(arc, GAUGE_START, (GAUGE_START + GAUGE_SWEEP) % 360);
+    lv_arc_set_range(arc, 0, 1000);
+    lv_obj_set_style_arc_color(arc, color(C_RULE), LV_PART_MAIN);
+    lv_obj_set_style_arc_rounded(arc, true, LV_PART_MAIN);
+    lv_obj_set_style_arc_rounded(arc, true, LV_PART_INDICATOR);
+    lv_obj_clear_flag(arc, LV_OBJ_FLAG_CLICKABLE);
+    return arc;
+}
+
+static lv_obj_t *surface_card(lv_obj_t *parent, int radius)
+{
+    lv_obj_t *card = box(parent, 0, 0, 10, 10);
+    lv_obj_set_style_bg_color(card, color(BUDDY_COLOR_SURFACE), 0);
+    lv_obj_set_style_bg_opa(card, LV_OPA_COVER, 0);
+    lv_obj_set_style_radius(card, radius, 0);
+    return card;
+}
+
+/* Lays out one usage card: gauge on the left, name, countdown, reset time and pace beside it. */
+static void agent_card_layout(agent_view_t *view, unsigned i, int width, int height, int gauge,
+                              const lv_font_t *percent_font, const lv_font_t *name_font,
+                              const lv_font_t *countdown_font, const lv_font_t *small_font)
+{
+    lv_obj_set_size(view->cards[i], width, height);
+    int pad = (height - gauge) / 2, arc = gauge / 10;
+    lv_obj_set_pos(view->gauges[i], pad, pad);
+    lv_obj_set_size(view->gauges[i], gauge, gauge);
+    lv_obj_set_style_arc_width(view->gauges[i], arc, LV_PART_MAIN);
+    lv_obj_set_style_arc_width(view->gauges[i], arc, LV_PART_INDICATOR);
+    lv_obj_set_style_text_font(view->remaining[i], percent_font, 0);
+    lv_obj_set_style_text_font(view->remaining_captions[i], &buddy_language_font_14, 0);
+    /* Smaller gauges have no room for the caption inside the ring; the card says "limit". */
+    bool caption = gauge >= 100;
+    visible(view->remaining_captions[i], caption);
+    lv_obj_align(view->remaining[i], LV_ALIGN_CENTER, 0, caption ? -lv_font_get_line_height(&buddy_language_font_14) / 2 : 0);
+    lv_obj_align(view->remaining_captions[i], LV_ALIGN_CENTER, 0, lv_font_get_line_height(percent_font) / 2);
+    view->gauge_size = gauge;
+    lv_obj_t *lines[] = { view->window_names[i], view->countdowns[i], view->resets[i], view->paces[i] };
+    const lv_font_t *fonts[] = { name_font, countdown_font, small_font, small_font };
+    int text_x = pad + gauge + 18, total = -4;
+    for (unsigned k = 0; k < 4; ++k) total += lv_font_get_line_height(fonts[k]) + 4;
+    int y = (height - total) / 2;
+    for (unsigned k = 0; k < 4; ++k) {
+        int line = lv_font_get_line_height(fonts[k]);
+        lv_obj_set_pos(lines[k], text_x, y);
+        lv_obj_set_size(lines[k], width - text_x - 14, line);
+        lv_obj_set_style_text_font(lines[k], fonts[k], 0);
+        y += line + 4;
+    }
+}
+
+/* Task rows: status dot, title, "project · age" and a state chip, either beside
+ * the title or, on the narrowest screens, at the end of the detail line. */
+static void agent_task_layout(agent_view_t *view, int width, int height, int step,
+                              const lv_font_t *title_font, const lv_font_t *detail_font, bool chip_on_details)
+{
+    int title_h = lv_font_get_line_height(title_font), detail_h = lv_font_get_line_height(detail_font);
+    int chip_h = lv_font_get_line_height(&buddy_language_font_14) + 6, y = (height - title_h - 4 - detail_h) / 2;
+    view->chip_on_details = chip_on_details;
+    for (unsigned i = 0; i < 3; ++i) {
+        lv_obj_set_pos(view->task_rows[i], 0, (int)i * step);
+        lv_obj_set_size(view->task_rows[i], width, height);
+        lv_obj_set_pos(view->task_dots[i], 16, y + (title_h - 10) / 2);
+        lv_obj_set_pos(view->task_titles[i], 36, y);
+        lv_obj_set_size(view->task_titles[i], width - 52 - (chip_on_details ? 0 : 150), title_h);
+        lv_obj_set_style_text_font(view->task_titles[i], title_font, 0);
+        lv_obj_set_pos(view->task_details[i], 36, y + title_h + 4);
+        lv_obj_set_size(view->task_details[i], width - 52 - (chip_on_details ? 130 : 0), detail_h);
+        lv_obj_set_style_text_font(view->task_details[i], detail_font, 0);
+        int chip_line = chip_on_details ? y + title_h + 4 : y, chip_line_h = chip_on_details ? detail_h : title_h;
+        lv_obj_align(view->task_states[i], LV_ALIGN_TOP_RIGHT, -14, chip_line + (chip_line_h - chip_h) / 2);
+    }
+}
+
+static void refresh_agent_tasks(agent_view_t *view)
+{
+    const buddy_codex_activity_t *activity = &view->data->activity;
+    bool available = agent_tasks_available(view->data), stale = agent_tasks_stale(view->data);
     unsigned count = available ? activity->item_count : 0;
     if (count > 3) count = 3;
-    char buffer[128];
-    if (available) {
-        if (stale) snprintf(buffer, sizeof(buffer), BT(BT_CACHED_LU_RECORDED_TASKS), (unsigned long)activity->total_count);
-        else snprintf(buffer, sizeof(buffer), BT(BT_LU_RECENTLY_WORKING_LU_RECORDED),
-            (unsigned long)activity->working_count, (unsigned long)activity->total_count);
-    } else snprintf(buffer, sizeof(buffer), BT(BT_RECORDED_ACTIVITY));
-    set_label_if_changed(ui.codex_task_summary, buffer);
-    lv_obj_set_style_text_color(ui.codex_task_summary, color(stale ? C_WARNING : C_MUTED), 0);
+    char buffer[160], age[40];
     for (unsigned i = 0; i < 3; ++i) {
-        visible(ui.codex_task_rows[i], i < count);
+        view->working[i] = false;
+        visible(view->task_rows[i], i < count);
         if (i >= count) continue;
         const buddy_codex_task_t *task = &activity->items[i];
-        set_label_if_changed(ui.codex_task_titles[i], task->title[0] ? task->title : BT(BT_UNTITLED_TASK));
-        set_label_if_changed(ui.codex_task_projects[i], task->project[0] ? task->project : BT(BT_NO_PROJECT_RECORDED));
+        set_label_if_changed(view->task_titles[i], task->title[0] ? task->title : BT(BT_UNTITLED_TASK));
         bool recent_working = strcmp(task->state, "working") == 0 &&
             (uint64_t)task->age_s + lv_tick_elaps(ui.last_stats_tick) / 1000U <= 120U;
+        bool attention = strcmp(task->state, "waiting") == 0 || strcmp(task->state, "interrupted") == 0;
         const char *state = recent_working ? (stale ? BT(BT_WAS_WORKING) : BT(BT_RECENTLY_WORKING)) :
             strcmp(task->state, "waiting") == 0 ? BT(BT_WAITING_FOR_YOU) :
             strcmp(task->state, "completed") == 0 ? BT(BT_COMPLETED) :
             strcmp(task->state, "interrupted") == 0 ? BT(BT_INTERRUPTED) :
             strcmp(task->state, "recent") == 0 ? BT(BT_RECENT) : BT(BT_UNKNOWN);
-        set_label_if_changed(ui.codex_task_states[i], state);
-        lv_obj_set_style_text_color(ui.codex_task_states[i], color(recent_working && !stale ? C_ACCENT : C_MUTED), 0);
-        char age[40];
-        if (strcmp(task->state, "unknown") == 0 && task->age_s >= 31536000U)
-            snprintf(buffer, sizeof(buffer), BT(BT_ACTIVITY_TIME_UNKNOWN));
-        else {
-            activity_age_text(age, sizeof(age), task->age_s);
-            snprintf(buffer, sizeof(buffer), BT(BT_LAST_ACTIVITY_S), age);
-        }
-        set_label_if_changed(ui.codex_task_ages[i], buffer);
+        /* Working takes the product accent, anything that needs you is amber, the rest stays quiet. */
+        uint32_t tone = recent_working && !stale ? view->copy->accent : attention && !stale ? C_WARNING : C_MUTED;
+        view->working[i] = recent_working && !stale;
+        set_label_if_changed(view->task_states[i], state);
+        /* The text beside the chip gets whatever width the chip leaves free. */
+        lv_coord_t chip = lv_txt_get_width(state, (uint32_t)strlen(state), &buddy_language_font_14, 0, LV_TEXT_FLAG_NONE) + 20;
+        lv_obj_t *beside = view->chip_on_details ? view->task_details[i] : view->task_titles[i];
+        lv_obj_set_width(beside, lv_obj_get_width(view->task_rows[i]) - 36 - 14 - chip - 12);
+        lv_obj_set_style_text_color(view->task_states[i], color(tone), 0);
+        lv_obj_set_style_bg_color(view->task_states[i], lv_color_mix(color(tone), color(BUDDY_COLOR_SURFACE), 44), 0);
+        lv_obj_set_style_bg_color(view->task_dots[i], color(tone), 0);
+        if (!view->working[i]) lv_obj_set_style_bg_opa(view->task_dots[i], LV_OPA_COVER, 0);
+        if (strcmp(task->state, "unknown") == 0 && task->age_s >= 31536000U) snprintf(age, sizeof(age), BT(BT_ACTIVITY_TIME_UNKNOWN));
+        else activity_age_text(age, sizeof(age), task->age_s);
+        snprintf(buffer, sizeof(buffer), "%s \xC2\xB7 %s", task->project[0] ? task->project : BT(BT_NO_PROJECT_RECORDED), age);
+        set_label_if_changed(view->task_details[i], buffer);
     }
-    visible(ui.codex_tasks_empty_title, !count);
-    visible(ui.codex_tasks_empty_body, !count);
+    visible(view->tasks_empty_title, !count);
+    visible(view->tasks_empty_body, !count);
     if (!count) {
         const char *title = available ? BT(BT_NO_RECENT_TASKS_RECORDED) : BT(BT_WAITING_FOR_TASK_ACTIVITY);
         const char *body = available ? BT(BT_THIS_LOCAL_SNAPSHOT_CONTAINS_NO_RECENT_TASK_ENTRIES) :
@@ -1343,405 +1752,274 @@ static void refresh_codex_tasks(void)
         if (!available && !music_connected()) {
             title = BT(BT_WAITING_FOR_YOUR_PC);
             body = BT(BT_KEEP_CLAWPAL_RUNNING_IN_YOUR_PC_S_TRAY_RECORDED);
-        } else if (!available && (strcmp(activity->status, "closed") == 0 || !ui.stats.codex.running)) {
-            title = BT(BT_OPEN_CODEX_ON_YOUR_PC);
+        } else if (!available && (strcmp(activity->status, "closed") == 0 || !view->data->running)) {
+            title = BT(view->copy->open_on_pc);
             body = BT(BT_BUDDY_WILL_SHOW_RECENT_LOCAL_TASK_RECORDS_WHEN_THEY);
         } else if (!available && (strcmp(activity->status, "error") == 0 || strcmp(activity->status, "unavailable") == 0)) {
             title = BT(BT_TASK_ACTIVITY_UNAVAILABLE);
             body = BT(BT_THE_PC_COULD_NOT_READ_LOCAL_TASK_RECORDS_BUDDY);
         }
-        set_label_if_changed(ui.codex_tasks_empty_title, title);
-        set_label_if_changed(ui.codex_tasks_empty_body, body);
+        set_label_if_changed(view->tasks_empty_title, title);
+        set_label_if_changed(view->tasks_empty_body, body);
     }
-    if (ui.codex_tasks_selected) {
-        const char *status = !available ? BT(BT_ACTIVITY_UNAVAILABLE) : stale ? BT(BT_CACHED_ACTIVITY) :
-            strcmp(activity->status, "partial") == 0 ? BT(BT_PARTIAL_SNAPSHOT) : BT(BT_LOCAL_SNAPSHOT);
-        set_label_if_changed(ui.codex_status, status);
-        lv_obj_set_style_text_color(ui.codex_status, color(stale || !available ? C_WARNING : C_MUTED), 0);
-        if (available) {
-            char age[40];
-            activity_age_text(age, sizeof(age), activity->age_s);
-            snprintf(buffer, sizeof(buffer), BT(BT_S_S_RECENT_LOCAL_RECORDS_ONLY), stale ? BT(BT_CACHED_SNAPSHOT) : BT(BT_SNAPSHOT), age);
-        } else snprintf(buffer, sizeof(buffer), BT(BT_NO_LOCAL_TASK_SNAPSHOT_AVAILABLE));
-        set_label_if_changed(ui.codex_age, buffer);
-    }
-}
-
-static void refresh_claude_tasks(void)
-{
-    const buddy_codex_activity_t *activity = &ui.stats.claude.activity;
-    bool available = claude_tasks_available();
-    bool stale = claude_tasks_stale();
-    unsigned count = available ? activity->item_count : 0;
-    if (count > 3) count = 3;
-    char buffer[128];
+    if (!view->tasks_selected) return;
+    if (!available) snprintf(buffer, sizeof(buffer), BT(BT_RECORDED_ACTIVITY));
+    else if (stale) snprintf(buffer, sizeof(buffer), BT(BT_CACHED_LU_RECORDED_TASKS), (unsigned long)activity->total_count);
+    else snprintf(buffer, sizeof(buffer), BT(BT_LU_RECENTLY_WORKING_LU_RECORDED),
+        (unsigned long)activity->working_count, (unsigned long)activity->total_count);
+    set_label_if_changed(view->plan, buffer);
+    const char *status = !available ? BT(BT_ACTIVITY_UNAVAILABLE) : stale ? BT(BT_CACHED_ACTIVITY) :
+        strcmp(activity->status, "partial") == 0 ? BT(BT_PARTIAL_SNAPSHOT) : BT(BT_LOCAL_SNAPSHOT);
+    set_label_if_changed(view->status, status);
+    lv_obj_set_style_text_color(view->status, color(stale || !available ? C_WARNING : C_MUTED), 0);
     if (available) {
-        if (stale) snprintf(buffer, sizeof(buffer), BT(BT_CACHED_LU_RECORDED_TASKS), (unsigned long)activity->total_count);
-        else snprintf(buffer, sizeof(buffer), BT(BT_LU_RECENTLY_WORKING_LU_RECORDED),
-            (unsigned long)activity->working_count, (unsigned long)activity->total_count);
-    } else snprintf(buffer, sizeof(buffer), BT(BT_RECORDED_ACTIVITY));
-    set_label_if_changed(ui.claude_task_summary, buffer);
-    lv_obj_set_style_text_color(ui.claude_task_summary, color(stale ? C_WARNING : C_MUTED), 0);
-    for (unsigned i = 0; i < 3; ++i) {
-        visible(ui.claude_task_rows[i], i < count);
-        if (i >= count) continue;
-        const buddy_codex_task_t *task = &activity->items[i];
-        set_label_if_changed(ui.claude_task_titles[i], task->title[0] ? task->title : BT(BT_UNTITLED_TASK));
-        set_label_if_changed(ui.claude_task_projects[i], task->project[0] ? task->project : BT(BT_NO_PROJECT_RECORDED));
-        bool recent_working = strcmp(task->state, "working") == 0 &&
-            (uint64_t)task->age_s + lv_tick_elaps(ui.last_stats_tick) / 1000U <= 120U;
-        const char *state = recent_working ? (stale ? BT(BT_WAS_WORKING) : BT(BT_RECENTLY_WORKING)) :
-            strcmp(task->state, "waiting") == 0 ? BT(BT_WAITING_FOR_YOU) :
-            strcmp(task->state, "completed") == 0 ? BT(BT_COMPLETED) :
-            strcmp(task->state, "interrupted") == 0 ? BT(BT_INTERRUPTED) :
-            strcmp(task->state, "recent") == 0 ? BT(BT_RECENT) : BT(BT_UNKNOWN);
-        set_label_if_changed(ui.claude_task_states[i], state);
-        lv_obj_set_style_text_color(ui.claude_task_states[i], color(recent_working && !stale ? C_ACCENT : C_MUTED), 0);
-        char age[40];
-        if (strcmp(task->state, "unknown") == 0 && task->age_s >= 31536000U)
-            snprintf(buffer, sizeof(buffer), BT(BT_ACTIVITY_TIME_UNKNOWN));
-        else {
-            activity_age_text(age, sizeof(age), task->age_s);
-            snprintf(buffer, sizeof(buffer), BT(BT_LAST_ACTIVITY_S), age);
-        }
-        set_label_if_changed(ui.claude_task_ages[i], buffer);
-    }
-    visible(ui.claude_tasks_empty_title, !count);
-    visible(ui.claude_tasks_empty_body, !count);
-    if (!count) {
-        const char *title = available ? BT(BT_NO_RECENT_TASKS_RECORDED) : BT(BT_WAITING_FOR_TASK_ACTIVITY);
-        const char *body = available ? BT(BT_THIS_LOCAL_SNAPSHOT_CONTAINS_NO_RECENT_TASK_ENTRIES) :
-            BT(BT_RECENT_TASK_RECORDS_WILL_APPEAR_WHEN_THE_PC_CAN);
-        if (!available && !music_connected()) {
-            title = BT(BT_WAITING_FOR_YOUR_PC);
-            body = BT(BT_KEEP_CLAWPAL_RUNNING_IN_YOUR_PC_S_TRAY_RECORDED);
-        } else if (!available && (strcmp(activity->status, "closed") == 0 || !ui.stats.claude.running)) {
-            title = BT(BT_OPEN_CLAUDE_ON_YOUR_PC);
-            body = BT(BT_BUDDY_WILL_SHOW_RECENT_LOCAL_TASK_RECORDS_WHEN_THEY);
-        } else if (!available && (strcmp(activity->status, "error") == 0 || strcmp(activity->status, "unavailable") == 0)) {
-            title = BT(BT_TASK_ACTIVITY_UNAVAILABLE);
-            body = BT(BT_THE_PC_COULD_NOT_READ_LOCAL_TASK_RECORDS_BUDDY);
-        }
-        set_label_if_changed(ui.claude_tasks_empty_title, title);
-        set_label_if_changed(ui.claude_tasks_empty_body, body);
-    }
-    if (ui.claude_tasks_selected) {
-        const char *status = !available ? BT(BT_ACTIVITY_UNAVAILABLE) : stale ? BT(BT_CACHED_ACTIVITY) :
-            strcmp(activity->status, "partial") == 0 ? BT(BT_PARTIAL_SNAPSHOT) : BT(BT_LOCAL_SNAPSHOT);
-        set_label_if_changed(ui.claude_status, status);
-        lv_obj_set_style_text_color(ui.claude_status, color(stale || !available ? C_WARNING : C_MUTED), 0);
-        if (available) {
-            char age[40];
-            activity_age_text(age, sizeof(age), activity->age_s);
-            snprintf(buffer, sizeof(buffer), BT(BT_S_S_RECENT_LOCAL_RECORDS_ONLY), stale ? BT(BT_CACHED_SNAPSHOT) : BT(BT_SNAPSHOT), age);
-        } else snprintf(buffer, sizeof(buffer), BT(BT_NO_LOCAL_TASK_SNAPSHOT_AVAILABLE));
-        set_label_if_changed(ui.claude_age, buffer);
-    }
+        activity_age_text(age, sizeof(age), activity->age_s);
+        snprintf(buffer, sizeof(buffer), BT(BT_S_S_RECENT_LOCAL_RECORDS_ONLY), stale ? BT(BT_CACHED_SNAPSHOT) : BT(BT_SNAPSHOT), age);
+    } else snprintf(buffer, sizeof(buffer), BT(BT_NO_LOCAL_TASK_SNAPSHOT_AVAILABLE));
+    set_label_if_changed(view->age, buffer);
 }
 
-static void refresh_codex(void)
+/* The marker sits on the gauge where usage would be if spread evenly over the window. */
+static void place_time_mark(agent_view_t *view, unsigned i, const buddy_codex_window_t *window, int64_t now)
 {
-    if (!ui.codex_page) return;
-    const buddy_codex_t *codex = &ui.stats.codex;
-    bool available = codex_has_windows();
-    bool stale = codex_stale();
-    if (!ui.codex_tab_initialized && !ui.codex_tab_manual && codex_tasks_available()) {
-        ui.codex_tasks_selected = codex->activity.item_count > 0 && codex->activity.working_count > 0 && !codex_tasks_stale();
-        ui.codex_tab_initialized = true;
+    int64_t length = (int64_t)window->window_minutes * 60, left = (int64_t)window->resets_at - now;
+    bool known = now && window->resets_at && length > 0 && left > 0 && left <= length;
+    visible(view->time_marks[i], known);
+    if (!known) return;
+    int size = view->gauge_size, radius = size / 2 - size / 20;
+    int16_t angle = (int16_t)(GAUGE_START + GAUGE_SWEEP * left / length);
+    lv_obj_set_pos(view->time_marks[i], size / 2 + radius * lv_trigo_cos(angle) / LV_TRIGO_SIN_MAX - 6,
+                   size / 2 + radius * lv_trigo_sin(angle) / LV_TRIGO_SIN_MAX - 6);
+}
+
+static void refresh_agent(agent_view_t *view)
+{
+    if (!view->page) return;
+    const buddy_codex_t *data = view->data;
+    const agent_copy_t *copy = view->copy;
+    bool available = agent_has_windows(data), stale = agent_stale(data);
+    if (!view->tab_initialized && !view->tab_manual && agent_tasks_available(data)) {
+        view->tasks_selected = data->activity.item_count > 0 && data->activity.working_count > 0 && !agent_tasks_stale(data);
+        view->tab_initialized = true;
     }
-    set_label_if_changed(ui.codex_status, codex_status_text());
-    lv_obj_set_style_text_color(ui.codex_status, color(stale || !available ? C_WARNING : C_ACCENT), 0);
-    char buffer[128];
-    if (ui.codex_tasks_selected) snprintf(buffer, sizeof(buffer), BT(BT_RECORDED_ACTIVITY));
-    else if (codex->plan[0]) snprintf(buffer, sizeof(buffer), BT(BT_S_PLAN), codex->plan);
+    set_label_if_changed(view->status, agent_status_text(data, copy));
+    lv_obj_set_style_text_color(view->status, color(stale || !available ? C_WARNING : copy->accent), 0);
+    char buffer[160], when[96];
+    if (data->plan[0]) snprintf(buffer, sizeof(buffer), BT(BT_S_PLAN), data->plan);
     else snprintf(buffer, sizeof(buffer), BT(BT_ACCOUNT_USAGE));
-    set_label_if_changed(ui.codex_plan, buffer);
+    set_label_if_changed(view->plan, buffer);
     const buddy_codex_window_t *windows[2];
     unsigned count = 0;
-    if (available && codex_window_available(&codex->primary)) windows[count++] = &codex->primary;
-    if (available && codex_window_available(&codex->secondary)) windows[count++] = &codex->secondary;
+    if (available && usage_window_available(&data->primary)) windows[count++] = &data->primary;
+    if (available && usage_window_available(&data->secondary)) windows[count++] = &data->secondary;
+    int64_t now = wall_clock();
     for (unsigned i = 0; i < 2; ++i) {
-        visible(ui.codex_windows[i], i < count);
+        visible(view->cards[i], i < count);
         if (i >= count) continue;
         const buddy_codex_window_t *window = windows[i];
-        lv_obj_set_y(ui.codex_windows[i], count == 1 ? 74 : 20 + (int)i * 150);
-        codex_window_name(buffer, sizeof(buffer), window->window_minutes);
-        set_label_if_changed(ui.codex_window_names[i], buffer);
-        snprintf(buffer, sizeof(buffer), "%.1f%%", window->remaining_percent);
-        set_label_if_changed(ui.codex_remaining[i], buffer);
-        lv_obj_set_style_text_color(ui.codex_remaining[i], color(stale ? C_MUTED : C_TEXT), 0);
-        lv_obj_set_style_bg_color(ui.codex_bars[i], color(stale ? C_MUTED : C_ACCENT), LV_PART_INDICATOR);
-        lv_bar_set_value(ui.codex_bars[i], (int)lroundf(window->remaining_percent * 10.f), LV_ANIM_OFF);
-        if (window->resets_at) {
-            time_t timestamp=window->resets_at;struct tm local;localtime_r(&timestamp,&local);
-            char date[96],hour[24],stamp[128];buddy_date(date,sizeof(date),&local,true);
-            strftime(hour,sizeof(hour),view_settings.use_24h?"%H:%M":"%I:%M",&local);
-            snprintf(stamp,sizeof(stamp),"%s %s%s%s",date,hour,view_settings.use_24h?"":" ",view_settings.use_24h?"":BT(local.tm_hour<12?BT_AM:BT_PM));
-            snprintf(buffer,sizeof(buffer),BT(BT_RESETS_VALUE),stamp);
-        } else if (window->reset_text[0]) snprintf(buffer, sizeof(buffer), BT(BT_RESETS_VALUE), window->reset_text);
-        else snprintf(buffer, sizeof(buffer), BT(BT_RESET_TIME_UNAVAILABLE));
-        set_label_if_changed(ui.codex_resets[i], buffer);
+        lv_obj_set_y(view->cards[i], count == 1 ? view->card_single_top : view->card_top + (int)i * view->card_step);
+        usage_window_name(buffer, sizeof(buffer), window->window_minutes);
+        set_label_if_changed(view->window_names[i], buffer);
+        snprintf(buffer, sizeof(buffer), window->remaining_percent < 10.f ? "%.1f%%" : "%.0f%%", window->remaining_percent);
+        set_label_if_changed(view->remaining[i], buffer);
+        uint32_t level = stale ? C_MUTED : window->remaining_percent < 20.f ? C_WARNING : copy->accent;
+        lv_obj_set_style_text_color(view->remaining[i], color(stale ? C_MUTED : C_TEXT), 0);
+        lv_obj_set_style_arc_color(view->gauges[i], color(level), LV_PART_INDICATOR);
+        lv_arc_set_value(view->gauges[i], (int16_t)lroundf(window->remaining_percent * 10.f));
+        place_time_mark(view, i, window, now);
+        if (window->resets_at && now && (int64_t)window->resets_at > now) {
+            duration_text(when, sizeof(when), (int64_t)window->resets_at - now);
+            snprintf(buffer, sizeof(buffer), BT(BT_RESETS_IN_S), when);
+            set_label_if_changed(view->countdowns[i], buffer);
+            reset_stamp(buffer, sizeof(buffer), window->resets_at);
+            set_label_if_changed(view->resets[i], buffer);
+        } else {
+            if (window->resets_at) {
+                reset_stamp(when, sizeof(when), window->resets_at);
+                snprintf(buffer, sizeof(buffer), BT(BT_RESETS_VALUE), when);
+            } else if (window->reset_text[0]) snprintf(buffer, sizeof(buffer), BT(BT_RESETS_VALUE), window->reset_text);
+            else snprintf(buffer, sizeof(buffer), BT(BT_RESET_TIME_UNAVAILABLE));
+            set_label_if_changed(view->countdowns[i], buffer);
+            set_label_if_changed(view->resets[i], "");
+        }
+        int64_t runs_out;
+        bool pace = !stale && usage_pace(window, now, &runs_out);
+        if (window->remaining_percent <= 0.f) {
+            set_label_if_changed(view->paces[i], BT(BT_LIMIT_REACHED));
+            lv_obj_set_style_text_color(view->paces[i], color(C_WARNING), 0);
+        } else if (pace && runs_out) {
+            time_t timestamp = (time_t)runs_out;
+            struct tm local;
+            localtime_r(&timestamp, &local);
+            hour_text(when, sizeof(when), &local);
+            snprintf(buffer, sizeof(buffer), BT(BT_RUNS_OUT_AROUND_S), when);
+            set_label_if_changed(view->paces[i], buffer);
+            lv_obj_set_style_text_color(view->paces[i], color(C_WARNING), 0);
+        } else {
+            set_label_if_changed(view->paces[i], pace ? BT(BT_LASTS_UNTIL_RESET) : "");
+            lv_obj_set_style_text_color(view->paces[i], color(copy->accent), 0);
+        }
     }
-    visible(ui.codex_empty_title, !available);
-    visible(ui.codex_empty_body, !available);
+    visible(view->empty_title, !available);
+    visible(view->empty_body, !available);
     if (available) {
-        uint64_t age = (uint64_t)codex->age_s + lv_tick_elaps(ui.last_stats_tick) / 1000U;
-        if (age < 60) snprintf(buffer, sizeof(buffer), BT(BT_S_LU_S_AGO), stale ? BT(BT_CACHED_UPDATED) : BT(BT_UPDATED), (unsigned long)age);
-        else if (age < 3600) snprintf(buffer, sizeof(buffer), BT(BT_S_LU_MIN_AGO), stale ? BT(BT_CACHED_UPDATED) : BT(BT_UPDATED), (unsigned long)(age / 60));
-        else if (age < 86400) snprintf(buffer, sizeof(buffer), BT(BT_S_LU_H_AGO), stale ? BT(BT_CACHED_UPDATED) : BT(BT_UPDATED), (unsigned long)(age / 3600));
-        else snprintf(buffer, sizeof(buffer), BT(BT_S_LU_D_AGO), stale ? BT(BT_CACHED_UPDATED) : BT(BT_UPDATED), (unsigned long)(age / 86400));
-        set_label_if_changed(ui.codex_age, buffer);
+        uint64_t age = (uint64_t)data->age_s + lv_tick_elaps(ui.last_stats_tick) / 1000U;
+        const char *label = stale ? BT(BT_CACHED_UPDATED) : BT(BT_UPDATED);
+        if (age < 60) snprintf(buffer, sizeof(buffer), BT(BT_S_LU_S_AGO), label, (unsigned long)age);
+        else if (age < 3600) snprintf(buffer, sizeof(buffer), BT(BT_S_LU_MIN_AGO), label, (unsigned long)(age / 60));
+        else if (age < 86400) snprintf(buffer, sizeof(buffer), BT(BT_S_LU_H_AGO), label, (unsigned long)(age / 3600));
+        else snprintf(buffer, sizeof(buffer), BT(BT_S_LU_D_AGO), label, (unsigned long)(age / 86400));
+        set_label_if_changed(view->age, buffer);
     } else {
-        set_label_if_changed(ui.codex_empty_title, codex_status_text());
-        const char *body = BT(BT_OPEN_CODEX_OR_CHATGPT_ON_YOUR_PC_YOUR_AVAILABLE);
+        set_label_if_changed(view->empty_title, agent_status_text(data, copy));
+        const char *body = BT(copy->open_body);
         if (!music_connected()) body = BT(BT_KEEP_CLAWPAL_RUNNING_IN_YOUR_PC_S_TRAY_LIMITS);
-        else if (strcmp(codex->status, "sign_in") == 0 || strcmp(codex->status, "signed_out") == 0 ||
-                 strcmp(codex->status, "unauthorized") == 0)
-            body = BT(BT_SIGN_IN_TO_CODEX_ON_YOUR_PC_BUDDY_WILL);
-        else if (strcmp(codex->status, "runtime_missing") == 0)
-            body = BT(BT_UPDATE_OR_INSTALL_CODEX_ON_YOUR_PC_BUDDY_NEEDS);
-        else if (strcmp(codex->status, "no_limits") == 0)
-            body = BT(BT_YOUR_ACCOUNT_DID_NOT_REPORT_A_USAGE_WINDOW_BUDDY);
-        else if (strcmp(codex->status, "error") == 0 || strcmp(codex->status, "failed") == 0)
+        else if (strcmp(data->status, "sign_in") == 0 || strcmp(data->status, "signed_out") == 0 ||
+                 strcmp(data->status, "unauthorized") == 0) body = BT(copy->sign_in_body);
+        else if (strcmp(data->status, "runtime_missing") == 0) body = BT(copy->update_body);
+        else if (strcmp(data->status, "no_limits") == 0) body = BT(copy->no_limits_body);
+        else if (strcmp(data->status, "error") == 0 || strcmp(data->status, "failed") == 0)
             body = BT(BT_THE_PC_COULD_NOT_REFRESH_YOUR_ACCOUNT_LIMITS_BUDDY);
-        else if (strcmp(codex->status, "unavailable") == 0 && codex->running)
+        else if (strcmp(data->status, "unavailable") == 0 && data->running)
             body = BT(BT_YOUR_ACCOUNT_LIMITS_ARE_NOT_AVAILABLE_YET_BUDDY_WILL);
-        else if (codex->running) body = BT(BT_READING_YOUR_CODEX_ACCOUNT_ON_THE_PC_YOUR_LIMITS);
-        set_label_if_changed(ui.codex_empty_body, body);
-        set_label_if_changed(ui.codex_age, BT(BT_NO_ACCOUNT_LIMITS_AVAILABLE));
+        else if (data->running) body = BT(copy->reading_body);
+        set_label_if_changed(view->empty_body, body);
+        set_label_if_changed(view->age, BT(BT_NO_ACCOUNT_LIMITS_AVAILABLE));
     }
-    refresh_codex_tasks();
-    visible(ui.codex_usage_body, !ui.codex_tasks_selected);
-    visible(ui.codex_tasks_body, ui.codex_tasks_selected);
+    refresh_agent_tasks(view);
+    visible(view->usage_body, !view->tasks_selected);
+    visible(view->tasks_body, view->tasks_selected);
     for (unsigned i = 0; i < 2; ++i) {
-        bool selected = (i == 0) == ui.codex_tasks_selected;
-        lv_obj_set_style_bg_opa(ui.codex_tabs[i], selected ? LV_OPA_COVER : LV_OPA_TRANSP, 0);
-        lv_obj_set_style_text_color(ui.codex_tab_labels[i], color(selected ? C_ACCENT : C_MUTED), 0);
+        bool selected = (i == 1) == view->tasks_selected;
+        lv_obj_set_style_bg_opa(view->tabs[i], selected ? LV_OPA_COVER : LV_OPA_TRANSP, 0);
+        lv_obj_set_style_text_color(view->tab_labels[i], color(selected ? copy->accent : C_MUTED), 0);
     }
     refresh_app_cards();
 }
 
-static void refresh_claude(void)
-{
-    if (!ui.claude_page) return;
-    const buddy_codex_t *claude = &ui.stats.claude;
-    bool available = claude_has_windows();
-    bool stale = claude_stale();
-    if (!ui.claude_tab_initialized && !ui.claude_tab_manual && claude_tasks_available()) {
-        ui.claude_tasks_selected = claude->activity.item_count > 0 && claude->activity.working_count > 0 && !claude_tasks_stale();
-        ui.claude_tab_initialized = true;
-    }
-    set_label_if_changed(ui.claude_status, claude_status_text());
-    lv_obj_set_style_text_color(ui.claude_status, color(stale || !available ? C_WARNING : C_ACCENT), 0);
-    char buffer[128];
-    if (ui.claude_tasks_selected) snprintf(buffer, sizeof(buffer), BT(BT_RECORDED_ACTIVITY));
-    else if (claude->plan[0]) snprintf(buffer, sizeof(buffer), BT(BT_S_PLAN), claude->plan);
-    else snprintf(buffer, sizeof(buffer), BT(BT_ACCOUNT_USAGE));
-    set_label_if_changed(ui.claude_plan, buffer);
-    const buddy_codex_window_t *windows[2];
-    unsigned count = 0;
-    if (available && claude_window_available(&claude->primary)) windows[count++] = &claude->primary;
-    if (available && claude_window_available(&claude->secondary)) windows[count++] = &claude->secondary;
-    for (unsigned i = 0; i < 2; ++i) {
-        visible(ui.claude_windows[i], i < count);
-        if (i >= count) continue;
-        const buddy_codex_window_t *window = windows[i];
-        lv_obj_set_y(ui.claude_windows[i], count == 1 ? 74 : 20 + (int)i * 150);
-        claude_window_name(buffer, sizeof(buffer), window->window_minutes);
-        set_label_if_changed(ui.claude_window_names[i], buffer);
-        snprintf(buffer, sizeof(buffer), "%.1f%%", window->remaining_percent);
-        set_label_if_changed(ui.claude_remaining[i], buffer);
-        lv_obj_set_style_text_color(ui.claude_remaining[i], color(stale ? C_MUTED : C_TEXT), 0);
-        lv_obj_set_style_bg_color(ui.claude_bars[i], color(stale ? C_MUTED : C_ACCENT), LV_PART_INDICATOR);
-        lv_bar_set_value(ui.claude_bars[i], (int)lroundf(window->remaining_percent * 10.f), LV_ANIM_OFF);
-        if (window->resets_at) {
-            time_t timestamp=window->resets_at;struct tm local;localtime_r(&timestamp,&local);
-            char date[96],hour[24],stamp[128];buddy_date(date,sizeof(date),&local,true);
-            strftime(hour,sizeof(hour),view_settings.use_24h?"%H:%M":"%I:%M",&local);
-            snprintf(stamp,sizeof(stamp),"%s %s%s%s",date,hour,view_settings.use_24h?"":" ",view_settings.use_24h?"":BT(local.tm_hour<12?BT_AM:BT_PM));
-            snprintf(buffer,sizeof(buffer),BT(BT_RESETS_VALUE),stamp);
-        } else if (window->reset_text[0]) snprintf(buffer, sizeof(buffer), BT(BT_RESETS_VALUE), window->reset_text);
-        else snprintf(buffer, sizeof(buffer), BT(BT_RESET_TIME_UNAVAILABLE));
-        set_label_if_changed(ui.claude_resets[i], buffer);
-    }
-    visible(ui.claude_empty_title, !available);
-    visible(ui.claude_empty_body, !available);
-    if (available) {
-        uint64_t age = (uint64_t)claude->age_s + lv_tick_elaps(ui.last_stats_tick) / 1000U;
-        if (age < 60) snprintf(buffer, sizeof(buffer), BT(BT_S_LU_S_AGO), stale ? BT(BT_CACHED_UPDATED) : BT(BT_UPDATED), (unsigned long)age);
-        else if (age < 3600) snprintf(buffer, sizeof(buffer), BT(BT_S_LU_MIN_AGO), stale ? BT(BT_CACHED_UPDATED) : BT(BT_UPDATED), (unsigned long)(age / 60));
-        else if (age < 86400) snprintf(buffer, sizeof(buffer), BT(BT_S_LU_H_AGO), stale ? BT(BT_CACHED_UPDATED) : BT(BT_UPDATED), (unsigned long)(age / 3600));
-        else snprintf(buffer, sizeof(buffer), BT(BT_S_LU_D_AGO), stale ? BT(BT_CACHED_UPDATED) : BT(BT_UPDATED), (unsigned long)(age / 86400));
-        set_label_if_changed(ui.claude_age, buffer);
-    } else {
-        set_label_if_changed(ui.claude_empty_title, claude_status_text());
-        const char *body = BT(BT_OPEN_CLAUDE_OR_CHATGPT_ON_YOUR_PC_YOUR_AVAILABLE);
-        if (!music_connected()) body = BT(BT_KEEP_CLAWPAL_RUNNING_IN_YOUR_PC_S_TRAY_LIMITS);
-        else if (strcmp(claude->status, "sign_in") == 0 || strcmp(claude->status, "signed_out") == 0 ||
-                 strcmp(claude->status, "unauthorized") == 0)
-            body = BT(BT_SIGN_IN_TO_CLAUDE_ON_YOUR_PC_BUDDY_WILL);
-        else if (strcmp(claude->status, "runtime_missing") == 0)
-            body = BT(BT_UPDATE_OR_INSTALL_CLAUDE_ON_YOUR_PC_BUDDY_NEEDS);
-        else if (strcmp(claude->status, "no_limits") == 0)
-            body = BT(BT_CLAUDE_NO_LIMITS);
-        else if (strcmp(claude->status, "error") == 0 || strcmp(claude->status, "failed") == 0)
-            body = BT(BT_THE_PC_COULD_NOT_REFRESH_YOUR_ACCOUNT_LIMITS_BUDDY);
-        else if (strcmp(claude->status, "unavailable") == 0 && claude->running)
-            body = BT(BT_YOUR_ACCOUNT_LIMITS_ARE_NOT_AVAILABLE_YET_BUDDY_WILL);
-        else if (claude->running) body = BT(BT_READING_YOUR_CLAUDE_ACCOUNT_ON_THE_PC_YOUR_LIMITS);
-        set_label_if_changed(ui.claude_empty_body, body);
-        set_label_if_changed(ui.claude_age, BT(BT_NO_ACCOUNT_LIMITS_AVAILABLE));
-    }
-    refresh_claude_tasks();
-    visible(ui.claude_usage_body, !ui.claude_tasks_selected);
-    visible(ui.claude_tasks_body, ui.claude_tasks_selected);
-    for (unsigned i = 0; i < 2; ++i) {
-        bool selected = (i == 0) == ui.claude_tasks_selected;
-        lv_obj_set_style_bg_opa(ui.claude_tabs[i], selected ? LV_OPA_COVER : LV_OPA_TRANSP, 0);
-        lv_obj_set_style_text_color(ui.claude_tab_labels[i], color(selected ? C_ACCENT : C_MUTED), 0);
-    }
-    refresh_app_cards();
-}
+static void refresh_codex(void) { refresh_agent(&ui.codex); }
+static void refresh_claude(void) { refresh_agent(&ui.claude); }
 
-static void codex_tab_clicked(lv_event_t *event)
+static void agent_tab_clicked(lv_event_t *event)
 {
-    bool tasks = (uintptr_t)lv_event_get_user_data(event) == 0;
-    ui.codex_tab_manual = true;
-    ui.codex_tab_initialized = true;
-    if (tasks == ui.codex_tasks_selected) return;
-    ui.codex_tasks_selected = tasks;
-    refresh_codex(); refresh_claude();
+    agent_view_t *view = lv_event_get_user_data(event);
+    bool tasks = (uintptr_t)lv_obj_get_user_data(lv_event_get_current_target(event)) == 1;
+    view->tab_manual = true;
+    view->tab_initialized = true;
+    if (tasks == view->tasks_selected) return;
+    view->tasks_selected = tasks;
+    refresh_agent(view);
     refresh_footer();
-    buddy_ui_motion_enter(tasks ? ui.codex_tasks_body : ui.codex_usage_body, 6, 180, 0);
+    buddy_ui_motion_enter(tasks ? view->tasks_body : view->usage_body, 6, 180, 0);
 }
 
-static void claude_tab_clicked(lv_event_t *event)
+static void create_agent_page(agent_view_t *view, const buddy_codex_t *data, const agent_copy_t *copy)
 {
-    bool tasks = (uintptr_t)lv_event_get_user_data(event) == 0;
-    ui.claude_tab_manual = true;
-    ui.claude_tab_initialized = true;
-    if (tasks == ui.claude_tasks_selected) return;
-    ui.claude_tasks_selected = tasks;
-    refresh_claude();
-    refresh_footer();
-    buddy_ui_motion_enter(tasks ? ui.claude_tasks_body : ui.claude_usage_body, 6, 180, 0);
-}
+    view->data = data;
+    view->copy = copy;
+    view->page = box(ui.screen, 0, 0, 800, 440);
+    view->logo = lv_img_create(view->page);
+    lv_img_set_src(view->logo, copy->logo);
+    lv_img_set_zoom(view->logo, 192);
+    lv_obj_set_pos(view->logo, 21, 14);
+    lv_obj_clear_flag(view->logo, LV_OBJ_FLAG_CLICKABLE);
+    view->heading = text(view->page, BT(copy->title), 84, 18, 420, &buddy_language_font_24, C_TEXT);
+    view->plan = text(view->page, BT(BT_ACCOUNT_USAGE), 84, 52, 420, &buddy_language_font_16, C_MUTED);
+    /* Segmented Usage / Tasks switch. */
+    view->tab_track = surface_card(view->page, LV_RADIUS_CIRCLE);
+    lv_obj_set_pos(view->tab_track, 532, 20);
+    lv_obj_set_size(view->tab_track, 240, 46);
+    for (unsigned i = 0; i < 2; ++i) {
+        view->tabs[i] = box(view->tab_track, 4 + (int)i * 116, 4, 116, 38);
+        lv_obj_add_flag(view->tabs[i], LV_OBJ_FLAG_CLICKABLE);
+        lv_obj_set_style_radius(view->tabs[i], LV_RADIUS_CIRCLE, 0);
+        lv_obj_set_style_bg_color(view->tabs[i], color(C_RULE), 0);
+        lv_obj_set_style_bg_color(view->tabs[i], color(C_PRESSED), LV_STATE_PRESSED);
+        lv_obj_set_style_bg_opa(view->tabs[i], LV_OPA_COVER, LV_STATE_PRESSED);
+        view->tab_labels[i] = text(view->tabs[i], i ? BT(BT_TASKS) : BT(BT_USAGE), 0, 0, 108, &buddy_language_font_16, C_MUTED);
+        lv_obj_set_style_text_align(view->tab_labels[i], LV_TEXT_ALIGN_CENTER, 0);
+        lv_obj_align(view->tab_labels[i], LV_ALIGN_CENTER, 0, 0);
+        lv_obj_set_user_data(view->tabs[i], (void *)(uintptr_t)i);
+        lv_obj_add_event_cb(view->tabs[i], agent_tab_clicked, LV_EVENT_CLICKED, view);
+    }
+    rule(view->page, 28, 84, 744, 1);
 
-static void create_codex_page(void)
-{
-    ui.codex_page = box(ui.screen, 0, 0, 800, 440);
-    text(ui.codex_page, BT(BT_CODEX), 28, 20, 420, &buddy_language_font_24, C_TEXT);
-    ui.codex_plan = text(ui.codex_page, BT(BT_ACCOUNT_USAGE), 28, 53, 420, &buddy_language_font_20, C_MUTED);
-    lv_obj_set_height(ui.codex_plan, 27);
+    /* The crab, the account status and its freshness share the right column. */
+    view->mascot = lv_img_create(view->page);
+    lv_obj_set_pos(view->mascot, 636, 116);
+    lv_img_set_antialias(view->mascot, false);
+    lv_obj_clear_flag(view->mascot, LV_OBJ_FLAG_CLICKABLE);
+    view->status = text(view->page, BT(BT_WAITING_FOR_PC), 600, 228, 172, &buddy_language_font_16, C_WARNING);
+    lv_label_set_long_mode(view->status, LV_LABEL_LONG_WRAP);
+    lv_obj_set_height(view->status, 48);
+    lv_obj_set_style_text_align(view->status, LV_TEXT_ALIGN_CENTER, 0);
+    view->age = text(view->page, BT(BT_NO_ACCOUNT_LIMITS_AVAILABLE), 600, 280, 172, &buddy_language_font_14, C_MUTED);
+    lv_label_set_long_mode(view->age, LV_LABEL_LONG_WRAP);
+    lv_obj_set_height(view->age, 64);
+    lv_obj_set_style_text_align(view->age, LV_TEXT_ALIGN_CENTER, 0);
+
+    view->usage_body = box(view->page, 28, 100, 548, 300);
     for (unsigned i = 0; i < 2; ++i) {
-        ui.codex_tabs[i] = action_button(ui.codex_page, i == 0 ? BT(BT_TASKS) : BT(BT_USAGE),
-            i == 0 ? 488 : 632, 20, i == 0 ? 136 : 140, 44, &ui.codex_tab_labels[i]);
-        lv_obj_add_event_cb(ui.codex_tabs[i], codex_tab_clicked, LV_EVENT_CLICKED, (void *)(uintptr_t)i);
+        view->cards[i] = surface_card(view->usage_body, 16);
+        view->gauges[i] = usage_gauge(view->cards[i]);
+        view->remaining[i] = lv_label_create(view->gauges[i]);
+        lv_label_set_text(view->remaining[i], "--");
+        lv_obj_set_style_text_color(view->remaining[i], color(C_TEXT), 0);
+        view->remaining_captions[i] = lv_label_create(view->gauges[i]);
+        lv_label_set_text(view->remaining_captions[i], BT(BT_GAUGE_LEFT));
+        lv_obj_set_style_text_color(view->remaining_captions[i], color(C_MUTED), 0);
+        view->time_marks[i] = box(view->gauges[i], 0, 0, 12, 12);
+        lv_obj_set_style_radius(view->time_marks[i], LV_RADIUS_CIRCLE, 0);
+        lv_obj_set_style_bg_color(view->time_marks[i], color(C_TEXT), 0);
+        lv_obj_set_style_bg_opa(view->time_marks[i], LV_OPA_COVER, 0);
+        lv_obj_set_style_border_color(view->time_marks[i], color(BUDDY_COLOR_SURFACE), 0);
+        lv_obj_set_style_border_width(view->time_marks[i], 3, 0);
+        view->window_names[i] = text(view->cards[i], BT(BT_USAGE_LIMIT), 0, 0, 100, &buddy_language_font_16, C_MUTED);
+        view->countdowns[i] = text(view->cards[i], "", 0, 0, 100, &buddy_language_font_24, C_TEXT);
+        view->resets[i] = text(view->cards[i], "", 0, 0, 100, &buddy_language_font_16, C_MUTED);
+        view->paces[i] = text(view->cards[i], "", 0, 0, 100, &buddy_language_font_16, copy->accent);
+        agent_card_layout(view, i, 548, 140, 116, &buddy_language_font_32, &buddy_language_font_16,
+                          &buddy_language_font_24, &buddy_language_font_16);
     }
-    ui.codex_status = text(ui.codex_page, BT(BT_WAITING_FOR_PC), 610, 294, 162, &buddy_language_font_16, C_WARNING);
-    lv_obj_set_height(ui.codex_status, 58);
-    lv_obj_set_style_text_align(ui.codex_status, LV_TEXT_ALIGN_CENTER, 0);
-    rule(ui.codex_page, 28, 84, 744, 1);
-    ui.codex_usage_body = box(ui.codex_page, 0, 85, 600, 315);
-    for (unsigned i = 0; i < 2; ++i) {
-        lv_obj_t *row = box(ui.codex_usage_body, 28, 20 + (int)i * 150, 548, 132);
-        ui.codex_windows[i] = row;
-        ui.codex_window_names[i] = text(row, BT(BT_USAGE_LIMIT), 0, 0, 548, &buddy_language_font_20, C_MUTED);
-        ui.codex_remaining[i] = text(row, "--", 0, 28, 245, &buddy_language_font_48, C_TEXT);
-        text(row, BT(BT_REMAINING), 252, 53, 290, &buddy_language_font_16, C_MUTED);
-        ui.codex_bars[i] = progress_bar(row, 0, 89, 548);
-        ui.codex_resets[i] = text(row, "", 0, 104, 548, &buddy_language_font_20, C_MUTED);
-        lv_obj_set_height(ui.codex_resets[i], 28);
-    }
-    ui.codex_mascot = lv_img_create(ui.codex_page);
-    lv_obj_set_pos(ui.codex_mascot, 648, 165);
-    lv_img_set_antialias(ui.codex_mascot, false);
-    lv_obj_clear_flag(ui.codex_mascot, LV_OBJ_FLAG_CLICKABLE);
-    ui.codex_empty_title = text(ui.codex_usage_body, BT(BT_WAITING_FOR_PC), 28, 65, 548, &buddy_language_font_32, C_TEXT);
-    lv_obj_set_height(ui.codex_empty_title, 84);
-    ui.codex_empty_body = text(ui.codex_usage_body, "", 28, 168, 548, &buddy_language_font_20, C_MUTED);
-    lv_obj_set_height(ui.codex_empty_body, 120);
-    lv_label_set_long_mode(ui.codex_empty_body, LV_LABEL_LONG_WRAP);
-    ui.codex_tasks_body = box(ui.codex_page, 0, 85, 600, 315);
-    ui.codex_task_summary = text(ui.codex_tasks_body, BT(BT_RECORDED_ACTIVITY), 28, 18, 548, &buddy_language_font_16, C_MUTED);
+    view->card_top = 0;
+    view->card_step = 152;
+    view->card_single_top = 76;
+    view->empty_title = text(view->usage_body, BT(BT_WAITING_FOR_PC), 0, 40, 548, &buddy_language_font_32, C_TEXT);
+    lv_obj_set_height(view->empty_title, 84);
+    view->empty_body = text(view->usage_body, "", 0, 140, 548, &buddy_language_font_20, C_MUTED);
+    lv_obj_set_height(view->empty_body, 120);
+    lv_label_set_long_mode(view->empty_body, LV_LABEL_LONG_WRAP);
+
+    view->tasks_body = box(view->page, 28, 100, 548, 300);
     for (unsigned i = 0; i < 3; ++i) {
-        lv_obj_t *row = box(ui.codex_tasks_body, 28, 61 + (int)i * 84, 548, 80);
-        ui.codex_task_rows[i] = row;
-        ui.codex_task_titles[i] = text(row, "", 0, 0, 398, &buddy_language_font_20, C_TEXT);
-        lv_obj_set_height(ui.codex_task_titles[i], 27);
-        ui.codex_task_states[i] = text(row, "", 406, 5, 142, &buddy_language_font_14, C_MUTED);
-        lv_obj_set_style_text_align(ui.codex_task_states[i], LV_TEXT_ALIGN_RIGHT, 0);
-        ui.codex_task_projects[i] = text(row, "", 0, 29, 548, &buddy_language_font_20, C_MUTED);
-        lv_obj_set_height(ui.codex_task_projects[i], 27);
-        ui.codex_task_ages[i] = text(row, "", 0, 59, 548, &buddy_language_font_14, C_MUTED);
-        if (i < 2) rule(row, 0, 79, 548, 1);
+        view->task_rows[i] = surface_card(view->tasks_body, 14);
+        view->task_dots[i] = box(view->task_rows[i], 0, 0, 10, 10);
+        lv_obj_set_style_radius(view->task_dots[i], LV_RADIUS_CIRCLE, 0);
+        lv_obj_set_style_bg_opa(view->task_dots[i], LV_OPA_COVER, 0);
+        view->task_titles[i] = text(view->task_rows[i], "", 0, 0, 100, &buddy_language_font_20, C_TEXT);
+        view->task_details[i] = text(view->task_rows[i], "", 0, 0, 100, &buddy_language_font_16, C_MUTED);
+        view->task_states[i] = lv_label_create(view->task_rows[i]);
+        lv_obj_set_style_text_font(view->task_states[i], &buddy_language_font_14, 0);
+        lv_obj_set_style_bg_opa(view->task_states[i], LV_OPA_COVER, 0);
+        lv_obj_set_style_radius(view->task_states[i], LV_RADIUS_CIRCLE, 0);
+        lv_obj_set_style_pad_hor(view->task_states[i], 10, 0);
+        lv_obj_set_style_pad_ver(view->task_states[i], 3, 0);
+        lv_label_set_text(view->task_states[i], "");
     }
-    ui.codex_tasks_empty_title = text(ui.codex_tasks_body, BT(BT_WAITING_FOR_TASK_ACTIVITY), 28, 65, 548, &buddy_language_font_32, C_TEXT);
-    lv_obj_set_height(ui.codex_tasks_empty_title, 84);
-    ui.codex_tasks_empty_body = text(ui.codex_tasks_body, "", 28, 168, 548, &buddy_language_font_20, C_MUTED);
-    lv_label_set_long_mode(ui.codex_tasks_empty_body, LV_LABEL_LONG_WRAP);
-    lv_obj_set_height(ui.codex_tasks_empty_body, 120);
-    ui.codex_age = text(ui.codex_page, BT(BT_NO_ACCOUNT_LIMITS_AVAILABLE), 28, 410, 744, &buddy_language_font_14, C_MUTED);
-    refresh_codex(); refresh_claude();
+    agent_task_layout(view, 548, 90, 102, &buddy_language_font_20, &buddy_language_font_16, false);
+    view->tasks_empty_title = text(view->tasks_body, BT(BT_WAITING_FOR_TASK_ACTIVITY), 0, 40, 548, &buddy_language_font_32, C_TEXT);
+    lv_obj_set_height(view->tasks_empty_title, 84);
+    view->tasks_empty_body = text(view->tasks_body, "", 0, 140, 548, &buddy_language_font_20, C_MUTED);
+    lv_label_set_long_mode(view->tasks_empty_body, LV_LABEL_LONG_WRAP);
+    lv_obj_set_height(view->tasks_empty_body, 120);
+    refresh_agent(view);
 }
 
-static void create_claude_page(void)
-{
-    ui.claude_page = box(ui.screen, 0, 0, 800, 440);
-    text(ui.claude_page, BT(BT_CLAUDE), 28, 20, 420, &buddy_language_font_24, C_TEXT);
-    ui.claude_plan = text(ui.claude_page, BT(BT_ACCOUNT_USAGE), 28, 53, 420, &buddy_language_font_20, C_MUTED);
-    lv_obj_set_height(ui.claude_plan, 27);
-    for (unsigned i = 0; i < 2; ++i) {
-        ui.claude_tabs[i] = action_button(ui.claude_page, i == 0 ? BT(BT_TASKS) : BT(BT_USAGE),
-            i == 0 ? 488 : 632, 20, i == 0 ? 136 : 140, 44, &ui.claude_tab_labels[i]);
-        lv_obj_add_event_cb(ui.claude_tabs[i], claude_tab_clicked, LV_EVENT_CLICKED, (void *)(uintptr_t)i);
-    }
-    ui.claude_status = text(ui.claude_page, BT(BT_WAITING_FOR_PC), 610, 294, 162, &buddy_language_font_16, C_WARNING);
-    lv_obj_set_height(ui.claude_status, 58);
-    lv_obj_set_style_text_align(ui.claude_status, LV_TEXT_ALIGN_CENTER, 0);
-    rule(ui.claude_page, 28, 84, 744, 1);
-    ui.claude_usage_body = box(ui.claude_page, 0, 85, 600, 315);
-    for (unsigned i = 0; i < 2; ++i) {
-        lv_obj_t *row = box(ui.claude_usage_body, 28, 20 + (int)i * 150, 548, 132);
-        ui.claude_windows[i] = row;
-        ui.claude_window_names[i] = text(row, BT(BT_USAGE_LIMIT), 0, 0, 548, &buddy_language_font_20, C_MUTED);
-        ui.claude_remaining[i] = text(row, "--", 0, 28, 245, &buddy_language_font_48, C_TEXT);
-        text(row, BT(BT_REMAINING), 252, 53, 290, &buddy_language_font_16, C_MUTED);
-        ui.claude_bars[i] = progress_bar(row, 0, 89, 548);
-        ui.claude_resets[i] = text(row, "", 0, 104, 548, &buddy_language_font_20, C_MUTED);
-        lv_obj_set_height(ui.claude_resets[i], 28);
-    }
-    ui.claude_mascot = lv_img_create(ui.claude_page);
-    lv_obj_set_pos(ui.claude_mascot, 648, 165);
-    lv_img_set_antialias(ui.claude_mascot, false);
-    lv_obj_clear_flag(ui.claude_mascot, LV_OBJ_FLAG_CLICKABLE);
-    ui.claude_empty_title = text(ui.claude_usage_body, BT(BT_WAITING_FOR_PC), 28, 65, 548, &buddy_language_font_32, C_TEXT);
-    lv_obj_set_height(ui.claude_empty_title, 84);
-    ui.claude_empty_body = text(ui.claude_usage_body, "", 28, 168, 548, &buddy_language_font_20, C_MUTED);
-    lv_obj_set_height(ui.claude_empty_body, 120);
-    lv_label_set_long_mode(ui.claude_empty_body, LV_LABEL_LONG_WRAP);
-    ui.claude_tasks_body = box(ui.claude_page, 0, 85, 600, 315);
-    ui.claude_task_summary = text(ui.claude_tasks_body, BT(BT_RECORDED_ACTIVITY), 28, 18, 548, &buddy_language_font_16, C_MUTED);
-    for (unsigned i = 0; i < 3; ++i) {
-        lv_obj_t *row = box(ui.claude_tasks_body, 28, 61 + (int)i * 84, 548, 80);
-        ui.claude_task_rows[i] = row;
-        ui.claude_task_titles[i] = text(row, "", 0, 0, 398, &buddy_language_font_20, C_TEXT);
-        lv_obj_set_height(ui.claude_task_titles[i], 27);
-        ui.claude_task_states[i] = text(row, "", 406, 5, 142, &buddy_language_font_14, C_MUTED);
-        lv_obj_set_style_text_align(ui.claude_task_states[i], LV_TEXT_ALIGN_RIGHT, 0);
-        ui.claude_task_projects[i] = text(row, "", 0, 29, 548, &buddy_language_font_20, C_MUTED);
-        lv_obj_set_height(ui.claude_task_projects[i], 27);
-        ui.claude_task_ages[i] = text(row, "", 0, 59, 548, &buddy_language_font_14, C_MUTED);
-        if (i < 2) rule(row, 0, 79, 548, 1);
-    }
-    ui.claude_tasks_empty_title = text(ui.claude_tasks_body, BT(BT_WAITING_FOR_TASK_ACTIVITY), 28, 65, 548, &buddy_language_font_32, C_TEXT);
-    lv_obj_set_height(ui.claude_tasks_empty_title, 84);
-    ui.claude_tasks_empty_body = text(ui.claude_tasks_body, "", 28, 168, 548, &buddy_language_font_20, C_MUTED);
-    lv_label_set_long_mode(ui.claude_tasks_empty_body, LV_LABEL_LONG_WRAP);
-    lv_obj_set_height(ui.claude_tasks_empty_body, 120);
-    ui.claude_age = text(ui.claude_page, BT(BT_NO_ACCOUNT_LIMITS_AVAILABLE), 28, 410, 744, &buddy_language_font_14, C_MUTED);
-    refresh_claude();
-}
+static void create_codex_page(void) { create_agent_page(&ui.codex, &ui.stats.codex, &codex_copy); }
+static void create_claude_page(void) { create_agent_page(&ui.claude, &ui.stats.claude, &claude_copy); }
+
+/* Quick durations, including a Pomodoro-length focus block. */
+static const uint32_t timer_preset_minutes[4] = { 1U, 5U, 15U, 25U };
 
 static uint32_t timer_duration_ms(void)
 {
@@ -1759,23 +2037,42 @@ static void refresh_timer(void)
     ui.timer_last_seconds = seconds;
     lv_label_set_text(ui.timer_status, ui.timer_running ? BT(BT_RUNNING) : ui.timer_completed ? BT(BT_TIME_S_UP) :
         ui.timer_started ? BT(BT_PAUSED) : ui.timer_duration_s ? BT(BT_READY) : BT(BT_SET_A_DURATION));
-    lv_obj_set_style_text_color(ui.timer_status, color(ui.timer_completed ? C_WARNING : C_ACCENT), 0);
+    lv_obj_set_style_text_color(ui.timer_status, color(ui.timer_completed ? C_WARNING : ui.timer_running ? C_ACCENT : C_MUTED), 0);
     lv_label_set_text(ui.timer_button_labels[0], ui.timer_running ? BT(BT_PAUSE) :
         ui.timer_completed ? BT(BT_START_AGAIN) : ui.timer_started ? BT(BT_RESUME) : BT(BT_START));
     button_enabled(ui.timer_buttons[0], ui.timer_duration_s > 0);
+    /* The ring drains with the time left; a finished timer glows full in amber. */
     uint32_t duration = timer_duration_ms();
     uint32_t remaining = ui.timer_remaining_ms < duration ? ui.timer_remaining_ms : duration;
-    lv_bar_set_value(ui.timer_progress, duration ?
-        (int)((uint64_t)(duration - remaining) * 1000U / duration) : 0, LV_ANIM_OFF);
+    lv_arc_set_value(ui.timer_ring, ui.timer_completed ? 1000 : duration ? (int16_t)((uint64_t)remaining * 1000U / duration) : 0);
+    lv_obj_set_style_arc_color(ui.timer_ring, ui.timer_completed ? color(C_WARNING) : ui.timer_started ? color(C_ACCENT) :
+        lv_color_mix(color(C_ACCENT), color(C_BG), 110), LV_PART_INDICATOR);
+    int64_t now = wall_clock();
+    if (ui.timer_running && now) {
+        time_t ends = (time_t)(now + (seconds ? seconds : 0));
+        struct tm local;
+        localtime_r(&ends, &local);
+        char hour[40];
+        hour_text(hour, sizeof(hour), &local);
+        snprintf(buffer, sizeof(buffer), BT(BT_ENDS_AT_S), hour);
+        set_label_if_changed(ui.timer_end, buffer);
+    } else set_label_if_changed(ui.timer_end, ui.timer_completed ? BT(BT_TIME_S_UP) : "");
+    lv_obj_set_style_text_color(ui.timer_end, color(ui.timer_completed ? C_WARNING : C_MUTED), 0);
     const uint32_t units[] = { ui.timer_duration_s / 3600U, ui.timer_duration_s / 60U % 60U,
                                ui.timer_duration_s % 60U };
     const uint32_t limits[] = { 23U, 59U, 59U };
+    bool editable = !ui.timer_started && !ui.timer_running;
     for (unsigned i = 0; i < 3; ++i) {
         snprintf(buffer, sizeof(buffer), "%02lu", (unsigned long)units[i]);
         lv_label_set_text(ui.timer_units[i], buffer);
-        bool editable = !ui.timer_started && !ui.timer_running;
         button_enabled(ui.timer_adjust[i * 2], editable && units[i] > 0);
         button_enabled(ui.timer_adjust[i * 2 + 1], editable && units[i] < limits[i]);
+    }
+    for (unsigned i = 0; i < 4; ++i) {
+        bool selected = ui.timer_duration_s == timer_preset_minutes[i] * 60U;
+        button_enabled(ui.timer_presets[i], editable);
+        lv_obj_set_style_bg_color(ui.timer_presets[i], color(selected ? C_RULE : BUDDY_COLOR_SURFACE), 0);
+        lv_obj_set_style_text_color(ui.timer_preset_labels[i], color(selected ? C_ACCENT : C_TEXT), 0);
     }
     refresh_app_cards();
     refresh_footer();
@@ -1855,158 +2152,327 @@ static void timer_adjust_clicked(lv_event_t *event)
     refresh_footer();
 }
 
+static void timer_preset_clicked(lv_event_t *event)
+{
+    unsigned preset = (unsigned)(uintptr_t)lv_event_get_user_data(event);
+    if (ui.timer_running || ui.timer_started || preset >= 4) return;
+    ui.timer_duration_s = timer_preset_minutes[preset] * 60U;
+    ui.timer_remaining_ms = timer_duration_ms();
+    ui.timer_completed = false;
+    ui.timer_celebrating = false;
+    ui.timer_notify = false;
+    refresh_timer();
+    refresh_footer();
+}
+
+/* Round, label-less transport control; the symbol comes from the built-in icon fallback. */
+static lv_obj_t *icon_button(lv_obj_t *parent, const char *symbol, unsigned control)
+{
+    lv_obj_t *button = box(parent, 0, 0, 48, 48);
+    lv_obj_add_flag(button, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_set_ext_click_area(button, 6);
+    lv_obj_set_style_radius(button, LV_RADIUS_CIRCLE, 0);
+    lv_obj_set_style_bg_color(button, color(C_PRESSED), LV_STATE_PRESSED);
+    lv_obj_set_style_bg_opa(button, LV_OPA_COVER, LV_STATE_PRESSED);
+    lv_obj_t *icon = lv_label_create(button);
+    lv_obj_set_style_text_color(icon, color(C_TEXT), 0);
+    lv_label_set_text(icon, symbol);
+    lv_obj_center(icon);
+    lv_obj_clear_flag(icon, LV_OBJ_FLAG_CLICKABLE);
+    ui.music_button_labels[control] = icon;
+    lv_obj_add_event_cb(button, music_clicked, LV_EVENT_CLICKED, (void *)(uintptr_t)control);
+    return button;
+}
+
+static lv_obj_t *music_slider(lv_obj_t *parent, int32_t maximum)
+{
+    lv_obj_t *slider = lv_slider_create(parent);
+    lv_obj_remove_style_all(slider);
+    lv_slider_set_range(slider, 0, maximum);
+    lv_obj_set_style_radius(slider, LV_RADIUS_CIRCLE, LV_PART_MAIN);
+    lv_obj_set_style_bg_color(slider, color(C_RULE), LV_PART_MAIN);
+    lv_obj_set_style_bg_opa(slider, LV_OPA_COVER, LV_PART_MAIN);
+    lv_obj_set_style_radius(slider, LV_RADIUS_CIRCLE, LV_PART_INDICATOR);
+    lv_obj_set_style_bg_color(slider, color(C_ACCENT), LV_PART_INDICATOR);
+    lv_obj_set_style_bg_opa(slider, LV_OPA_COVER, LV_PART_INDICATOR);
+    lv_obj_set_style_radius(slider, LV_RADIUS_CIRCLE, LV_PART_KNOB);
+    lv_obj_set_style_bg_color(slider, color(C_TEXT), LV_PART_KNOB);
+    lv_obj_set_style_bg_opa(slider, LV_OPA_COVER, LV_PART_KNOB);
+    lv_obj_set_style_pad_all(slider, 6, LV_PART_KNOB);
+    lv_obj_set_style_pad_all(slider, 8, LV_PART_KNOB | LV_STATE_PRESSED);
+    /* A thin track still needs a finger-sized target, and vertical swipes still
+     * scroll the compact layouts instead of being captured by the slider. */
+    lv_obj_set_ext_click_area(slider, 18);
+    lv_obj_add_flag(slider, LV_OBJ_FLAG_SCROLL_CHAIN_VER);
+    lv_obj_add_event_cb(slider, music_slider_event, LV_EVENT_ALL, NULL);
+    return slider;
+}
+
+static void music_cover_layout(int x, int y, int size)
+{
+    lv_obj_set_pos(ui.music_cover, x, y);
+    lv_obj_set_size(ui.music_cover, size, size);
+    for (unsigned i = 0; i < 2; ++i) {
+        int ring = size * (i ? 60 : 84) / 100;
+        lv_obj_set_size(ui.music_rings[i], ring, ring);
+        lv_obj_center(ui.music_rings[i]);
+    }
+}
+
+/* Places the transport row around a centre point, with offsets for the skip
+ * and toggle buttons; the compact layouts reuse it with smaller sizes. */
+static void music_transport_layout(int cx, int cy, int play, int skip, int toggle, int inner, int outer,
+                                   const lv_font_t *play_font, const lv_font_t *skip_font, const lv_font_t *toggle_font)
+{
+    const int offsets[] = { -outer, -inner, 0, inner, outer };
+    const int sizes[] = { toggle, skip, play, skip, toggle };
+    const lv_font_t *fonts[] = { toggle_font, skip_font, play_font, skip_font, toggle_font };
+    for (unsigned i = 0; i <= MUSIC_REPEAT_BUTTON; ++i) {
+        lv_obj_set_pos(ui.music_buttons[i], cx + offsets[i] - sizes[i] / 2, cy - sizes[i] / 2);
+        lv_obj_set_size(ui.music_buttons[i], sizes[i], sizes[i]);
+        lv_obj_set_style_text_font(ui.music_button_labels[i], fonts[i], 0);
+    }
+    for (unsigned i = 0; i < 2; ++i) lv_obj_set_pos(ui.music_toggle_dots[i], toggle / 2 - 3, toggle - 9);
+    lv_obj_set_pos(ui.music_repeat_one, toggle / 2 + 5, toggle / 2 - 19);
+}
+
+static void music_volume_layout(int x, int cy, int width, const lv_font_t *font)
+{
+    lv_obj_set_pos(ui.music_buttons[MUSIC_MUTE_BUTTON], x, cy - 22);
+    lv_obj_set_size(ui.music_buttons[MUSIC_MUTE_BUTTON], 44, 44);
+    lv_obj_set_style_text_font(ui.music_button_labels[MUSIC_MUTE_BUTTON], font, 0);
+    lv_obj_set_pos(ui.music_volume, x + 54, cy - 3);
+    lv_obj_set_size(ui.music_volume, width - 54 - 52, 6);
+    lv_obj_set_pos(ui.music_volume_label, x + width - 44, cy - 9);
+    lv_obj_set_size(ui.music_volume_label, 44, 20);
+}
+
 static void create_music_page(void)
 {
     ui.music_page = box(ui.screen, 0, 0, 800, 440);
-    ui.music_mascot = lv_img_create(ui.music_page);
-    lv_img_set_src(ui.music_mascot, &buddy_mascot_frames[BUDDY_MASCOT_IDLE][0]);
-    lv_img_set_antialias(ui.music_mascot, false);
-    lv_obj_set_pos(ui.music_mascot, 28, 17);
-    lv_obj_clear_flag(ui.music_mascot, LV_OBJ_FLAG_CLICKABLE);
-    text(ui.music_page, BT(BT_SPOTIFY), 88, 25, 380, &buddy_language_font_24, C_TEXT);
+    ui.music_logo = lv_img_create(ui.music_page);
+    lv_img_set_src(ui.music_logo, &buddy_logo_spotify);
+    lv_img_set_zoom(ui.music_logo, 192);
+    lv_obj_set_pos(ui.music_logo, 21, 14);
+    lv_obj_clear_flag(ui.music_logo, LV_OBJ_FLAG_CLICKABLE);
+    ui.music_heading = text(ui.music_page, BT(BT_SPOTIFY), 84, 25, 380, &buddy_language_font_24, C_TEXT);
     ui.music_status = text(ui.music_page, BT(BT_WAITING_FOR_PC), 508, 29, 264, &buddy_language_font_16, C_MUTED);
     lv_obj_set_style_text_align(ui.music_status, LV_TEXT_ALIGN_RIGHT, 0);
-    rule(ui.music_page, 28, 84, 744, 1);
-    ui.music_buddy = lv_img_create(ui.music_page);
-    lv_img_set_antialias(ui.music_buddy, false);
-    lv_obj_set_pos(ui.music_buddy, 652, 163);
-    lv_obj_clear_flag(ui.music_buddy, LV_OBJ_FLAG_CLICKABLE);
-    ui.music_title = text(ui.music_page, BT(BT_WAITING_FOR_YOUR_PC), 28, 110, 572, &buddy_language_font_32, C_TEXT);
-    lv_obj_set_height(ui.music_title, 84);
-    ui.music_artist = text(ui.music_page, "", 28, 209, 572, &buddy_language_font_20, C_TEXT);
-    lv_obj_set_height(ui.music_artist, 28);
-    ui.music_album = text(ui.music_page, "", 28, 248, 572, &buddy_language_font_20, C_MUTED);
-    lv_obj_set_height(ui.music_album, 28);
-    ui.music_progress = progress_bar(ui.music_page, 28, 296, 744);
-    ui.music_elapsed = text(ui.music_page, "--:--", 28, 309, 260, &buddy_language_font_14, C_MUTED);
-    ui.music_duration = text(ui.music_page, "--:--", 512, 309, 260, &buddy_language_font_14, C_MUTED);
-    lv_obj_set_style_text_align(ui.music_duration, LV_TEXT_ALIGN_RIGHT, 0);
-    ui.music_feedback = text(ui.music_page, "", 28, 332, 744, &buddy_language_font_14, C_WARNING);
-    const char *labels[] = { BT(BT_PREVIOUS), BT(BT_PLAY), BT(BT_NEXT) };
-    const int positions[] = { 28, 256, 568 }, widths[] = { 204, 288, 204 };
+    ui.music_eq = box(ui.music_page, 0, 0, 18, 14);
     for (unsigned i = 0; i < 3; ++i) {
-        ui.music_buttons[i] = action_button(ui.music_page, labels[i], positions[i], 359, widths[i], 64,
-                                             &ui.music_button_labels[i]);
-        lv_obj_add_event_cb(ui.music_buttons[i], music_clicked, LV_EVENT_CLICKED, (void *)(uintptr_t)i);
+        ui.music_eq_bars[i] = box(ui.music_eq, (int)i * 7, 8, 4, 6);
+        lv_obj_set_style_bg_opa(ui.music_eq_bars[i], LV_OPA_COVER, 0);
+        lv_obj_set_style_radius(ui.music_eq_bars[i], 2, 0);
     }
-    lv_obj_set_style_text_color(ui.music_button_labels[1], color(C_ACCENT), 0);
+    rule(ui.music_page, 28, 84, 744, 1);
+
+    /* Cover: a tinted record sleeve for the dancing crab. */
+    ui.music_cover = box(ui.music_page, 0, 0, 200, 200);
+    lv_obj_set_style_radius(ui.music_cover, 18, 0);
+    lv_obj_set_style_bg_opa(ui.music_cover, LV_OPA_COVER, 0);
+    lv_obj_set_style_bg_grad_dir(ui.music_cover, LV_GRAD_DIR_VER, 0);
+    for (unsigned i = 0; i < 2; ++i) {
+        ui.music_rings[i] = box(ui.music_cover, 0, 0, 10, 10);
+        lv_obj_set_style_radius(ui.music_rings[i], LV_RADIUS_CIRCLE, 0);
+        lv_obj_set_style_border_width(ui.music_rings[i], 2, 0);
+        lv_obj_set_style_border_opa(ui.music_rings[i], i ? LV_OPA_50 : LV_OPA_30, 0);
+    }
+    /* The inner ring doubles as a darker record label behind the crab. */
+    lv_obj_set_style_bg_color(ui.music_rings[1], color(C_BG), 0);
+    lv_obj_set_style_bg_opa(ui.music_rings[1], LV_OPA_30, 0);
+    ui.music_buddy = lv_img_create(ui.music_cover);
+    lv_img_set_antialias(ui.music_buddy, false);
+    lv_obj_center(ui.music_buddy);
+    lv_obj_clear_flag(ui.music_buddy, LV_OBJ_FLAG_CLICKABLE);
+    music_cover_layout(28, 104, 228);
+
+    ui.music_meta = box(ui.music_page, 284, 104, 488, 150);
+    ui.music_title = text(ui.music_meta, BT(BT_WAITING_FOR_YOUR_PC), 0, 0, 488, &buddy_language_font_32, C_TEXT);
+    ui.music_artist = text(ui.music_meta, "", 0, 0, 488, &buddy_language_font_20, C_TEXT);
+    ui.music_album = text(ui.music_meta, "", 0, 0, 488, &buddy_language_font_16, C_MUTED);
+    ui.music_title_lines = 2;
+
+    /* The timeline closes level with the cover's lower edge. */
+    ui.music_progress = music_slider(ui.music_page, 1);
+    lv_obj_set_pos(ui.music_progress, 284, 296);
+    lv_obj_set_size(ui.music_progress, 488, 6);
+    ui.music_elapsed = text(ui.music_page, "--:--", 284, 312, 160, &buddy_language_font_14, C_MUTED);
+    ui.music_duration = text(ui.music_page, "--:--", 612, 312, 160, &buddy_language_font_14, C_MUTED);
+    lv_obj_set_style_text_align(ui.music_duration, LV_TEXT_ALIGN_RIGHT, 0);
+
+    const char *symbols[] = { LV_SYMBOL_SHUFFLE, LV_SYMBOL_PREV, LV_SYMBOL_PLAY, LV_SYMBOL_NEXT, LV_SYMBOL_LOOP, LV_SYMBOL_VOLUME_MAX };
+    for (unsigned i = 0; i < MUSIC_BUTTON_COUNT; ++i) ui.music_buttons[i] = icon_button(ui.music_page, symbols[i], i);
+    lv_obj_set_style_bg_opa(ui.music_buttons[MUSIC_PLAY_BUTTON], LV_OPA_COVER, 0);
+    lv_obj_set_style_text_color(ui.music_button_labels[MUSIC_PLAY_BUTTON], color(C_BG), 0);
+    for (unsigned i = 0; i < 2; ++i) {
+        ui.music_toggle_dots[i] = box(ui.music_buttons[i ? MUSIC_REPEAT_BUTTON : MUSIC_SHUFFLE_BUTTON], 0, 0, 6, 6);
+        lv_obj_set_style_radius(ui.music_toggle_dots[i], LV_RADIUS_CIRCLE, 0);
+        lv_obj_set_style_bg_opa(ui.music_toggle_dots[i], LV_OPA_COVER, 0);
+    }
+    /* Repeat-one badge: a small filled "1" on the repeat icon's shoulder. */
+    ui.music_repeat_one = text(ui.music_buttons[MUSIC_REPEAT_BUTTON], "1", 0, 0, 15, &buddy_language_font_14, C_BG);
+    lv_obj_set_size(ui.music_repeat_one, 15, 15);
+    lv_obj_set_style_text_line_space(ui.music_repeat_one, 0, 0);
+    lv_obj_set_style_text_align(ui.music_repeat_one, LV_TEXT_ALIGN_CENTER, 0);
+    lv_obj_set_style_radius(ui.music_repeat_one, LV_RADIUS_CIRCLE, 0);
+    lv_obj_set_style_bg_opa(ui.music_repeat_one, LV_OPA_COVER, 0);
+    music_transport_layout(528, 372, 76, 60, 48, 104, 196, &buddy_language_font_32, &buddy_language_font_24, &buddy_language_font_20);
+
+    ui.music_volume = music_slider(ui.music_page, 100);
+    ui.music_volume_label = text(ui.music_page, "", 0, 0, 44, &buddy_language_font_14, C_MUTED);
+    lv_obj_set_style_text_align(ui.music_volume_label, LV_TEXT_ALIGN_RIGHT, 0);
+    music_volume_layout(22, 372, 240, &buddy_language_font_20);
+
+    /* Command feedback appears in the quiet band between the track and its timeline. */
+    ui.music_feedback = text(ui.music_page, "", 284, 256, 488, &buddy_language_font_14, C_WARNING);
+    apply_music_accent(C_ACCENT);
     refresh_music();
+}
+
+/* Places the countdown ring; the crab, time and end time sit inside it. */
+static void timer_ring_layout(int x, int y, int size, const lv_font_t *time_font, bool mascot)
+{
+    lv_obj_set_pos(ui.timer_ring, x, y);
+    lv_obj_set_size(ui.timer_ring, size, size);
+    lv_obj_set_style_arc_width(ui.timer_ring, size / 20, LV_PART_MAIN);
+    lv_obj_set_style_arc_width(ui.timer_ring, size / 20, LV_PART_INDICATOR);
+    lv_obj_set_style_text_font(ui.timer_time, time_font, 0);
+    int time_h = lv_font_get_line_height(time_font);
+    visible(ui.timer_mascot, mascot);
+    lv_obj_align(ui.timer_mascot, LV_ALIGN_CENTER, 0, -time_h / 2 - 44);
+    lv_obj_align(ui.timer_time, LV_ALIGN_CENTER, 0, mascot ? time_h / 2 : -10);
+    lv_obj_align(ui.timer_end, LV_ALIGN_CENTER, 0, (mascot ? time_h / 2 : -10) + time_h / 2 + 16);
+}
+
+static lv_obj_t *timer_chip(lv_obj_t *parent, const char *label, lv_obj_t **caption)
+{
+    lv_obj_t *chip = box(parent, 0, 0, 10, 10);
+    lv_obj_add_flag(chip, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_set_style_radius(chip, LV_RADIUS_CIRCLE, 0);
+    lv_obj_set_style_bg_color(chip, color(BUDDY_COLOR_SURFACE), 0);
+    lv_obj_set_style_bg_opa(chip, LV_OPA_COVER, 0);
+    lv_obj_set_style_bg_color(chip, color(C_PRESSED), LV_STATE_PRESSED);
+    *caption = text(chip, label, 0, 0, 10, &buddy_language_font_16, C_TEXT);
+    lv_obj_set_style_text_align(*caption, LV_TEXT_ALIGN_CENTER, 0);
+    return chip;
+}
+
+/* Stepper rows (caption, minus, value, plus), one per unit. */
+static void timer_stepper_rows(int x, int y, int width, int row_height, int step)
+{
+    for (unsigned i = 0; i < 3; ++i) {
+        int top = y + (int)i * step;
+        lv_obj_set_pos(ui.timer_captions[i], x, top + (row_height - 22) / 2);
+        lv_obj_set_size(ui.timer_captions[i], width - 180, 24);
+        lv_obj_set_pos(ui.timer_adjust[i * 2], x + width - 168, top);
+        lv_obj_set_pos(ui.timer_adjust[i * 2 + 1], x + width - 52, top);
+        lv_obj_set_pos(ui.timer_units[i], x + width - 116, top + (row_height - 30) / 2);
+        lv_obj_set_size(ui.timer_units[i], 64, 30);
+        for (unsigned j = 0; j < 2; ++j) lv_obj_set_size(ui.timer_adjust[i * 2 + j], 52, row_height);
+    }
+}
+
+static void timer_presets_layout(int x, int y, int width, int height)
+{
+    int chip = (width - 3 * 8) / 4;
+    for (unsigned i = 0; i < 4; ++i) {
+        lv_obj_set_pos(ui.timer_presets[i], x + (int)i * (chip + 8), y);
+        lv_obj_set_size(ui.timer_presets[i], chip, height);
+        lv_obj_set_width(ui.timer_preset_labels[i], chip - 8);
+        lv_obj_align(ui.timer_preset_labels[i], LV_ALIGN_CENTER, 0, 0);
+    }
+}
+
+static void timer_buttons_layout(int x, int y, int width, int height)
+{
+    int primary = (width - 12) * 3 / 5;
+    lv_obj_set_pos(ui.timer_buttons[0], x, y);
+    lv_obj_set_size(ui.timer_buttons[0], primary, height);
+    lv_obj_set_pos(ui.timer_buttons[1], x + primary + 12, y);
+    lv_obj_set_size(ui.timer_buttons[1], width - primary - 12, height);
+    for (unsigned i = 0; i < 2; ++i) {
+        lv_obj_set_width(ui.timer_button_labels[i], (i ? width - primary - 12 : primary) - 16);
+        lv_obj_align(ui.timer_button_labels[i], LV_ALIGN_CENTER, 0, 0);
+    }
 }
 
 static void create_timer_page(void)
 {
     ui.timer_page = box(ui.screen, 0, 0, 800, 440);
-    text(ui.timer_page, BT(BT_TIMER), 28, 26, 420, &buddy_language_font_24, C_TEXT);
+    ui.timer_heading = text(ui.timer_page, BT(BT_TIMER), 28, 26, 420, &buddy_language_font_24, C_TEXT);
     ui.timer_status = text(ui.timer_page, BT(BT_READY), 508, 29, 264, &buddy_language_font_16, C_ACCENT);
     lv_obj_set_style_text_align(ui.timer_status, LV_TEXT_ALIGN_RIGHT, 0);
     rule(ui.timer_page, 28, 84, 744, 1);
-    ui.timer_time = text(ui.timer_page, "00:05:00", 28, 124, 548, &buddy_clock_font, C_TEXT);
-    lv_obj_set_style_text_align(ui.timer_time, LV_TEXT_ALIGN_CENTER, 0);
-    ui.timer_progress = progress_bar(ui.timer_page, 28, 222, 744);
-    ui.timer_mascot = lv_img_create(ui.timer_page);
-    lv_obj_set_pos(ui.timer_mascot, 648, 111);
+
+    /* A full ring that starts at the top and drains clockwise. */
+    ui.timer_ring = lv_arc_create(ui.timer_page);
+    lv_obj_remove_style_all(ui.timer_ring);
+    lv_arc_set_bg_angles(ui.timer_ring, 0, 360);
+    lv_arc_set_rotation(ui.timer_ring, 270);
+    lv_arc_set_range(ui.timer_ring, 0, 1000);
+    lv_obj_set_style_arc_color(ui.timer_ring, color(C_RULE), LV_PART_MAIN);
+    lv_obj_set_style_arc_rounded(ui.timer_ring, true, LV_PART_INDICATOR);
+    lv_obj_clear_flag(ui.timer_ring, LV_OBJ_FLAG_CLICKABLE);
+    ui.timer_mascot = lv_img_create(ui.timer_ring);
     lv_img_set_antialias(ui.timer_mascot, false);
     lv_obj_clear_flag(ui.timer_mascot, LV_OBJ_FLAG_CLICKABLE);
+    ui.timer_time = lv_label_create(ui.timer_ring);
+    lv_label_set_text(ui.timer_time, "00:05:00");
+    lv_obj_set_style_text_color(ui.timer_time, color(C_TEXT), 0);
+    ui.timer_end = lv_label_create(ui.timer_ring);
+    lv_label_set_text(ui.timer_end, "");
+    lv_obj_set_style_text_font(ui.timer_end, &buddy_language_font_16, 0);
+    timer_ring_layout(40, 104, 304, &buddy_language_font_48, true);
+
     const char *units[] = { BT(BT_HOURS), BT(BT_MINUTES), BT(BT_SECONDS) };
     for (unsigned i = 0; i < 3; ++i) {
-        int x = 28 + (int)i * 256;
-        lv_obj_t *caption = text(ui.timer_page, units[i], x, 246, 232, &buddy_language_font_14, C_MUTED);
-        lv_obj_set_style_text_align(caption, LV_TEXT_ALIGN_CENTER, 0);
-        ui.timer_units[i] = text(ui.timer_page, "00", x + 72, 287, 88, &buddy_language_font_24, C_TEXT);
+        ui.timer_captions[i] = text(ui.timer_page, units[i], 0, 0, 100, &buddy_language_font_16, C_MUTED);
+        ui.timer_units[i] = text(ui.timer_page, "00", 0, 0, 64, &buddy_language_font_24, C_TEXT);
         lv_obj_set_style_text_align(ui.timer_units[i], LV_TEXT_ALIGN_CENTER, 0);
         for (unsigned j = 0; j < 2; ++j) {
             unsigned action = i * 2 + j;
-            ui.timer_adjust[action] = action_button(ui.timer_page, j ? "+" : "-",
-                x + (j ? 176 : 0), 275, 56, 52, &caption);
+            lv_obj_t *caption;
+            ui.timer_adjust[action] = action_button(ui.timer_page, j ? LV_SYMBOL_PLUS : LV_SYMBOL_MINUS, 0, 0, 52, 48, &caption);
+            lv_obj_set_style_radius(ui.timer_adjust[action], LV_RADIUS_CIRCLE, 0);
             lv_obj_add_event_cb(ui.timer_adjust[action], timer_adjust_clicked, LV_EVENT_PRESSED,
                 (void *)(uintptr_t)action);
             lv_obj_add_event_cb(ui.timer_adjust[action], timer_adjust_clicked, LV_EVENT_LONG_PRESSED_REPEAT,
                 (void *)(uintptr_t)action);
         }
     }
+    timer_stepper_rows(380, 104, 392, 48, 60);
+
+    for (unsigned i = 0; i < 4; ++i) {
+        char label[24];
+        snprintf(label, sizeof(label), BT(BT_LU_MIN), (unsigned long)timer_preset_minutes[i]);
+        ui.timer_presets[i] = timer_chip(ui.timer_page, label, &ui.timer_preset_labels[i]);
+        lv_obj_add_event_cb(ui.timer_presets[i], timer_preset_clicked, LV_EVENT_CLICKED, (void *)(uintptr_t)i);
+    }
+    timer_presets_layout(380, 292, 392, 44);
+
     const char *labels[] = { BT(BT_START), BT(BT_RESET) };
     for (unsigned i = 0; i < 2; ++i) {
-        ui.timer_buttons[i] = action_button(ui.timer_page, labels[i], 28 + (int)i * 384, 359, 360, 64,
-                                            &ui.timer_button_labels[i]);
+        ui.timer_buttons[i] = action_button(ui.timer_page, labels[i], 0, 0, 100, 56, &ui.timer_button_labels[i]);
+        lv_obj_set_style_radius(ui.timer_buttons[i], LV_RADIUS_CIRCLE, 0);
         lv_obj_add_event_cb(ui.timer_buttons[i], timer_clicked, LV_EVENT_CLICKED, (void *)(uintptr_t)i);
         if (!i) lv_obj_add_event_cb(ui.timer_buttons[i], timer_clicked, LV_EVENT_PRESSED, NULL);
     }
-    lv_obj_set_style_text_color(ui.timer_button_labels[0], color(C_ACCENT), 0);
+    /* Start is the one filled action on the page. */
+    lv_obj_set_style_bg_color(ui.timer_buttons[0], color(C_ACCENT), 0);
+    lv_obj_set_style_bg_color(ui.timer_buttons[0], lv_color_darken(color(C_ACCENT), LV_OPA_30), LV_STATE_PRESSED);
+    lv_obj_set_style_text_color(ui.timer_button_labels[0], color(C_BG), 0);
+    timer_buttons_layout(380, 352, 392, 56);
     refresh_timer();
 }
 
-static void weather_disc(lv_draw_ctx_t *ctx, int x, int y, int radius, uint32_t ink)
-{
-    lv_draw_rect_dsc_t style;
-    lv_draw_rect_dsc_init(&style);
-    style.bg_color = color(ink);
-    style.bg_opa = LV_OPA_COVER;
-    style.radius = LV_RADIUS_CIRCLE;
-    lv_area_t area = {x - radius, y - radius, x + radius, y + radius};
-    lv_draw_rect(ctx, &style, &area);
-}
-
-static void weather_stroke(lv_draw_ctx_t *ctx, int x, int y, int scale, int x1, int y1, int x2, int y2)
-{
-    lv_draw_line_dsc_t style;
-    lv_draw_line_dsc_init(&style);
-    style.color = color(BUDDY_COLOR_WEATHER_MARK);
-    style.width = 2 * scale;
-    style.round_start = style.round_end = 1;
-    lv_point_t start = {x + x1 * scale, y + y1 * scale}, end = {x + x2 * scale, y + y2 * scale};
-    lv_draw_line(ctx, &style, &start, &end);
-}
-
-/* Small native vector marks; no extra bitmap buffers or animated weather layer. */
 static void draw_weather_icon(lv_event_t *event)
 {
     if (!ui.weather.available) return;
-    lv_draw_ctx_t *ctx = lv_event_get_draw_ctx(event);
     lv_area_t area;
     lv_obj_get_coords(lv_event_get_target(event), &area);
     int scale = lv_obj_get_width(lv_event_get_target(event)) >= 56 ? 2 : 1;
-    int x = area.x1, y = area.y1, code = ui.weather.code;
-    if (code <= 1) {
-        if (!ui.weather.is_day) {
-            weather_disc(ctx, x + 13 * scale, y + 12 * scale, 9 * scale, BUDDY_COLOR_WEATHER_MARK);
-            weather_disc(ctx, x + 17 * scale, y + 8 * scale, 8 * scale, ui.active_app == BUDDY_APP_HOME ? BUDDY_COLOR_BG : C_CLOCK_BG);
-        } else {
-            weather_disc(ctx, x + 13 * scale, y + 12 * scale, 5 * scale, BUDDY_COLOR_WEATHER_MARK);
-            static const int8_t rays[][4] = {
-                {13,1,13,3}, {13,21,13,23}, {2,12,4,12}, {22,12,24,12},
-                {5,4,7,6}, {19,18,21,20}, {5,20,7,18}, {19,6,21,4},
-            };
-            for (unsigned i = 0; i < sizeof(rays) / sizeof(rays[0]); ++i)
-                weather_stroke(ctx, x, y, scale, rays[i][0], rays[i][1], rays[i][2], rays[i][3]);
-        }
-        return;
-    }
-    if (code == 45 || code == 48) {
-        weather_stroke(ctx, x, y, scale, 3, 7, 23, 7);
-        weather_stroke(ctx, x, y, scale, 6, 13, 25, 13);
-        weather_stroke(ctx, x, y, scale, 2, 19, 21, 19);
-        return;
-    }
-    bool precipitation = code >= 51;
-    int cloud_y = precipitation ? 10 : 14;
-    weather_disc(ctx, x + 7 * scale, y + cloud_y * scale, 5 * scale, BUDDY_COLOR_WEATHER_MARK);
-    weather_disc(ctx, x + 14 * scale, y + (cloud_y - 3) * scale, 7 * scale, BUDDY_COLOR_WEATHER_MARK);
-    weather_disc(ctx, x + 21 * scale, y + cloud_y * scale, 5 * scale, BUDDY_COLOR_WEATHER_MARK);
-    weather_stroke(ctx, x, y, scale, 7, cloud_y + 4, 21, cloud_y + 4);
-    if (code >= 95) {
-        weather_stroke(ctx, x, y, scale, 15, 16, 11, 21);
-        weather_stroke(ctx, x, y, scale, 11, 21, 16, 21);
-        weather_stroke(ctx, x, y, scale, 16, 21, 13, 25);
-    } else if ((code >= 71 && code <= 77) || code == 85 || code == 86) {
-        for (int offset = 7; offset <= 21; offset += 14) {
-            weather_stroke(ctx, x, y, scale, offset - 2, 21, offset + 2, 21);
-            weather_stroke(ctx, x, y, scale, offset, 19, offset, 23);
-        }
-    } else if (precipitation) {
-        weather_stroke(ctx, x, y, scale, 8, 19, 6, 23);
-        weather_stroke(ctx, x, y, scale, 15, 19, 13, 23);
-        weather_stroke(ctx, x, y, scale, 22, 19, 20, 23);
-    }
+    buddy_weather_icon_draw(lv_event_get_draw_ctx(event), area.x1, area.y1, scale, ui.weather.code, ui.weather.is_day,
+                            ui.active_app == BUDDY_APP_HOME ? BUDDY_COLOR_BG : C_CLOCK_BG);
 }
 
 static void create_app_surfaces(void)
@@ -2125,39 +2591,45 @@ void buddy_ui_init(void)
     lv_obj_set_style_text_align(ui.status, LV_TEXT_ALIGN_RIGHT, 0);
     rule(ui.monitor_header, 28, 84, 744, 1);
 
-    ui.overview = box(ui.screen, 28, 102, 744, 325);
-    create_channel(&ui.cpu, 0, BT(BT_CPU), false);
-    create_channel(&ui.gpu, 388, BT(BT_GPU), true);
-    rule(ui.overview, 371, 0, 1, 126);
-    text(ui.overview, BT(BT_MEMORY), 0, 151, 232, &buddy_language_font_16, C_MUTED);
-    ui.memory = text(ui.overview, "--", 0, 177, 242, &buddy_language_font_24, C_TEXT);
-    ui.memory_percent = text(ui.overview, BT(BT_WAITING_FOR_READINGS), 0, 211, 240, &buddy_language_font_14, C_MUTED);
-    rule(ui.overview, 254, 155, 1, 71);
-    text(ui.overview, BT(BT_GPU_MEMORY), 278, 151, 229, &buddy_language_font_16, C_MUTED);
-    ui.vram = text(ui.overview, "--", 278, 177, 229, &buddy_language_font_24, C_TEXT);
-    ui.vram_note = text(ui.overview, BT(BT_WAITING_FOR_READINGS), 278, 211, 229, &buddy_language_font_14, C_MUTED);
-    rule(ui.overview, 523, 155, 1, 71);
-    text(ui.overview, BT(BT_NETWORK), 547, 151, 197, &buddy_language_font_16, C_MUTED);
-    text(ui.overview, BT(BT_DOWN), 547, 181, 49, &buddy_language_font_14, C_MUTED);
-    text(ui.overview, BT(BT_UP), 547, 207, 49, &buddy_language_font_14, C_MUTED);
-    ui.rx = text(ui.overview, "--", 602, 178, 142, &buddy_language_font_20, C_TEXT);
-    ui.tx = text(ui.overview, "--", 602, 204, 142, &buddy_language_font_20, C_TEXT);
+    ui.overview = box(ui.screen, 28, 96, 744, 340);
+    create_channel(&ui.cpu, BT(BT_CPU), false);
+    create_channel(&ui.gpu, BT(BT_GPU), true);
+    channel_layout(&ui.cpu, 0, 0, 366, 148, 116, &buddy_language_font_32, &buddy_language_font_32);
+    channel_layout(&ui.gpu, 378, 0, 366, 148, 116, &buddy_language_font_32, &buddy_language_font_32);
+    const char *tile_names[] = { BT(BT_MEMORY), BT(BT_GPU_MEMORY), BT(BT_NETWORK) };
+    for (unsigned i = 0; i < 3; ++i) {
+        ui.tiles[i] = surface_card(ui.overview, 14);
+        ui.tile_names[i] = text(ui.tiles[i], tile_names[i], 0, 0, 100, &buddy_language_font_14, C_MUTED);
+    }
+    ui.memory = text(ui.tiles[0], "--", 0, 0, 100, &buddy_language_font_24, C_TEXT);
+    ui.memory_percent = text(ui.tiles[0], BT(BT_WAITING_FOR_READINGS), 0, 0, 100, &buddy_language_font_14, C_MUTED);
+    lv_obj_set_style_text_align(ui.memory_percent, LV_TEXT_ALIGN_RIGHT, 0);
+    ui.memory_bar = meter_bar(ui.tiles[0]);
+    ui.vram = text(ui.tiles[1], "--", 0, 0, 100, &buddy_language_font_24, C_TEXT);
+    ui.vram_note = text(ui.tiles[1], BT(BT_WAITING_FOR_READINGS), 0, 0, 100, &buddy_language_font_14, C_MUTED);
+    lv_obj_set_style_text_align(ui.vram_note, LV_TEXT_ALIGN_RIGHT, 0);
+    ui.vram_bar = meter_bar(ui.tiles[1]);
+    ui.net_captions[0] = text(ui.tiles[2], BT(BT_DOWN), 0, 0, 80, &buddy_language_font_14, C_MUTED);
+    ui.net_captions[1] = text(ui.tiles[2], BT(BT_UP), 0, 0, 80, &buddy_language_font_14, C_MUTED);
+    ui.rx = text(ui.tiles[2], "--", 0, 0, 100, &buddy_language_font_20, C_TEXT);
+    ui.tx = text(ui.tiles[2], "--", 0, 0, 100, &buddy_language_font_20, C_TEXT);
     lv_obj_set_style_text_align(ui.rx, LV_TEXT_ALIGN_RIGHT, 0);
     lv_obj_set_style_text_align(ui.tx, LV_TEXT_ALIGN_RIGHT, 0);
+    for (unsigned i = 0; i < 3; ++i) tile_layout(i, (int)i * 252, 160, 240, 96);
 
-    ui.chart_title = text(ui.overview, BT(BT_CPU_LOAD_60_SECONDS), 0, 251, 570, &buddy_language_font_14, C_MUTED);
-    text(ui.overview, "0 - 100%", 624, 251, 120, &buddy_language_font_14, C_MUTED);
-    ui.chart = lv_chart_create(ui.overview);
+    ui.chart_card = surface_card(ui.overview, 14);
+    ui.chart_title = text(ui.chart_card, BT(BT_CPU_LOAD_60_SECONDS), 0, 0, 100, &buddy_language_font_14, C_MUTED);
+    ui.chart_range = text(ui.chart_card, "0 - 100%", 0, 0, 110, &buddy_language_font_14, C_MUTED);
+    lv_obj_set_style_text_align(ui.chart_range, LV_TEXT_ALIGN_RIGHT, 0);
+    ui.chart = lv_chart_create(ui.chart_card);
     lv_obj_remove_style_all(ui.chart);
-    lv_obj_set_pos(ui.chart, 0, 281);
-    lv_obj_set_size(ui.chart, 744, 42);
     lv_chart_set_type(ui.chart, LV_CHART_TYPE_LINE);
     lv_chart_set_range(ui.chart, LV_CHART_AXIS_PRIMARY_Y, 0, 100);
     lv_chart_set_point_count(ui.chart, HISTORY_POINTS);
     lv_chart_set_div_line_count(ui.chart, 2, 0);
     lv_obj_set_style_line_color(ui.chart, color(C_RULE), LV_PART_MAIN);
     lv_obj_set_style_line_width(ui.chart, 1, LV_PART_MAIN);
-    lv_obj_set_style_line_width(ui.chart, 2, LV_PART_ITEMS);
+    lv_obj_set_style_line_width(ui.chart, 3, LV_PART_ITEMS);
     lv_obj_set_style_size(ui.chart, 0, LV_PART_INDICATOR);
     lv_obj_clear_flag(ui.chart, LV_OBJ_FLAG_SCROLLABLE | LV_OBJ_FLAG_CLICKABLE);
     ui.cpu_series = lv_chart_add_series(ui.chart, color(C_ACCENT), LV_CHART_AXIS_PRIMARY_Y);
@@ -2165,16 +2637,14 @@ void buddy_ui_init(void)
     lv_chart_set_all_value(ui.chart, ui.cpu_series, LV_CHART_POINT_NONE);
     lv_chart_set_all_value(ui.chart, ui.gpu_series, LV_CHART_POINT_NONE);
 
-    ui.game_panel = box(ui.overview, 0, 244, 744, 81);
-    lv_obj_set_style_bg_color(ui.game_panel, color(C_BG), 0);
-    lv_obj_set_style_bg_opa(ui.game_panel, LV_OPA_COVER, 0);
-    ui.game_title = text(ui.game_panel, "", 0, 3, 550, &buddy_language_font_20, C_TEXT);
-    lv_obj_set_height(ui.game_title, 27);
-    ui.game_status = text(ui.game_panel, "", 0, 40, 550, &buddy_language_font_14, C_MUTED);
-    ui.game_fps = text(ui.game_panel, "--", 568, 0, 176, &buddy_language_font_48, C_ACCENT);
+    ui.game_panel = surface_card(ui.overview, 14);
+    ui.game_title = text(ui.game_panel, "", 0, 0, 100, &buddy_language_font_20, C_TEXT);
+    ui.game_status = text(ui.game_panel, "", 0, 0, 100, &buddy_language_font_14, C_MUTED);
+    ui.game_fps = text(ui.game_panel, "--", 0, 0, 150, &buddy_language_font_48, C_ACCENT);
     lv_obj_set_style_text_align(ui.game_fps, LV_TEXT_ALIGN_RIGHT, 0);
-    lv_obj_t *fps_unit = text(ui.game_panel, BT(BT_FPS), 568, 55, 176, &buddy_language_font_14, C_MUTED);
-    lv_obj_set_style_text_align(fps_unit, LV_TEXT_ALIGN_RIGHT, 0);
+    ui.game_fps_unit = text(ui.game_panel, BT(BT_FPS), 0, 0, 150, &buddy_language_font_14, C_MUTED);
+    lv_obj_set_style_text_align(ui.game_fps_unit, LV_TEXT_ALIGN_RIGHT, 0);
+    chart_layout(0, 268, 744, 72);
     visible(ui.game_panel, false);
 
     create_details();
@@ -2286,7 +2756,8 @@ void buddy_ui_set_connection(buddy_connection_state_t state, const char *ssid,
     if (state != BUDDY_PC_CONNECTED) ui.fresh_sample = false;
     if (state != BUDDY_PC_CONNECTED && ui.music_command_pending) {
         ui.music_command_pending = false;
-        lv_label_set_text(ui.music_feedback, BT(BT_PC_DISCONNECTED_RECONNECT_TO_CONTROL_SPOTIFY));
+        ui.music_deferred = 0;
+        set_music_feedback(BT(BT_PC_DISCONNECTED_RECONNECT_TO_CONTROL_SPOTIFY), true);
     }
     refresh_connection();
 }
@@ -2297,7 +2768,9 @@ static void channel_reading(channel_t *channel, float usage, float temperature, 
     if (isfinite(usage) && usage >= 0) snprintf(buf, sizeof(buf), "%.0f", fminf(usage, 100));
     else snprintf(buf, sizeof(buf), "--");
     lv_label_set_text(channel->usage, buf);
-    lv_bar_set_value(channel->bar, isfinite(usage) ? (int)fminf(fmaxf(usage, 0), 100) : 0, LV_ANIM_OFF);
+    lv_arc_set_value(channel->gauge, isfinite(usage) ? (int16_t)lroundf(fminf(fmaxf(usage, 0), 100) * 10.f) : 0);
+    lv_obj_set_style_arc_color(channel->gauge, color(ui.connection != BUDDY_PC_CONNECTED ? C_MUTED :
+        isfinite(usage) && usage >= 90 ? C_WARNING : C_ACCENT), LV_PART_INDICATOR);
     if (isfinite(temperature)) snprintf(buf, sizeof(buf), "%.0f\xC2\xB0" "C", temperature);
     else snprintf(buf, sizeof(buf), "--");
     lv_label_set_text(channel->temperature, buf);
@@ -2357,20 +2830,24 @@ void buddy_ui_update_stats(const buddy_stats_t *stats)
     }
     if (!stats->music.running || !stats->auto_open_apps) ui.music_launch_pending = false;
     ui.music_seen_running = stats->music.running;
+    unsigned deferred = 0;
     if (ui.music_command_pending && stats->music.control_id != ui.music_command_control_id) {
         ui.music_command_pending = false;
+        deferred = ui.music_deferred;
+        ui.music_deferred = 0;
         const char *feedback = "";
         if (!stats->music.control_ok) {
             feedback = strcmp(stats->music.control_error, "unsupported") == 0 ? BT(BT_THIS_CONTROL_ISN_T_AVAILABLE_FOR_THIS_TRACK) :
                 strcmp(stats->music.control_error, "unavailable") == 0 ? BT(BT_SPOTIFY_ISN_T_READY_START_PLAYBACK_ON_YOUR_PC) :
                 BT(BT_COULDN_T_CONTROL_SPOTIFY_TRY_AGAIN);
         }
-        lv_label_set_text(ui.music_feedback, feedback);
+        set_music_feedback(feedback, true);
     }
     ui.stats = *stats;
     ui.have_stats = true;
     ui.fresh_sample = true;
     ui.last_stats_tick = lv_tick_get();
+    if (deferred) music_send(deferred - 1U, ui.music_deferred_value);
     ui.manual_monitor_hold = false;
     lv_label_set_text(ui.host, stats->hostname[0] ? stats->hostname : BT(BT_PAIRED_PC));
     channel_reading(&ui.cpu, stats->cpu_usage, stats->cpu_temperature, stats->cpu_name);
@@ -2382,6 +2859,9 @@ void buddy_ui_update_stats(const buddy_stats_t *stats)
         snprintf(buf, sizeof(buf), BT(BT_0F_IN_USE), fminf(stats->memory_usage, 100));
     else snprintf(buf, sizeof(buf), BT(BT_SENSOR_UNAVAILABLE));
     lv_label_set_text(ui.memory_percent, buf);
+    lv_bar_set_value(ui.memory_bar, isfinite(stats->memory_usage) ? (int)fminf(fmaxf(stats->memory_usage, 0), 100) : 0, LV_ANIM_OFF);
+    lv_bar_set_value(ui.vram_bar, isfinite(stats->vram_used_mb) && isfinite(stats->vram_total_mb) && stats->vram_total_mb > 0 ?
+        (int)fminf(100.f, stats->vram_used_mb / stats->vram_total_mb * 100) : 0, LV_ANIM_OFF);
     if (isfinite(stats->vram_used_mb) && isfinite(stats->vram_total_mb) && stats->vram_total_mb > 0)
         snprintf(buf, sizeof(buf), BT(BT_0F_IN_USE), fminf(100.f, stats->vram_used_mb / stats->vram_total_mb * 100));
     else snprintf(buf, sizeof(buf), BT(BT_SENSOR_UNAVAILABLE));

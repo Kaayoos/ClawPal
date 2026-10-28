@@ -55,10 +55,20 @@ Edit languages/en.json and languages/pl.json, then run
 scripts/generate_language_fonts.py with lv_font_conv and the included original
 font. Keep the font's OFL notice and all original asset sources.
 
+The companion picks the display's time zone from the chosen location using
+`companion/Assets/timezones.json`. Refresh it when a new tz database release
+changes rules: `python -m pip install --upgrade tzdata` then
+`python scripts/generate_timezones.py`. The generator keeps only rules the
+display's C library can parse and that match the database for the next three
+years; other zones fall back to manual selection.
+
 ## Rebuilding and installing modified versions
 
-Normal USB flashing and the authenticated local firmware endpoint remain
-available for your builds; no signing key is required to run modified firmware.
+Normal USB flashing remains available for your builds, and no signing key is
+needed to run modified firmware that way. Wi-Fi updates only accept images signed
+with the key that signed the running firmware: official releases use the ClawPal
+release key, and a fork can install its own signed build over USB once, then
+update it over Wi-Fi with its own key (`scripts/sign-firmware.py`).
 Keep board/layout compatibility and checksums correct. For local releases,
 `ClawPal-Setup.exe --install-bundled-wifi result.json` installs its own bundled
 firmware onto an already-paired compatible display. Do not use the official

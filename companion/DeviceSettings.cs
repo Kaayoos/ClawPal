@@ -137,8 +137,7 @@ public sealed class DeviceSettingsClient(Configuration config)
     private async Task<(HttpClient Client, Uri Address)> Open(CancellationToken token)
     {
         var endpoint=await Connection.DiscoverAsync(config,token) ?? throw new IOException(L.Text("display_offline_changes_will_be_sent_when_it_reconnects"));
-        var client=new HttpClient(new HttpClientHandler { UseProxy=false, AllowAutoRedirect=false }) { Timeout=TimeSpan.FromSeconds(8) };
-        client.DefaultRequestHeaders.Authorization=new AuthenticationHeaderValue("Bearer",config.Token);
+        var client=DeviceAuth.For(endpoint,config.Token).CreateClient(TimeSpan.FromSeconds(8));
         return (client,new Uri($"http://{endpoint.Address}:{Protocol.MonitorPort}/"));
     }
     internal static DeviceSettingsSnapshot Parse(string response)

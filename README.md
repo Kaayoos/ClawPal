@@ -37,10 +37,10 @@
 The crab lives on the Home screen next to a clock and shortcuts to your apps:
 
 - Live PC stats, with optional in-game FPS
-- Spotify playback controls
-- Codex and Claude Code usage
+- A Spotify player with seeking, shuffle, repeat and volume, tinted to the album cover
+- Codex and Claude Code usage gauges with reset countdowns, a pace forecast and recent tasks
 - Weather now, for the next 24 hours and for five days
-- A clock and a timer
+- A clock and a timer with quick presets and an end time
 
 Spotify, Codex and Claude Code can open their apps on the display automatically, or you can keep Home on screen. Tap your crab for a hello.
 
@@ -109,9 +109,9 @@ With live limits enabled, the existing access token is decoded in memory and sen
 
 ## Privacy
 
-The PC and the display talk over your local network using plain HTTP and a pairing token. That traffic isn't encrypted, so keep the display on a network you trust.
+The PC and the display talk over your local network using plain HTTP. Every request is signed with your pairing key, which itself never crosses the network, so another device on the LAN can't send commands or replay old ones. The traffic isn't encrypted, though, so keep the display on a network you trust. Wi-Fi firmware updates must be signed by the ClawPal release key; your own builds still install over USB.
 
-Your location coordinates go to Open-Meteo for forecasts (location search uses its geocoding API too), and update checks contact GitHub. If you enable Live Claude limits, ClawPal sends an authenticated usage request to Anthropic. Codex data comes from your local Codex installation and may stop working if Codex changes.
+Your location coordinates go to Open-Meteo for forecasts (location search uses its geocoding API too), and update checks contact GitHub. If you enable Live Claude limits, ClawPal sends an authenticated usage request to Anthropic. Codex data comes from your local Codex installation and may stop working if Codex changes. Spotify controls use Windows' local media session and Spotify's own entry in the Windows volume mixer, so system volume is never changed. The album cover is reduced to a single accent color on the PC; the image itself never reaches the display.
 
 FPS tracking is optional. It uses the bundled Intel PresentMon console helper and Windows ETW events, and it doesn't modify games or inject an overlay. Results and overhead depend on the game and your Windows permissions; when FPS isn't available, the field stays blank. There's no promise about how any game's anti-cheat treats it.
 

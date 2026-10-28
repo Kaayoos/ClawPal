@@ -38,6 +38,41 @@ Uploads resume by skipping files whose size and SHA-256 match. Existing files
 with different bytes are never overwritten. A failed upload leaves a draft;
 the updater cannot see it until all files are uploaded and verified.
 
+## Signing keys
+
+**Firmware (required for releases).** Displays only accept a Wi-Fi update signed
+with the key that signed the firmware they run. `release.ps1` refuses to build
+without it. Create the key once, offline, and keep two backups somewhere safe:
+losing it means every display can only be updated over USB.
+
+```powershell
+python -m espsecure generate_signing_key --version 2 --scheme rsa3072 clawpal-release-key.pem
+python scripts/sign-firmware.py --init --key clawpal-release-key.pem
+```
+
+Commit the generated `firmware/release-signing-key.sha256` (the public digest,
+not the key). Before each release set `$env:CLAWPAL_SIGNING_KEY` to the key's
+path, for example in `.tools/release-env.ps1`. Builds refuse a key whose digest
+differs, so a release cannot switch keys by accident. Never commit the `.pem`.
+
+The first release with signed firmware also starts signed LAN requests, which
+older companions cannot send. `package-release.ps1` therefore sets
+`min_companion` to that release's own version so the PC updates first.
+
+**Installer (recommended).** Without a code-signing certificate Windows
+SmartScreen warns on first launch. `build.ps1` signs `ClawPal-Setup.exe` before
+it is hashed when one of these is set: `CLAWPAL_SIGN_THUMBPRINT` (a certificate
+in your CurrentUser store, including EV hardware tokens) or `CLAWPAL_SIGN_DLIB`
+with `CLAWPAL_SIGN_METADATA` (Azure Trusted Signing). It needs `signtool.exe`
+from the Windows SDK. Pass `-RequireCodeSigning` to `build.ps1` to fail instead
+of warning. Open-source projects can apply for a free certificate through the
+SignPath Foundation.
+
+**Provenance.** CI attests the installer and firmware it builds on `main`
+(`gh attestation verify <file> --repo Kaayoos/clawpal`). Locally published
+release assets are not covered; they rely on the signatures above and the
+SHA-256 values in `clawpal-release.json`.
+
 ## Preparing a new version
 
 Update the firmware and companion version, versioned user agent/log strings,
