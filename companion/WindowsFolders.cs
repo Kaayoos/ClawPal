@@ -18,7 +18,8 @@ namespace ClawPal.Companion
         public static string RoamingAppData { get { return Get("3EB685DB-65F9-4CF6-A03A-E3EF65729F3D"); } }
         public static string Startup { get { return Get("B97D20BB-F46A-4C97-BA10-5E3608430854"); } }
         public static string Programs { get { return Get("A77F5D77-2E2B-44C3-A6A2-ABA601054A51"); } }
-        // Used only to identify an older installation during an explicit upgrade.
+        // Unredirected local AppData: identifies an older installation during an explicit
+        // upgrade and locates Claude Desktop's data outside its package container.
         public static string LegacyLocalAppData { get { return Get("F1B32785-6FBA-4FCF-9D55-7B8E7F157091"); } }
 
         private static string Get(string id)

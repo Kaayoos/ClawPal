@@ -34,10 +34,23 @@ internal static class ClaudeDesktop
         Func<ClaudeSession, bool> alive) => sessions.Where(s => !s.Ended && s.Seen <= now.AddMinutes(1) &&
             s.Seen > now.AddHours(-24) && alive(s)).OrderByDescending(s => s.Seen).FirstOrDefault();
 
-    internal static IEnumerable<string> Roots()
+    internal static IEnumerable<string> Roots() => Roots(WindowsFolders.RoamingAppData, WindowsFolders.LegacyLocalAppData);
+
+    // Desktop releases from October 2026 move their data to %LOCALAPPDATA%\Claude-Data\<install>
+    // and leave a ".user-data-left.<install>" marker behind. Moved roots come first, and
+    // abandoned roots are skipped so a stale copy can never supply an old account's token.
+    internal static IEnumerable<string> Roots(string roamingAppData, string localAppData)
     {
-        var roots = new List<string> { Path.Combine(WindowsFolders.RoamingAppData, "Claude") };
-        string packages = Path.Combine(WindowsFolders.LegacyLocalAppData, "Packages");
+        var roots = new List<string>();
+        try
+        {
+            string moved = Path.Combine(localAppData, "Claude-Data");
+            if (Directory.Exists(moved))
+                roots.AddRange(Directory.EnumerateDirectories(moved).Take(16).OrderByDescending(Directory.GetLastWriteTimeUtc));
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException) { }
+        roots.Add(Path.Combine(roamingAppData, "Claude"));
+        string packages = Path.Combine(localAppData, "Packages");
         try
         {
             if (Directory.Exists(packages))
@@ -45,7 +58,13 @@ internal static class ClaudeDesktop
                     .Select(p => Path.Combine(p, "LocalCache", "Roaming", "Claude")));
         }
         catch (Exception e) when (e is IOException or UnauthorizedAccessException) { }
-        return roots.Where(Directory.Exists).Distinct(StringComparer.OrdinalIgnoreCase);
+        return roots.Where(root => Directory.Exists(root) && !Abandoned(root)).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
+    }
+
+    private static bool Abandoned(string root)
+    {
+        try { return Directory.EnumerateFiles(root, ".user-data-left.*").Any(); }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException) { return false; }
     }
 
     internal static ClaudeDesktopReading? ReadAt(string root, ClaudeSession latest, DateTimeOffset now)
