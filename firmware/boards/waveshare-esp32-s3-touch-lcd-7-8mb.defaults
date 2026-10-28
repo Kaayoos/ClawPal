@@ -49,3 +49,11 @@ CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE=y
 
 # Verified HTTPS weather uses PSRAM so growing UI state cannot starve TLS.
 CONFIG_MBEDTLS_EXTERNAL_MEM_ALLOC=y
+
+# Wi-Fi firmware updates must be signed with the release key (scripts/sign-firmware.py).
+# Without hardware secure boot, ESP32-S3's RSA scheme checks signatures on update only,
+# against the key that signed the running app; the bootloader and USB installs are unchanged.
+CONFIG_SECURE_SIGNED_APPS_NO_SECURE_BOOT=y
+CONFIG_SECURE_SIGNED_APPS_RSA_SCHEME=y
+CONFIG_SECURE_SIGNED_ON_UPDATE_NO_SECURE_BOOT=y
+CONFIG_SECURE_BOOT_BUILD_SIGNED_BINARIES=n
