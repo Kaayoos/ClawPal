@@ -6,8 +6,6 @@
 
 #include "cJSON.h"
 
-#define MUSIC_MAX_SECONDS (7U * 24 * 60 * 60)
-
 static bool valid_display_utf8(const char *value, size_t length)
 {
     for (size_t i = 0; i < length;) {
@@ -129,11 +127,20 @@ static bool parse_music(const cJSON *root, buddy_music_t *music)
            copy_json_string(value, "title", music->title, sizeof(music->title)) &&
            copy_json_string(value, "artist", music->artist, sizeof(music->artist)) &&
            copy_json_string(value, "album", music->album, sizeof(music->album)) &&
-           get_optional_uint32(value, "position_s", MUSIC_MAX_SECONDS, &music->position_s) &&
-           get_optional_uint32(value, "duration_s", MUSIC_MAX_SECONDS, &music->duration_s) &&
+           get_optional_uint32(value, "position_s", BUDDY_MUSIC_MAX_SECONDS, &music->position_s) &&
+           get_optional_uint32(value, "duration_s", BUDDY_MUSIC_MAX_SECONDS, &music->duration_s) &&
            get_optional_uint32(value, "control_id", INT_MAX, &music->control_id) &&
            get_optional_boolean(value, "control_ok", &music->control_ok) &&
-           copy_json_string(value, "control_error", music->control_error, sizeof(music->control_error));
+           copy_json_string(value, "control_error", music->control_error, sizeof(music->control_error)) &&
+           get_optional_boolean(value, "can_shuffle", &music->can_shuffle) &&
+           get_optional_boolean(value, "shuffle", &music->shuffle) &&
+           get_optional_boolean(value, "can_repeat", &music->can_repeat) &&
+           get_optional_uint32(value, "repeat", 2, &music->repeat) &&
+           get_optional_boolean(value, "can_seek", &music->can_seek) &&
+           get_optional_boolean(value, "can_volume", &music->can_volume) &&
+           get_optional_uint32(value, "volume", 100, &music->volume) &&
+           get_optional_boolean(value, "muted", &music->muted) &&
+           get_optional_uint32(value, "art_color", 0xFFFFFF, &music->art_color);
 }
 
 static bool parse_codex_window(const cJSON *codex, const char *key, buddy_codex_window_t *window)

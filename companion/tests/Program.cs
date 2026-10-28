@@ -83,6 +83,18 @@ Check(Protocol.ParseControl(Control(0, "next")) is null && Protocol.ParseControl
 Check(Protocol.ParseControl(Control(1, "shell")) is null, "arbitrary control actions rejected");
 foreach (var bad in new[] { "{\"type\":\"buddy.control\",\"v\":1,\"id\":2147483648,\"action\":\"next\"}", "{\"type\":\"buddy.control\",\"v\":1,\"id\":1,\"action\":\"next\",\"command\":\"calc\"}", "{\"type\":\"buddy.control\",\"v\":1,\"id\":1,\"id\":2,\"action\":\"next\"}" })
     Check(Protocol.ParseControl(Encoding.UTF8.GetBytes(bad)) is null, "invalid control shape/bounds rejected");
+byte[] Valued(string action, object value) => JsonSerializer.SerializeToUtf8Bytes(new { type = "buddy.control", v = 1, id = 4, action, value });
+Check(Protocol.ParseControl(Control(1, "shuffle")) == new DeviceControl(1, "shuffle") && Protocol.ParseControl(Control(1, "repeat")) is not null && Protocol.ParseControl(Control(1, "mute")) is not null, "shuffle, repeat and mute toggles parse");
+Check(Protocol.ParseControl(Valued("seek", 95)) == new DeviceControl(4, "seek", 95) && Protocol.ParseControl(Valued("volume", 40)) == new DeviceControl(4, "volume", 40), "seek and volume carry their value");
+Check(Protocol.ParseControl(Control(1, "seek")) is null && Protocol.ParseControl(Valued("next", 1)) is null && Protocol.ParseControl(Valued("volume", 101)) is null &&
+    Protocol.ParseControl(Valued("seek", -1)) is null && Protocol.ParseControl(Valued("seek", 604801)) is null && Protocol.ParseControl(Valued("volume", "40")) is null &&
+    Protocol.ParseControl(Valued("volume", 4.5)) is null, "missing, unexpected and out-of-range control values rejected");
+byte[] Cover(params (byte R, byte G, byte B, int Count)[] parts) => parts.SelectMany(p => Enumerable.Repeat(new byte[] { p.B, p.G, p.R, 255 }, p.Count).SelectMany(pixel => pixel)).ToArray();
+int vivid = MusicContract.AccentColor(Cover((200, 30, 40, 400), (40, 40, 200, 176)));
+Check(vivid >> 16 > (vivid >> 8 & 255) && vivid >> 16 > (vivid & 255), "album accent follows the dominant vivid hue, not an average (" + vivid.ToString("x6") + ")");
+Check(MusicContract.AccentColor(Cover((128, 128, 128, 576))) == 0 && MusicContract.AccentColor(Cover((8, 4, 6, 576))) == 0 && MusicContract.AccentColor([]) == 0, "grey, near-black and empty covers keep the display accent");
+int lifted = MusicContract.AccentColor(Cover((40, 10, 90, 576)));
+Check(lifted != 0 && ((lifted >> 16) * 0.2126 + (lifted >> 8 & 255) * 0.7152 + (lifted & 255) * 0.0722) / 255 > 0.3, "dark covers are lifted to stay readable on the dark display (" + lifted.ToString("x6") + ")");
 var controlSequence = new ControlSequence();
 Check(controlSequence.Accept(new(2, "next")) && !controlSequence.Accept(new(2, "next")) && !controlSequence.Accept(new(1, "previous")) && controlSequence.Accept(new(3, "previous")), "control IDs are monotonic with no replay");
 Check(MusicContract.IsSpotifySession("Spotify.exe") && MusicContract.IsSpotifySession("SpotifyAB.SpotifyMusic_zpdnekdrzrea0!Spotify") && !MusicContract.IsSpotifySession("chrome.exe") && !MusicContract.IsSpotifySession("NotSpotify.exe"), "only Spotify session identities are selected");
@@ -114,7 +126,7 @@ var maximumSample = musicSample with
     Seq = long.MaxValue, Timestamp = long.MaxValue, UptimeS = long.MaxValue, Hostname = new string('"', 63),
     Cpu = new(100, 120, new string('"', 95)), Gpu = new(100, 120, 99999999, 99999999, new string('"', 95)),
     Memory = new(99999999, 99999999, 100), Network = new(99999999999, 99999999999),
-    Music = musicSample.Music! with { ControlId = int.MaxValue, ControlError = new string('"', 31), PositionS = 604800, DurationS = 604800 },
+    Music = musicSample.Music! with { ControlId = int.MaxValue, ControlError = new string('"', 31), PositionS = 604800, DurationS = 604800, Repeat = 2, Volume = 100, ArtColor = 0xFFFFFF },
     Codex = new(true, true, true, new string('"', 23), new string('"', 31), 31536000,
         new(true, 100, 525600, new string('"', 47)), new(true, 100, 525600, new string('"', 47)))
 };

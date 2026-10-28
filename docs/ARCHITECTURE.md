@@ -56,3 +56,13 @@ memory, and sends no prompts. See [CLAUDE.md](CLAUDE.md) for account selection,
 refresh intervals, cached fallback, and privacy details.
 Firmware 0.7.0 accepts up to 6144 telemetry bytes. Older firmware receives the original
 4096-byte payload without Claude, until upgraded.
+
+The `music` object also reports optional controls: `can_shuffle`/`shuffle`,
+`can_repeat`/`repeat` (0 off, 1 track, 2 list), `can_seek`, `can_volume`/`volume`/`muted`
+for Spotify's Windows mixer entry, and `art_color`, an accent picked on the PC from the
+album cover (0 when the cover is grey or missing). The display shows each control only
+while its `can_` flag is true, so older companions keep the original three buttons and
+older firmware ignores the new fields. `buddy.control` accepts `shuffle`, `repeat` and
+`mute` toggles, plus `seek` and `volume` with an integer `value` (seconds, or 0–100).
+One command is in flight at a time; a slider moved meanwhile sends its newest value
+once the previous command is answered.

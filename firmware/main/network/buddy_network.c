@@ -52,6 +52,11 @@ typedef enum {
     MUSIC_PLAY_PAUSE = 1,
     MUSIC_NEXT = 2,
     MUSIC_PREVIOUS = 4,
+    MUSIC_SHUFFLE = 8,
+    MUSIC_REPEAT = 16,
+    MUSIC_SEEK = 32,
+    MUSIC_VOLUME = 64,
+    MUSIC_MUTE = 128,
 } music_action_t;
 
 typedef struct {
@@ -60,6 +65,7 @@ typedef struct {
     uint32_t session_generation;
     int64_t queued_at_us;
     music_action_t action;
+    uint32_t value;
 } music_command_t;
 
 static const char *TAG = "buddy_net";
@@ -261,8 +267,19 @@ static const char *music_action_name(music_action_t action)
     case MUSIC_PLAY_PAUSE: return "play_pause";
     case MUSIC_NEXT: return "next";
     case MUSIC_PREVIOUS: return "previous";
+    case MUSIC_SHUFFLE: return "shuffle";
+    case MUSIC_REPEAT: return "repeat";
+    case MUSIC_SEEK: return "seek";
+    case MUSIC_VOLUME: return "volume";
+    case MUSIC_MUTE: return "mute";
     default: return NULL;
     }
+}
+
+/* Seek carries seconds and volume a percentage; every other action is a toggle. */
+static bool music_action_valued(music_action_t action)
+{
+    return action == MUSIC_SEEK || action == MUSIC_VOLUME;
 }
 
 static void expire_music_command_locked(int64_t now)
@@ -296,9 +313,11 @@ static void send_music_command(void *argument)
     const char *action = music_action_name(command.action);
     if (!action) return;
     char payload[128];
-    int length = snprintf(payload, sizeof(payload),
-        "{\"type\":\"buddy.control\",\"v\":1,\"id\":%lu,\"action\":\"%s\"}",
-        (unsigned long)command.id, action);
+    int length = music_action_valued(command.action) ?
+        snprintf(payload, sizeof(payload), "{\"type\":\"buddy.control\",\"v\":1,\"id\":%lu,\"action\":\"%s\",\"value\":%lu}",
+                 (unsigned long)command.id, action, (unsigned long)command.value) :
+        snprintf(payload, sizeof(payload), "{\"type\":\"buddy.control\",\"v\":1,\"id\":%lu,\"action\":\"%s\"}",
+                 (unsigned long)command.id, action);
     if (length <= 0 || length >= sizeof(payload)) return;
     httpd_ws_frame_t frame = {
         .type = HTTPD_WS_TYPE_TEXT, .payload = (uint8_t *)payload,
@@ -329,14 +348,21 @@ static void music_control_task(void *argument)
     }
 }
 
-bool buddy_network_music_control(const char *action)
+bool buddy_network_music_control(const char *action, uint32_t value)
 {
     if (!action || !state_lock || !events || !music_command_queue || !monitor_server) return false;
     music_action_t selected;
     if (strcmp(action, "play_pause") == 0) selected = MUSIC_PLAY_PAUSE;
     else if (strcmp(action, "next") == 0) selected = MUSIC_NEXT;
     else if (strcmp(action, "previous") == 0) selected = MUSIC_PREVIOUS;
+    else if (strcmp(action, "shuffle") == 0) selected = MUSIC_SHUFFLE;
+    else if (strcmp(action, "repeat") == 0) selected = MUSIC_REPEAT;
+    else if (strcmp(action, "seek") == 0) selected = MUSIC_SEEK;
+    else if (strcmp(action, "volume") == 0) selected = MUSIC_VOLUME;
+    else if (strcmp(action, "mute") == 0) selected = MUSIC_MUTE;
     else return false;
+    if ((selected == MUSIC_SEEK && value > BUDDY_MUSIC_MAX_SECONDS) || (selected == MUSIC_VOLUME && value > 100)) return false;
+    if (!music_action_valued(selected)) value = 0;
     if (!(xEventGroupGetBits(events) & CONNECTED_BIT) || xSemaphoreTake(state_lock, 0) != pdTRUE) return false;
     int64_t now = esp_timer_get_time();
     expire_music_command_locked(now);
@@ -348,7 +374,7 @@ bool buddy_network_music_control(const char *action)
     next_music_control_id = next_music_control_id >= INT_MAX ? 1 : next_music_control_id + 1;
     pending_music_command = (music_command_t) {
         .fd = companion_fd, .id = next_music_control_id,
-        .session_generation = companion_generation, .queued_at_us = now, .action = selected,
+        .session_generation = companion_generation, .queued_at_us = now, .action = selected, .value = value,
     };
     music_command_pending = true;
     bool accepted = xQueueSend(music_command_queue, &next_music_control_id, 0) == pdTRUE;
@@ -438,6 +464,10 @@ static esp_err_t websocket_handler(httpd_req_t *request)
         if (stats.music.can_play_pause) music_capabilities |= MUSIC_PLAY_PAUSE;
         if (stats.music.can_next) music_capabilities |= MUSIC_NEXT;
         if (stats.music.can_previous) music_capabilities |= MUSIC_PREVIOUS;
+        if (stats.music.can_shuffle) music_capabilities |= MUSIC_SHUFFLE;
+        if (stats.music.can_repeat) music_capabilities |= MUSIC_REPEAT;
+        if (stats.music.can_seek) music_capabilities |= MUSIC_SEEK;
+        if (stats.music.can_volume) music_capabilities |= MUSIC_VOLUME | MUSIC_MUTE;
     }
     xSemaphoreGive(state_lock);
     if (callbacks.on_stats) callbacks.on_stats(&stats);

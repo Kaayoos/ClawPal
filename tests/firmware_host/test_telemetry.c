@@ -56,7 +56,8 @@ static bool telemetry_invariants(const buddy_stats_t *s)
               bounded(s->game.name, sizeof(s->game.name)) && (!s->game.active || s->game.name[0]) &&
               (isnan(s->cpu_usage) || (s->cpu_usage >= 0 && s->cpu_usage <= 100)) &&
               (isnan(s->game.fps) || (s->game.fps >= 0 && s->game.fps <= 2000)) &&
-              s->music.duration_s <= 7U * 24 * 60 * 60;
+              s->music.duration_s <= BUDDY_MUSIC_MAX_SECONDS && s->music.repeat <= 2 && s->music.volume <= 100 &&
+              s->music.art_color <= 0xFFFFFF;
     for (size_t p = 0; p < 2; ++p) {
         const buddy_codex_activity_t *a = &providers[p]->activity;
         ok = ok && bounded(providers[p]->status, sizeof(providers[p]->status)) && a->item_count <= 3 &&
@@ -81,6 +82,14 @@ static void telemetry_checks(void)
     check(telemetry(telemetry_legacy, &s) && s.auto_open_apps && !s.music.running && !s.codex.available &&
           isnan(s.game.fps) && isnan(s.gpu_usage), "telemetry: older companion message keeps defaults");
 
+    const char *controls = "\"control_error\":null,\"can_shuffle\":true,\"shuffle\":true,\"can_repeat\":true,\"repeat\":2,"
+                           "\"can_seek\":true,\"can_volume\":true,\"volume\":35,\"muted\":false,\"art_color\":1193046}";
+    check(telemetry_with("\"control_error\":null}", controls), "telemetry: shuffle, repeat, seek, volume and cover colour parse");
+    check(!telemetry_with("\"control_error\":null}", "\"control_error\":null,\"repeat\":3}") &&
+          !telemetry_with("\"control_error\":null}", "\"control_error\":null,\"volume\":101}") &&
+          !telemetry_with("\"control_error\":null}", "\"control_error\":null,\"art_color\":16777216}") &&
+          !telemetry_with("\"control_error\":null}", "\"control_error\":null,\"shuffle\":1}"),
+          "telemetry: out-of-range music controls are rejected");
     check(!telemetry_with("\"pc.stats\"", "\"pc.other\""), "telemetry: wrong message type is rejected");
     check(!telemetry_with("\"v\":1", "\"v\":2"), "telemetry: unknown version is rejected");
     check(!telemetry_with("\"cpu\":{", "\"cpu\":[{}],\"x\":{"), "telemetry: non-object section is rejected");

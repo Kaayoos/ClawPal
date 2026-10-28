@@ -16,7 +16,7 @@ typedef enum {
     BUDDY_APP_COUNT
 } buddy_app_t;
 
-typedef bool (*buddy_music_control_callback_t)(const char *action);
+typedef bool (*buddy_music_control_callback_t)(const char *action, uint32_t value);
 typedef void (*buddy_confirm_callback_t)(buddy_confirm_action_t action, bool approved);
 
 typedef struct {

@@ -277,6 +277,8 @@ static void music_playing(const char *title, const char *artist, const char *alb
     buddy_music_t *m = &stats.music;
     m->running = m->available = m->playing = true;
     m->can_play_pause = m->can_next = m->can_previous = true;
+    m->can_shuffle = m->can_repeat = m->can_seek = m->can_volume = true;
+    m->shuffle = true; m->repeat = 2; m->volume = 64; m->art_color = 0x3FA9F5;
     snprintf(m->title, sizeof(m->title), "%s", title);
     snprintf(m->artist, sizeof(m->artist), "%s", artist);
     snprintf(m->album, sizeof(m->album), "%s", album);
@@ -315,11 +317,22 @@ static void update_clock(void)
 }
 
 static int music_command_pending;
-static bool music_control(const char *action)
+static char music_last_action[16];
+static uint32_t music_last_value;
+static bool music_control(const char *action, uint32_t value)
 {
-    if (events) fprintf(events, "music %.4f %s\n", rec_time(), action);
+    if (events) fprintf(events, "music %.4f %s %lu\n", rec_time(), action, (unsigned long)value);
     music_command_pending = strcmp(action, "next") == 0 ? 2 : strcmp(action, "previous") == 0 ? 3 : 1;
+    snprintf(music_last_action, sizeof(music_last_action), "%s", action);
+    music_last_value = value;
     return true;
+}
+/* The companion answers by advancing control_id, as Connection.cs does. */
+static void music_reply(void)
+{
+    ++stats.music.control_id;
+    stats.music.control_ok = true;
+    music_command_pending = 0;
 }
 
 /* Feed telemetry and the clock like main.c while time passes. */
@@ -398,6 +411,21 @@ static void tap_overlay_label(const char *text){
     int x=(area.x1+area.x2)/2,y=(area.y1+area.y2)/2;
     if(x<0||x>=W||y<0||y>=H){fprintf(stderr,"Unreachable control %s at %d,%d\n",text,x,y);exit(21);}tap(x,y,90);live(180);
 }
+static lv_obj_t *find_slider(lv_obj_t *root,int *index){
+    if(lv_obj_has_flag(root,LV_OBJ_FLAG_HIDDEN))return NULL;
+    if(lv_obj_check_type(root,&lv_slider_class)&&(*index)--==0)return root;
+    for(uint32_t i=0;i<lv_obj_get_child_cnt(root);++i){lv_obj_t *found=find_slider(lv_obj_get_child(root,i),index);if(found)return found;}return NULL;
+}
+static lv_obj_t *visible_slider(int index){return find_slider(lv_scr_act(),&index);}
+/* Press on the track, slide across in small steps and lift, like a finger. */
+static void drag_slider(lv_obj_t *slider,int from,int to){
+    lv_area_t area;lv_obj_get_coords(slider,&area);int y=(area.y1+area.y2)/2,width=area.x2-area.x1;
+    int x0=area.x1+width*from/100,x1=area.x1+width*to/100;
+    if(y<0||y>=H-44){fprintf(stderr,"Unreachable slider at %d\n",y);exit(21);}
+    touch_x=x0;touch_y=y;touch_state=LV_INDEV_STATE_PRESSED;if(events)fprintf(events,"tap %.4f %d %d 220.0\n",rec_time(),x0,y);wait_ms(40);
+    for(int s=1;s<=10;++s){touch_x=x0+(x1-x0)*s/10;wait_ms(16);}
+    touch_state=LV_INDEV_STATE_RELEASED;wait_ms(20);live(180);
+}
 static int confirm_answers;static buddy_confirm_action_t confirm_last;static bool confirm_approved;
 static void confirm_result(buddy_confirm_action_t action,bool approved){++confirm_answers;confirm_last=action;confirm_approved=approved;}
 static void scroll_page(void){
@@ -413,9 +441,46 @@ int main(int argc,char **argv){
         if(!buddy_ui_select_app((buddy_app_t)app))return 3;live(1400);if(buddy_ui_get_state().active_app!=(unsigned)app)return 4;
         save_frame(names[app]);
         if(W<800){for(int i=0;i<4;++i)scroll_page();char name[60];snprintf(name,sizeof(name),"%s-scrolled",names[app]);save_frame(name);}
-        if(app==BUDDY_APP_TIMER){tap_label(BT(BT_START));if(!buddy_ui_get_state().timer_running)return 22;tap_label(BT(BT_PAUSE));if(buddy_ui_get_state().timer_running)return 23;}
-        if(app==BUDDY_APP_MUSIC){tap_label(BT(BT_NEXT));if(music_command_pending!=2)return 24;music_command_pending=0;}
-        if(app==BUDDY_APP_WEATHER && W<800)tap_label(BT(BT_NEXT));
+        if(app==BUDDY_APP_TIMER){tap_label(BT(BT_START));if(!buddy_ui_get_state().timer_running)return 22;live(72000);save_frame("timer-running");
+            lv_obj_t *pause=find_label(lv_scr_act(),BT(BT_PAUSE));if(pause)lv_obj_scroll_to_view_recursive(pause,LV_ANIM_OFF);tap_label(BT(BT_PAUSE));if(buddy_ui_get_state().timer_running)return 23;}
+        if(app==BUDDY_APP_MUSIC){
+            tap_label(LV_SYMBOL_NEXT);if(music_command_pending!=2)return 24;music_reply();live(1000);
+            lv_obj_t *seek=visible_slider(0),*volume=visible_slider(1);if(!seek||!volume)return 25;
+            drag_slider(seek,10,50);if(strcmp(music_last_action,"seek")||abs((int)music_last_value-(int)stats.music.duration_s/2)>8)return 26;
+            stats.music.position_s=music_last_value;music_reply();live(1000);
+            // A slider released while another command is in flight sends once Spotify answers.
+            tap_label(LV_SYMBOL_SHUFFLE);if(strcmp(music_last_action,"shuffle"))return 27;
+            drag_slider(volume,64,25);if(strcmp(music_last_action,"shuffle"))return 28;
+            stats.music.shuffle=false;music_reply();live(1000);if(strcmp(music_last_action,"volume")||abs((int)music_last_value-25)>4)return 29;
+            stats.music.volume=music_last_value;music_reply();live(1000);
+            tap_label(LV_SYMBOL_LOOP);if(strcmp(music_last_action,"repeat"))return 30;stats.music.repeat=1;music_reply();live(1000);
+            save_frame("music-controls");
+            buddy_music_t current=stats.music;
+            snprintf(stats.music.title,sizeof(stats.music.title),"Midnight Ferry to the Lighthouse Islands (Extended Harbour Mix)");
+            send_stats();live(400);save_frame("music-long");stats.music=current;send_stats();
+            stats.music.playing=false;stats.music.art_color=0;send_stats();live(400);save_frame("music-paused");
+            buddy_music_t playing=stats.music;memset(&stats.music,0,sizeof(stats.music));send_stats();live(400);save_frame("music-idle");
+            stats.music=playing;stats.music.playing=true;stats.music.art_color=0x3FA9F5;send_stats();
+        }
+        if(app==BUDDY_APP_WEATHER){
+            // Forecast tabs page with arrows; every size reaches all three views.
+            const char *views[]={BT(BT_24_HOURS),BT(BT_5_DAYS),BT(BT_NOW)},*frames[]={"weather-hours","weather-days",NULL};
+            for(int v=0;v<3;++v){lv_obj_t *tab=find_label(lv_scr_act(),views[v]);if(!tab)return 35;lv_obj_scroll_to_view_recursive(tab,LV_ANIM_OFF);live(100);
+                tap_label(views[v]);live(300);if(frames[v])save_frame(frames[v]);
+                if(v==0){lv_obj_t *next=find_label(lv_scr_act(),LV_SYMBOL_RIGHT);if(!next)return 36;lv_obj_scroll_to_view_recursive(next,LV_ANIM_OFF);live(100);
+                    tap_label(LV_SYMBOL_RIGHT);if(!find_label(lv_scr_act(),LV_SYMBOL_LEFT))return 37;save_frame("weather-hours-next");}}
+        }
+        if(app==BUDDY_APP_CLAUDE){
+            // A nearly spent window turns amber and projects when it runs out.
+            buddy_codex_t saved=stats.claude;stats.claude.primary.remaining_percent=12.0f;send_stats();live(400);save_frame("claude-low");
+            stats.claude=saved;stats.claude.activity.items[0]=(buddy_codex_task_t){ "Polish the weather screen", "clawpal", "working", 12 };
+            stats.claude.activity.working_count=1;send_stats();live(400);
+            lv_obj_t *tab=find_label(lv_scr_act(),BT(BT_TASKS));if(!tab)return 31;lv_obj_scroll_to_view_recursive(tab,LV_ANIM_OFF);live(100);
+            tap_label(BT(BT_TASKS));if(!find_label(lv_scr_act(),BT(BT_LOCAL_SNAPSHOT)))return 33;save_frame("claude-tasks");
+            lv_obj_t *usage=find_label(lv_scr_act(),BT(BT_USAGE));if(!usage)return 32;lv_obj_scroll_to_view_recursive(usage,LV_ANIM_OFF);live(100);
+            tap_label(BT(BT_USAGE));if(find_label(lv_scr_act(),BT(BT_LOCAL_SNAPSHOT)))return 34;
+            stats.claude=saved;send_stats();live(200);
+        }
     }
     buddy_ui_select_app(BUDDY_APP_HOME);live(600);tap(46,H-22,90);live(500);if(!buddy_ui_get_state().menu_open)return 5;save_frame("apps");
     if(W<800){for(int i=0;i<4;++i)scroll_page();save_frame("apps-scrolled");}

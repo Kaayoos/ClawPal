@@ -1,6 +1,8 @@
 using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Threading.Channels;
+using Windows.Graphics.Imaging;
+using Windows.Media;
 using Windows.Media.Control;
 
 namespace ClawPal.Companion;
@@ -14,6 +16,8 @@ public sealed class SpotifyMedia
     private readonly SemaphoreSlim mediaGate = new(1, 1);
     private MusicStats snapshot = Empty(false);
     private string providerStatus = "Starting";
+    private string artTrack = "";
+    private int artColor, artAttempts;
     public MusicStats Snapshot => Volatile.Read(ref snapshot);
     public string ProviderStatus => providerStatus;
     private static MusicStats Empty(bool running) => new(running, false, "", "", "", false, 0, 0, false, false, false);
@@ -74,9 +78,17 @@ public sealed class SpotifyMedia
                 }
                 var controls = playback.Controls;
                 var canPlayPause = controls.IsPlayPauseToggleEnabled || (playing ? controls.IsPauseEnabled : controls.IsPlayEnabled);
+                var shuffle = playback.IsShuffleActive;
+                var repeat = playback.AutoRepeatMode;
+                var volume = SpotifyAudio.Read();
                 var sampled = new MusicStats(running, true, MusicContract.LimitText(media?.Title, 191), MusicContract.LimitText(media?.Artist, 127),
                     MusicContract.LimitText(media?.AlbumTitle, 127), playing, Math.Min(MusicContract.Seconds(position), duration), duration,
-                    canPlayPause, controls.IsNextEnabled, controls.IsPreviousEnabled);
+                    canPlayPause, controls.IsNextEnabled, controls.IsPreviousEnabled,
+                    CanShuffle: controls.IsShuffleEnabled && shuffle.HasValue, Shuffle: shuffle == true,
+                    CanRepeat: controls.IsRepeatEnabled && repeat.HasValue, Repeat: Math.Clamp((int)(repeat ?? MediaPlaybackAutoRepeatMode.None), 0, 2),
+                    CanSeek: controls.IsPlaybackPositionEnabled && duration > 0,
+                    CanVolume: volume.Available, Volume: volume.Volume, Muted: volume.Muted,
+                    ArtColor: await ArtColorAsync(media, timeout.Token));
                 providerStatus = "Spotify Windows media session available.";
                 Volatile.Write(ref snapshot, sampled);
                 return sampled;
@@ -102,6 +114,12 @@ public sealed class SpotifyMedia
             await mediaGate.WaitAsync(timeout.Token);
             try
             {
+                if (command.Action is "volume" or "mute")
+                {
+                    // The mixer session belongs to Spotify's audio stream, not its media session.
+                    bool changed = IsSpotifyRunning() && (command.Action == "volume" ? SpotifyAudio.SetVolume(command.Value) : SpotifyAudio.ToggleMute());
+                    return new(command.Id, changed, changed ? "" : "unavailable");
+                }
                 var session = await FindSessionAsync(timeout.Token);
                 if (session is null) return new(command.Id, false, "unavailable");
                 var playback = session.GetPlaybackInfo();
@@ -126,6 +144,27 @@ public sealed class SpotifyMedia
                         if (!controls.IsPreviousEnabled) return new(command.Id, false, "unsupported");
                         ok = await session.TrySkipPreviousAsync().AsTask(timeout.Token);
                         break;
+                    case "shuffle":
+                        if (!controls.IsShuffleEnabled) return new(command.Id, false, "unsupported");
+                        ok = await session.TryChangeShuffleActiveAsync(playback.IsShuffleActive != true).AsTask(timeout.Token);
+                        break;
+                    case "repeat":
+                        if (!controls.IsRepeatEnabled) return new(command.Id, false, "unsupported");
+                        // Spotify's own order: off, the whole list, then the current track.
+                        var next = playback.AutoRepeatMode switch
+                        {
+                            MediaPlaybackAutoRepeatMode.List => MediaPlaybackAutoRepeatMode.Track,
+                            MediaPlaybackAutoRepeatMode.Track => MediaPlaybackAutoRepeatMode.None,
+                            _ => MediaPlaybackAutoRepeatMode.List,
+                        };
+                        ok = await session.TryChangeAutoRepeatModeAsync(next).AsTask(timeout.Token);
+                        break;
+                    case "seek":
+                        var timeline = session.GetTimelineProperties();
+                        if (!controls.IsPlaybackPositionEnabled || timeline.EndTime <= timeline.StartTime) return new(command.Id, false, "unsupported");
+                        var target = timeline.StartTime + TimeSpan.FromSeconds(command.Value);
+                        ok = await session.TryChangePlaybackPositionAsync((target < timeline.EndTime ? target : timeline.EndTime).Ticks).AsTask(timeout.Token);
+                        break;
                     default: return new(command.Id, false, "unsupported");
                 }
                 return new(command.Id, ok, ok ? "" : "failed");
@@ -138,6 +177,29 @@ public sealed class SpotifyMedia
             // A failed/timed-out command is never repeated: a skip may already have reached Spotify.
             return new(command.Id, false, "failed");
         }
+    }
+
+    // Only the cover's accent color leaves this method; the image is decoded in memory
+    // at thumbnail size and never stored or sent. Spotify can publish a track a moment
+    // before its cover, so a missing cover is retried for a few polls.
+    private async Task<int> ArtColorAsync(GlobalSystemMediaTransportControlsSessionMediaProperties? media, CancellationToken cancellationToken)
+    {
+        string track = media is null ? "" : media.Title + "\n" + media.Artist + "\n" + media.AlbumTitle;
+        if (track != artTrack) { artTrack = track; artColor = 0; artAttempts = 0; }
+        if (artColor != 0 || artAttempts >= 5 || media?.Thumbnail is null) return artColor;
+        ++artAttempts;
+        try
+        {
+            using var stream = await media.Thumbnail.OpenReadAsync().AsTask(cancellationToken);
+            if (stream.Size == 0 || stream.Size > 8_388_608) return 0;
+            var decoder = await BitmapDecoder.CreateAsync(stream).AsTask(cancellationToken);
+            var scale = new BitmapTransform { ScaledWidth = 24, ScaledHeight = 24, InterpolationMode = BitmapInterpolationMode.Fant };
+            var pixels = await decoder.GetPixelDataAsync(BitmapPixelFormat.Bgra8, BitmapAlphaMode.Straight, scale,
+                ExifOrientationMode.IgnoreExifOrientation, ColorManagementMode.DoNotColorManage).AsTask(cancellationToken);
+            artColor = MusicContract.AccentColor(pixels.DetachPixelData());
+        }
+        catch (Exception error) when (error is COMException or ArgumentException or InvalidOperationException or IOException or UnauthorizedAccessException) { }
+        return artColor;
     }
 
     private async Task<GlobalSystemMediaTransportControlsSession?> FindSessionAsync(CancellationToken cancellationToken)
