@@ -19,3 +19,10 @@ project(clawpal)
 
 idf_component_get_property(lvgl_lib lvgl__lvgl COMPONENT_LIB)
 target_compile_options(${lvgl_lib} PRIVATE -Wno-format)
+# LVGL keeps out of the internal RAM that Wi-Fi and TLS need (components/board/include/board_lvgl_mem.h).
+target_include_directories(${lvgl_lib} PRIVATE "${CMAKE_CURRENT_LIST_DIR}/components/board/include")
+target_compile_definitions(${lvgl_lib} PRIVATE
+    LV_MEM_CUSTOM_INCLUDE="board_lvgl_mem.h"
+    LV_MEM_CUSTOM_ALLOC=board_lvgl_malloc
+    LV_MEM_CUSTOM_FREE=board_lvgl_free
+    LV_MEM_CUSTOM_REALLOC=board_lvgl_realloc)
