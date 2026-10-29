@@ -76,7 +76,7 @@ their firmware is unsigned and installs over USB only.
 
 The first release with signed firmware also starts signed LAN requests, which
 older companions cannot send. `package-release.ps1` therefore sets
-`min_companion` to that release's own version so the PC updates first.
+`min_companion` to 0.10.0 for it and every later release, so the PC updates first.
 
 **Installer (recommended).** Without a code-signing certificate Windows
 SmartScreen warns on first launch. `build.ps1` signs `ClawPal-Setup.exe` before

@@ -6,9 +6,9 @@ $default=Get-Content -LiteralPath (Join-Path $repo 'payload/board.json') -Raw | 
 if($Version -and $Version.TrimStart('v') -ne $default.Version){throw 'Release tag does not match the bundled firmware version'}
 $dist=Join-Path $repo 'dist'
 New-Item -ItemType Directory -Path $dist -Force | Out-Null
-# Signed LAN requests and signed firmware images started with the first release after
-# 0.9.1: a display running them refuses older companions, so they update first.
-$minCompanion=if([version]$default.Version -gt [version]'0.9.1'){$default.Version}else{'0.9.0'}
+# Signed LAN requests and signed firmware images started with 0.10.0: a display running
+# them refuses older companions, so those update first. Later releases share that floor.
+$minCompanion=if([version]$default.Version -ge [version]'0.10.0'){'0.10.0'}else{'0.9.0'}
 $releases=@()
 foreach($model in $catalog.Boards){
  $board=Get-Content -LiteralPath (Join-Path $repo ('payload/boards/'+$model.Id+'.json')) -Raw | ConvertFrom-Json
