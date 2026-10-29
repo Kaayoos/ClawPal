@@ -13,6 +13,8 @@ jobs:
     uses: ./.github/workflows/build.yml
     with:
       release: true
+    # A called workflow sees no secrets unless the caller passes them, environment ones included.
+    secrets: inherit
     permissions:
       contents: read
       id-token: write
