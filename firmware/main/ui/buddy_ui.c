@@ -37,6 +37,7 @@
 #define TOUCH_WAKE_POLL_MS 40U
 #define BACKLIGHT_RETRY_MS 1000U
 #define CONFIRM_TIMEOUT_MS 60000U
+#define INSTALL_FAILURE_MS 12000U
 #define APP_TRANSITION_MS 1000U
 #define C_CLOCK_BG   BUDDY_COLOR_CLOCK_BG
 #define C_CLOCK_TEXT BUDDY_COLOR_CLOCK_TEXT
@@ -83,6 +84,15 @@ typedef struct {
     int card_top, card_step, card_single_top, gauge_size;
     bool working[3], chip_on_details, tasks_selected, tab_initialized, tab_manual;
 } agent_view_t;
+
+/* A full-screen prompt: the approval request and the needs-you alert share this shape. */
+#define PROMPT_ROWS 3
+typedef struct {
+    lv_obj_t *page, *tile, *mascot, *logo, *eyebrow, *title, *body, *details;
+    lv_obj_t *names[PROMPT_ROWS], *values[PROMPT_ROWS];
+    lv_obj_t *track, *countdown, *secondary, *secondary_label, *primary, *primary_label;
+    unsigned rows;
+} prompt_view_t;
 
 static struct {
     lv_obj_t *screen, *overview, *details, *empty;
@@ -144,11 +154,19 @@ static struct {
     buddy_confirm_callback_t confirm_callback;
     buddy_confirm_action_t confirm_action;
     uint32_t confirm_started;
-    lv_obj_t *confirm_page, *confirm_title, *confirm_body, *confirm_allow, *confirm_deny;
-    /* Full-screen alert while a Codex or Claude task waits for the user. */
-    lv_obj_t *alert_page, *alert_title, *alert_body, *alert_focus, *alert_dismiss;
+    char confirm_detail[BUDDY_CONFIRM_DETAIL_SIZE], install_detail[BUDDY_CONFIRM_DETAIL_SIZE];
+    /* The approval prompt, and the alert while a Codex or Claude task waits for the user. */
+    prompt_view_t confirm, alert;
     buddy_app_t alert_app;
     char alert_key[112], alert_dismissed[112];
+    /* A Wi-Fi firmware install in progress. */
+    lv_obj_t *install_page, *install_title, *install_version, *install_track, *install_fill, *install_mascot;
+    lv_obj_t *install_percent, *install_stage_label, *install_note;
+    int install_crab; /* 96 for the doubled crab, 48 for the original on small screens */
+    int install_stage_y;
+    buddy_install_stage_t install_stage;
+    uint32_t install_tick;
+    lv_timer_t *overlay_timer;
     /* The companion's last uploaded cover, shown while telemetry names the same ID. */
     lv_obj_t *music_art;
     lv_img_dsc_t art_frame;
@@ -341,7 +359,7 @@ static void refresh_display_power(void)
     ui.power_tick = now;
     bool connected = pc_live();
     if ((connected && view_settings.dim_behavior != 2) || touched != ui.last_touch_tick || ui.wake_touch_active ||
-        ui.confirm_action != BUDDY_CONFIRM_NONE || ui.alert_key[0]) {
+        ui.confirm_action != BUDDY_CONFIRM_NONE || ui.alert_key[0] || ui.install_stage != BUDDY_INSTALL_NONE) {
         ui.idle_ms = 0;
     } else {
         /* Saturation prevents a long unattended run from waking at tick wrap. */
@@ -616,9 +634,25 @@ static const char *connection_name(void)
     }
 }
 
+/* The large crab of whichever overlay is on top, if it has one. */
+static lv_obj_t *overlay_mascot(void)
+{
+    if (ui.install_stage != BUDDY_INSTALL_NONE) return ui.install_crab == 96 ? ui.install_mascot : NULL;
+    if (ui.confirm_action != BUDDY_CONFIRM_NONE) return ui.confirm.mascot;
+    if (ui.alert_key[0]) return ui.alert.mascot;
+    return NULL;
+}
+
 static buddy_mascot_state_t mascot_state(void)
 {
     if (ui.startup) return BUDDY_MASCOT_HAPPY;
+    /* The crab carries updates in, celebrates the restart and frowns at a failure. */
+    if (ui.install_stage == BUDDY_INSTALL_FAILED) return BUDDY_MASCOT_ERROR;
+    if (ui.install_stage == BUDDY_INSTALL_RESTARTING) return BUDDY_MASCOT_HAPPY;
+    if (ui.install_stage != BUDDY_INSTALL_NONE) return BUDDY_MASCOT_CARRYING;
+    if (ui.confirm_action != BUDDY_CONFIRM_NONE)
+        return ui.confirm_action == BUDDY_CONFIRM_FIRMWARE ? BUDDY_MASCOT_CARRYING : BUDDY_MASCOT_THINKING;
+    if (ui.alert_key[0]) return BUDDY_MASCOT_THINKING;
     if (ui.transition_active) return ui.transition_mascot;
     if (ui.active_app == BUDDY_APP_HOME) return BUDDY_MASCOT_IDLE;
     /* The crab naps with the PC; the timer keeps its own animation. */
@@ -672,7 +706,7 @@ static void update_large_frame(const lv_img_dsc_t *source)
         memcpy(row + 48, row, 48);
     }
     lv_img_cache_invalidate_src(&ui.startup_frame);
-    lv_obj_t *target_image = ui.startup_mascot ? ui.startup_mascot :
+    lv_obj_t *target_image = ui.startup_mascot ? ui.startup_mascot : overlay_mascot() ? overlay_mascot() :
         ui.active_app == BUDDY_APP_CLOCK ? ui.clock_mascot :
         ui.active_app == BUDDY_APP_TIMER ? ui.timer_mascot :
         ui.active_app == BUDDY_APP_CODEX ? ui.codex.mascot :
@@ -733,6 +767,13 @@ static void mascot_tick(lv_timer_t *timer)
         for (unsigned i = 0; i < 3; ++i)
             if (agent->working[i]) lv_obj_set_style_bg_opa(agent->task_dots[i], pulse, 0);
     }
+    /* The approval's time runs out visibly; a waiting task's tile pulses. */
+    if (ui.confirm_action != BUDDY_CONFIRM_NONE && ui.confirm.countdown) {
+        uint32_t elapsed = lv_tick_elaps(ui.confirm_started), left = elapsed >= CONFIRM_TIMEOUT_MS ? 0 : CONFIRM_TIMEOUT_MS - elapsed;
+        lv_obj_set_width(ui.confirm.countdown, (lv_coord_t)((int64_t)lv_obj_get_width(ui.confirm.track) * left / CONFIRM_TIMEOUT_MS));
+    }
+    if (ui.alert_key[0] && ui.alert.tile)
+        lv_obj_set_style_border_opa(ui.alert.tile, (lv_tick_get() / 600U) % 2U ? LV_OPA_COVER : LV_OPA_20, 0);
     buddy_mascot_state_t state = mascot_state();
     if (state != ui.mascot_state) {
         ui.mascot_state = state;
@@ -744,7 +785,8 @@ static void mascot_tick(lv_timer_t *timer)
         frame = 0;
     const lv_img_dsc_t *source = &buddy_mascot_frames[state][frame];
     if (ui.active_app == BUDDY_APP_MONITOR && !ui.menu_open) lv_img_set_src(ui.mascot, source);
-    if (ui.startup_mascot || (!ui.menu_open &&
+    if (ui.install_stage != BUDDY_INSTALL_NONE && ui.install_crab == 48) lv_img_set_src(ui.install_mascot, source);
+    if (ui.startup_mascot || overlay_mascot() || (!ui.menu_open &&
         (ui.active_app == BUDDY_APP_CLOCK || ui.active_app == BUDDY_APP_TIMER ||
          ui.active_app == BUDDY_APP_MUSIC || ui.active_app == BUDDY_APP_CODEX || ui.active_app == BUDDY_APP_CLAUDE || ui.transition_active)))
         update_large_frame(source);
@@ -2785,7 +2827,7 @@ void buddy_ui_set_connection(buddy_connection_state_t state, const char *ssid,
     ui.connection = state;
     /* Away only explains a quiet PC; it ends when Wi-Fi itself is gone. */
     if (state != BUDDY_PC_CONNECTED && state != BUDDY_PC_OFFLINE) ui.pc_away = false;
-    if (state != BUDDY_PC_CONNECTED && ui.alert_key[0]) { ui.alert_key[0] = 0; visible(ui.alert_page, false); }
+    if (state != BUDDY_PC_CONNECTED && ui.alert_key[0]) { ui.alert_key[0] = 0; visible(ui.alert.page, false); }
     if (state == BUDDY_PROVISIONING) {
         /* Setup instructions always remain accessible, including after Clock. */
         dismiss_startup();
@@ -3027,12 +3069,160 @@ void buddy_ui_apply_settings(const buddy_settings_t *settings)
     refresh_visibility(); refresh_connection(); refresh_music(); refresh_codex(); refresh_claude(); refresh_home(); refresh_footer();
 }
 
-/* The first task in the order shown on the agent pages that waits for an answer. */
-static const buddy_codex_task_t *waiting_task(const buddy_codex_t *agent)
+/* ---- Full-screen overlays: the approval prompt, the needs-you alert and the install screen ---- */
+
+/* Sizes for the three screen classes: 800 x 480, 480 x 480 and 320 x 240. The smallest
+ * has no room for the crab tile and lets the body give way to the details. */
+typedef struct {
+    int margin, tile, gap, button_h, row_h, name_w;
+    const lv_font_t *eyebrow, *title, *body, *detail, *button;
+} prompt_metrics_t;
+
+static prompt_metrics_t prompt_metrics(void)
 {
-    for (uint32_t i = 0; i < agent->activity.item_count && i < 3; ++i)
-        if (strcmp(agent->activity.items[i].state, "waiting") == 0) return &agent->activity.items[i];
-    return NULL;
+    if (BOARD_DISPLAY_WIDTH >= 800)
+        return (prompt_metrics_t){ 32, 136, 28, 64, 34, 220, &buddy_language_font_16, &buddy_language_font_32,
+            &buddy_language_font_20, &buddy_language_font_20, &buddy_language_font_20 };
+    if (BOARD_DISPLAY_HEIGHT >= 400)
+        return (prompt_metrics_t){ 24, 112, 20, 60, 30, 150, &buddy_language_font_16, &buddy_language_font_24,
+            &buddy_language_font_16, &buddy_language_font_16, &buddy_language_font_20 };
+    return (prompt_metrics_t){ 12, 0, 10, 40, 22, 96, &buddy_language_font_14, &buddy_language_font_20,
+        &buddy_language_font_14, &buddy_language_font_14, &buddy_language_font_16 };
+}
+
+#define PROMPT_LOGO 32
+
+/* Overlays stack by urgency: an install above an approval above an alert, the dim shield above all. */
+static void raise_overlays(void)
+{
+    if (ui.alert.page && ui.alert_key[0]) lv_obj_move_foreground(ui.alert.page);
+    if (ui.confirm.page && ui.confirm_action != BUDDY_CONFIRM_NONE) lv_obj_move_foreground(ui.confirm.page);
+    if (ui.install_page && ui.install_stage != BUDDY_INSTALL_NONE) lv_obj_move_foreground(ui.install_page);
+    lv_obj_move_foreground(ui.dim_overlay);
+}
+
+static void show_overlay(lv_obj_t *page)
+{
+    visible(page, true);
+    raise_overlays();
+    ui.mascot_state = BUDDY_MASCOT_STATE_COUNT;
+    lv_disp_trig_activity(NULL);
+    refresh_display_power();
+}
+
+static void prompt_button_primary(lv_obj_t *button, lv_obj_t *label, uint32_t ink)
+{
+    lv_obj_set_style_bg_color(button, color(ink), 0);
+    lv_obj_set_style_bg_color(button, lv_color_darken(color(ink), LV_OPA_30), LV_STATE_PRESSED);
+    lv_obj_set_style_text_color(label, color(C_BG), 0);
+}
+
+/* The crab in a tile, an eyebrow, a title and a body; a details card above a quiet
+ * secondary and a filled primary button. Secondary passes NULL to `clicked`, primary 1. */
+static void create_prompt(prompt_view_t *view, lv_event_cb_t clicked)
+{
+    const prompt_metrics_t m = prompt_metrics();
+    const int width = BOARD_DISPLAY_WIDTH, height = BOARD_DISPLAY_HEIGHT;
+    view->page = box(ui.screen, 0, 0, width, height);
+    /* Clickable so presses never reach the app underneath. */
+    lv_obj_add_flag(view->page, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_set_style_bg_color(view->page, color(C_BG), 0);
+    lv_obj_set_style_bg_opa(view->page, LV_OPA_COVER, 0);
+    if (m.tile) {
+        view->tile = surface_card(view->page, 20);
+        lv_obj_set_pos(view->tile, m.margin, m.margin);
+        lv_obj_set_size(view->tile, m.tile, m.tile);
+        lv_obj_set_style_border_width(view->tile, 2, 0);
+        lv_obj_set_style_border_color(view->tile, color(C_RULE), 0);
+        view->mascot = lv_img_create(view->tile);
+        lv_img_set_antialias(view->mascot, false);
+        lv_obj_set_size(view->mascot, 96, 96);
+        lv_obj_center(view->mascot);
+        lv_obj_clear_flag(view->mascot, LV_OBJ_FLAG_CLICKABLE);
+    }
+    int x = m.tile ? m.margin + m.tile + m.gap : m.margin, column = width - x - m.margin;
+    view->logo = lv_img_create(view->page);
+    lv_img_set_zoom(view->logo, 256 * PROMPT_LOGO / 56);
+    lv_obj_clear_flag(view->logo, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_add_flag(view->logo, LV_OBJ_FLAG_HIDDEN);
+    view->eyebrow = text(view->page, "", x, m.margin, column, m.eyebrow, C_ACCENT);
+    view->title = text(view->page, "", x, m.margin, column, m.title, C_TEXT);
+    lv_label_set_long_mode(view->title, LV_LABEL_LONG_WRAP);
+    view->body = text(view->page, "", x, m.margin, column, m.body, C_MUTED);
+    view->details = surface_card(view->page, 14);
+    lv_obj_set_width(view->details, width - m.margin * 2);
+    for (unsigned i = 0; i < PROMPT_ROWS; ++i) {
+        view->names[i] = text(view->details, "", 16, 0, m.name_w - 16, m.detail, C_MUTED);
+        view->values[i] = text(view->details, "", m.name_w, 0, width - m.margin * 2 - m.name_w - 16, m.detail, C_TEXT);
+        lv_obj_set_style_text_align(view->values[i], LV_TEXT_ALIGN_RIGHT, 0);
+    }
+    /* Time left to answer, shrinking towards the automatic denial. */
+    view->track = box(view->page, m.margin, 0, width - m.margin * 2, 4);
+    lv_obj_set_style_bg_color(view->track, color(C_RULE), 0);
+    lv_obj_set_style_bg_opa(view->track, LV_OPA_COVER, 0);
+    lv_obj_set_style_radius(view->track, 2, 0);
+    view->countdown = box(view->track, 0, 0, width - m.margin * 2, 4);
+    lv_obj_set_style_bg_color(view->countdown, color(C_ACCENT), 0);
+    lv_obj_set_style_bg_opa(view->countdown, LV_OPA_COVER, 0);
+    lv_obj_set_style_radius(view->countdown, 2, 0);
+    /* The quiet choice sits where a stray tap is most likely; the primary one needs a deliberate press. */
+    const int button_w = (width - m.margin * 2 - 16) / 2, button_y = height - m.margin - m.button_h;
+    view->secondary = action_button(view->page, "", m.margin, button_y, button_w, m.button_h, &view->secondary_label);
+    view->primary = action_button(view->page, "", m.margin + button_w + 16, button_y, button_w, m.button_h, &view->primary_label);
+    lv_obj_set_style_radius(view->secondary, 12, 0);
+    lv_obj_set_style_radius(view->primary, 12, 0);
+    lv_obj_set_style_text_font(view->secondary_label, m.button, 0);
+    lv_obj_set_style_text_font(view->primary_label, m.button, 0);
+    lv_obj_add_event_cb(view->secondary, clicked, LV_EVENT_CLICKED, NULL);
+    lv_obj_add_event_cb(view->primary, clicked, LV_EVENT_CLICKED, (void *)1);
+    lv_obj_add_flag(view->page, LV_OBJ_FLAG_HIDDEN);
+}
+
+static void prompt_row(prompt_view_t *view, const char *name, const char *value)
+{
+    if (view->rows >= PROMPT_ROWS || !value || !value[0]) return;
+    lv_label_set_text(view->names[view->rows], name);
+    lv_label_set_text(view->values[view->rows], value);
+    ++view->rows;
+}
+
+/* Stacks the text column after its contents are set; details and the countdown sit just
+ * above the buttons, and the body shortens (or hides) to fit between them. */
+static void prompt_layout(prompt_view_t *view, bool countdown)
+{
+    const prompt_metrics_t m = prompt_metrics();
+    const int height = BOARD_DISPLAY_HEIGHT;
+    const int x = m.tile ? m.margin + m.tile + m.gap : m.margin;
+    const int button_y = height - m.margin - m.button_h;
+    const bool logo = !lv_obj_has_flag(view->logo, LV_OBJ_FLAG_HIDDEN);
+    const int eyebrow_line = lv_font_get_line_height(m.eyebrow), head = logo ? LV_MAX(PROMPT_LOGO, eyebrow_line) : eyebrow_line;
+    lv_obj_set_pos(view->logo, x + PROMPT_LOGO / 2 - 28, m.margin + head / 2 - 28);
+    lv_obj_set_pos(view->eyebrow, x + (logo ? PROMPT_LOGO + 10 : 0), m.margin + (head - eyebrow_line) / 2);
+    lv_obj_set_width(view->eyebrow, BOARD_DISPLAY_WIDTH - m.margin - lv_obj_get_x(view->eyebrow));
+    lv_obj_set_y(view->title, m.margin + head + 8);
+    lv_obj_update_layout(view->page);
+    const int body_y = lv_obj_get_y(view->title) + lv_obj_get_height(view->title) + 8;
+    for (unsigned i = 0; i < PROMPT_ROWS; ++i) {
+        visible(view->names[i], i < view->rows);
+        visible(view->values[i], i < view->rows);
+        lv_obj_set_y(view->names[i], 12 + (int)i * m.row_h);
+        lv_obj_set_y(view->values[i], 12 + (int)i * m.row_h);
+    }
+    const int details_h = view->rows ? (int)view->rows * m.row_h + 24 - (m.row_h - lv_font_get_line_height(m.detail)) : 0;
+    const int track_y = button_y - 14;
+    const int details_y = (countdown ? track_y - 12 : button_y - 14) - details_h;
+    visible(view->details, view->rows > 0);
+    lv_obj_set_pos(view->details, m.margin, details_y);
+    lv_obj_set_height(view->details, details_h);
+    visible(view->track, countdown);
+    lv_obj_set_y(view->track, track_y);
+    const int body_bottom = (view->rows ? details_y : track_y) - 12;
+    const int line = lv_font_get_line_height(m.body);
+    const bool body = lv_label_get_text(view->body)[0] && body_bottom - body_y >= line;
+    visible(view->body, body);
+    lv_obj_set_y(view->body, body_y);
+    lv_label_set_long_mode(view->body, LV_LABEL_LONG_DOT);
+    lv_obj_set_height(view->body, body ? (body_bottom - body_y) / (line + 5) * (line + 5) : 0);
 }
 
 static void close_alert(void)
@@ -3040,7 +3230,7 @@ static void close_alert(void)
     /* Stays dismissed until that task stops waiting, so it can alert again next time. */
     snprintf(ui.alert_dismissed, sizeof(ui.alert_dismissed), "%s", ui.alert_key);
     ui.alert_key[0] = 0;
-    visible(ui.alert_page, false);
+    visible(ui.alert.page, false);
     refresh_display_power();
 }
 
@@ -3053,29 +3243,19 @@ static void alert_clicked(lv_event_t *event)
     if (focus && ui.music_control_callback) ui.music_control_callback("focus", (uint32_t)app);
 }
 
-static void create_alert_page(void)
+/* The first task in the order shown on the agent pages that waits for an answer. */
+static const buddy_codex_task_t *waiting_task(const buddy_codex_t *agent)
 {
-    const int width = BOARD_DISPLAY_WIDTH, height = BOARD_DISPLAY_HEIGHT;
-    const bool compact = width < 480;
-    const int margin = compact ? 12 : 32, button_h = compact ? 44 : 64, gap = compact ? 12 : 16;
-    const int button_w = (width - margin * 2 - gap) / 2, button_y = height - margin - button_h;
-    ui.alert_page = box(ui.screen, 0, 0, width, height);
-    /* Clickable so presses never reach the app underneath. */
-    lv_obj_add_flag(ui.alert_page, LV_OBJ_FLAG_CLICKABLE);
-    lv_obj_set_style_bg_color(ui.alert_page, color(C_BG), 0);
-    lv_obj_set_style_bg_opa(ui.alert_page, LV_OPA_COVER, 0);
-    ui.alert_title = text(ui.alert_page, "", margin, margin, width - margin * 2,
-                          width >= 800 ? &buddy_language_font_48 : compact ? &buddy_language_font_24 : &buddy_language_font_32, C_WARNING);
-    lv_label_set_long_mode(ui.alert_title, LV_LABEL_LONG_WRAP);
-    ui.alert_body = text(ui.alert_page, "", margin, margin, width - margin * 2,
-                         compact ? &buddy_language_font_16 : &buddy_language_font_24, C_TEXT);
-    lv_label_set_long_mode(ui.alert_body, LV_LABEL_LONG_WRAP);
-    lv_obj_t *dismiss = action_button(ui.alert_page, "", margin, button_y, button_w, button_h, &ui.alert_dismiss);
-    lv_obj_add_event_cb(dismiss, alert_clicked, LV_EVENT_CLICKED, NULL);
-    lv_obj_t *focus = action_button(ui.alert_page, "", margin + button_w + gap, button_y, button_w, button_h, &ui.alert_focus);
-    lv_obj_set_style_text_color(ui.alert_focus, color(C_ACCENT), 0);
-    lv_obj_add_event_cb(focus, alert_clicked, LV_EVENT_CLICKED, (void *)1);
-    lv_obj_add_flag(ui.alert_page, LV_OBJ_FLAG_HIDDEN);
+    for (uint32_t i = 0; i < agent->activity.item_count && i < 3; ++i)
+        if (strcmp(agent->activity.items[i].state, "waiting") == 0) return &agent->activity.items[i];
+    return NULL;
+}
+
+static void ago_text(char *buffer, size_t size, uint32_t seconds)
+{
+    if (seconds < 60) snprintf(buffer, size, BT(BT_LU_S_AGO), (unsigned long)seconds);
+    else if (seconds < 3600) snprintf(buffer, size, BT(BT_LU_MIN_AGO), (unsigned long)(seconds / 60));
+    else snprintf(buffer, size, BT(BT_LU_H_AGO), (unsigned long)(seconds / 3600));
 }
 
 /* Shows the alert over any app while a task waits; the first tap is the user's choice. */
@@ -3092,33 +3272,34 @@ static void refresh_alert(void)
     if (!task || strcmp(key, ui.alert_dismissed) != 0) ui.alert_dismissed[0] = 0;
     bool show = task && !ui.alert_dismissed[0] && ui.connection != BUDDY_PROVISIONING;
     if (!show) {
-        if (ui.alert_key[0]) { ui.alert_key[0] = 0; visible(ui.alert_page, false); refresh_display_power(); }
+        if (ui.alert_key[0]) { ui.alert_key[0] = 0; visible(ui.alert.page, false); refresh_display_power(); }
         return;
     }
-    if (strcmp(key, ui.alert_key) == 0) return;
-    if (!ui.alert_page) create_alert_page();
+    char asked[40];
+    ago_text(asked, sizeof(asked), task->age_s);
+    if (strcmp(key, ui.alert_key) == 0) {
+        set_label_if_changed(ui.alert.values[ui.alert.rows - 1], asked);
+        return;
+    }
+    if (!ui.alert.page) create_prompt(&ui.alert, alert_clicked);
     snprintf(ui.alert_key, sizeof(ui.alert_key), "%s", key);
     ui.alert_app = app;
-    lv_label_set_text(ui.alert_title, BT(app == BUDDY_APP_CLAUDE ? BT_CLAUDE_CODE_NEEDS_YOU : BT_CODEX_NEEDS_YOU));
-    char body[192];
-    const char *name = task->title[0] ? task->title : task->project;
-    if (name[0] && task->title[0] && task->project[0]) snprintf(body, sizeof(body), "%s  /  %s\n%s", task->title, task->project, BT(BT_IT_IS_WAITING_FOR_YOUR_PERMISSION_OR_ANSWER));
-    else if (name[0]) snprintf(body, sizeof(body), "%s\n%s", name, BT(BT_IT_IS_WAITING_FOR_YOUR_PERMISSION_OR_ANSWER));
-    else snprintf(body, sizeof(body), "%s", BT(BT_IT_IS_WAITING_FOR_YOUR_PERMISSION_OR_ANSWER));
-    lv_label_set_text(ui.alert_body, body);
-    lv_label_set_text(ui.alert_focus, BT(BT_SHOW_ON_PC));
-    lv_label_set_text(ui.alert_dismiss, BT(BT_NOT_NOW));
-    lv_obj_update_layout(ui.alert_page);
-    int body_y = lv_obj_get_y(ui.alert_title) + lv_obj_get_height(ui.alert_title) + (BOARD_DISPLAY_WIDTH < 480 ? 12 : 24);
-    lv_obj_set_y(ui.alert_body, body_y);
-    lv_obj_set_height(ui.alert_body, LV_MAX(0, lv_obj_get_y(lv_obj_get_parent(ui.alert_focus)) - body_y - 16));
-    visible(ui.alert_page, true);
-    lv_obj_move_foreground(ui.alert_page);
-    /* An approval prompt for this display stays above it, and the dim shield above both. */
-    if (ui.confirm_page && ui.confirm_action != BUDDY_CONFIRM_NONE) lv_obj_move_foreground(ui.confirm_page);
-    lv_obj_move_foreground(ui.dim_overlay);
-    lv_disp_trig_activity(NULL);
-    refresh_display_power();
+    const agent_copy_t *copy = app == BUDDY_APP_CLAUDE ? &claude_copy : &codex_copy;
+    lv_img_set_src(ui.alert.logo, copy->logo);
+    visible(ui.alert.logo, true);
+    lv_label_set_text(ui.alert.eyebrow, BT(app == BUDDY_APP_CLAUDE ? BT_CLAUDE_CODE_NEEDS_YOU : BT_CODEX_NEEDS_YOU));
+    lv_obj_set_style_text_color(ui.alert.eyebrow, color(copy->accent), 0);
+    lv_label_set_text(ui.alert.title, task->title[0] ? task->title : BT(BT_IT_IS_WAITING_FOR_YOUR_PERMISSION_OR_ANSWER));
+    lv_label_set_text(ui.alert.body, task->title[0] ? BT(BT_IT_IS_WAITING_FOR_YOUR_PERMISSION_OR_ANSWER) : "");
+    ui.alert.rows = 0;
+    prompt_row(&ui.alert, BT(BT_PROJECT_LABEL), task->project);
+    prompt_row(&ui.alert, BT(BT_ASKED_LABEL), asked);
+    lv_label_set_text(ui.alert.secondary_label, BT(BT_NOT_NOW));
+    lv_label_set_text(ui.alert.primary_label, BT(BT_SHOW_ON_PC));
+    prompt_button_primary(ui.alert.primary, ui.alert.primary_label, copy->accent);
+    if (ui.alert.tile) lv_obj_set_style_border_color(ui.alert.tile, color(C_WARNING), 0);
+    prompt_layout(&ui.alert, false);
+    show_overlay(ui.alert.page);
 }
 
 void buddy_ui_set_album_art(uint32_t id, uint16_t size, uint8_t *pixels)
@@ -3147,8 +3328,11 @@ static void confirm_answer(bool approved)
     buddy_confirm_action_t action = ui.confirm_action;
     if (action == BUDDY_CONFIRM_NONE) return;
     ui.confirm_action = BUDDY_CONFIRM_NONE;
-    visible(ui.confirm_page, false);
+    visible(ui.confirm.page, false);
+    /* The install screen names the version that was approved. */
+    if (approved && action == BUDDY_CONFIRM_FIRMWARE) snprintf(ui.install_detail, sizeof(ui.install_detail), "%s", ui.confirm_detail);
     if (ui.confirm_callback) ui.confirm_callback(action, approved);
+    refresh_display_power();
 }
 
 static void confirm_clicked(lv_event_t *event)
@@ -3160,33 +3344,8 @@ static void confirm_tick(lv_timer_t *timer)
 {
     (void)timer;
     if (ui.confirm_action != BUDDY_CONFIRM_NONE && lv_tick_elaps(ui.confirm_started) >= CONFIRM_TIMEOUT_MS) confirm_answer(false);
-}
-
-static void create_confirm_page(void)
-{
-    const int width = BOARD_DISPLAY_WIDTH, height = BOARD_DISPLAY_HEIGHT;
-    const bool compact = width < 480;
-    const int margin = compact ? 12 : 32, button_h = compact ? 44 : 64, gap = compact ? 12 : 16;
-    const int button_w = (width - margin * 2 - gap) / 2, button_y = height - margin - button_h;
-    ui.confirm_page = box(ui.screen, 0, 0, width, height);
-    /* Clickable so presses never reach the app underneath. */
-    lv_obj_add_flag(ui.confirm_page, LV_OBJ_FLAG_CLICKABLE);
-    lv_obj_set_style_bg_color(ui.confirm_page, color(C_BG), 0);
-    lv_obj_set_style_bg_opa(ui.confirm_page, LV_OPA_COVER, 0);
-    ui.confirm_title = text(ui.confirm_page, "", margin, margin, width - margin * 2,
-                            width >= 800 ? &buddy_language_font_32 : compact ? &buddy_language_font_20 : &buddy_language_font_24, C_ACCENT);
-    lv_label_set_long_mode(ui.confirm_title, LV_LABEL_LONG_WRAP);
-    /* Placed under the wrapped title on each request; see buddy_ui_request_confirmation. */
-    ui.confirm_body = text(ui.confirm_page, "", margin, margin, width - margin * 2,
-                           compact ? &buddy_language_font_14 : &buddy_language_font_20, C_TEXT);
-    lv_label_set_long_mode(ui.confirm_body, LV_LABEL_LONG_WRAP);
-    /* Deny sits where a stray tap is most likely; Allow needs a deliberate press. */
-    lv_obj_t *deny = action_button(ui.confirm_page, "", margin, button_y, button_w, button_h, &ui.confirm_deny);
-    lv_obj_add_event_cb(deny, confirm_clicked, LV_EVENT_CLICKED, NULL);
-    lv_obj_t *allow = action_button(ui.confirm_page, "", margin + button_w + gap, button_y, button_w, button_h, &ui.confirm_allow);
-    lv_obj_set_style_text_color(ui.confirm_allow, color(C_ACCENT), 0);
-    lv_obj_add_event_cb(allow, confirm_clicked, LV_EVENT_CLICKED, (void *)1);
-    lv_timer_create(confirm_tick, 1000, NULL);
+    /* A failed install explains itself, then steps aside; the old firmware keeps running. */
+    if (ui.install_stage == BUDDY_INSTALL_FAILED && lv_tick_elaps(ui.install_tick) >= INSTALL_FAILURE_MS) buddy_ui_set_install(BUDDY_INSTALL_NONE, 0, 0);
 }
 
 void buddy_ui_set_confirm_callback(buddy_confirm_callback_t callback)
@@ -3194,28 +3353,124 @@ void buddy_ui_set_confirm_callback(buddy_confirm_callback_t callback)
     ui.confirm_callback = callback;
 }
 
-void buddy_ui_request_confirmation(buddy_confirm_action_t action)
+void buddy_ui_request_confirmation(buddy_confirm_action_t action, const char *detail)
 {
     if (action != BUDDY_CONFIRM_FIRMWARE && action != BUDDY_CONFIRM_WIFI) return;
-    if (!ui.confirm_page) create_confirm_page();
-    if (ui.confirm_action == action) return;
+    if (!ui.confirm.page) create_prompt(&ui.confirm, confirm_clicked);
+    if (!ui.overlay_timer) ui.overlay_timer = lv_timer_create(confirm_tick, 1000, NULL);
+    if (!detail) detail = "";
+    if (ui.confirm_action == action && strcmp(detail, ui.confirm_detail) == 0) return;
+    if (ui.confirm_action != action) ui.confirm_started = lv_tick_get();
     ui.confirm_action = action;
-    ui.confirm_started = lv_tick_get();
+    snprintf(ui.confirm_detail, sizeof(ui.confirm_detail), "%s", detail);
     bool firmware = action == BUDDY_CONFIRM_FIRMWARE;
-    lv_label_set_text(ui.confirm_title, BT(firmware ? BT_CONFIRM_FIRMWARE_TITLE : BT_CONFIRM_WIFI_TITLE));
-    lv_label_set_text(ui.confirm_body, BT(firmware ? BT_CONFIRM_FIRMWARE_BODY : BT_CONFIRM_WIFI_BODY));
-    lv_label_set_text(ui.confirm_allow, BT(BT_CONFIRM_ALLOW));
-    lv_label_set_text(ui.confirm_deny, BT(BT_CONFIRM_DENY));
-    lv_obj_update_layout(ui.confirm_page);
-    int body_y = lv_obj_get_y(ui.confirm_title) + lv_obj_get_height(ui.confirm_title) + (BOARD_DISPLAY_WIDTH < 480 ? 12 : 24);
-    lv_obj_set_y(ui.confirm_body, body_y);
-    lv_obj_set_height(ui.confirm_body, LV_MAX(0, lv_obj_get_y(lv_obj_get_parent(ui.confirm_allow)) - body_y - 16));
-    visible(ui.confirm_page, true);
-    lv_obj_move_foreground(ui.confirm_page);
-    // Keep the existing wake/dim overlay above every surface, so a dark screen's first press only wakes it.
-    lv_obj_move_foreground(ui.dim_overlay);
-    lv_disp_trig_activity(NULL);
-    refresh_display_power();
+    lv_label_set_text(ui.confirm.eyebrow, BT(firmware ? BT_FIRMWARE_UPDATE : BT_WI_FI_CHANGE));
+    lv_label_set_text(ui.confirm.title, BT(firmware ? BT_CONFIRM_FIRMWARE_TITLE : BT_CONFIRM_WIFI_TITLE));
+    lv_label_set_text(ui.confirm.body, BT(firmware ? BT_CONFIRM_FIRMWARE_BODY : BT_CONFIRM_WIFI_BODY));
+    ui.confirm.rows = 0;
+    if (firmware) {
+        prompt_row(&ui.confirm, BT(BT_INSTALLED_LABEL), esp_app_get_description()->version);
+        prompt_row(&ui.confirm, BT(BT_NEW_LABEL), detail);
+    } else prompt_row(&ui.confirm, BT(BT_NETWORK_LABEL), detail);
+    /* The request carries no PC name; the paired PC's own telemetry does. */
+    if (ui.have_stats) prompt_row(&ui.confirm, BT(BT_FROM_LABEL), ui.stats.hostname);
+    lv_label_set_text(ui.confirm.secondary_label, BT(BT_CONFIRM_DENY));
+    lv_label_set_text(ui.confirm.primary_label, BT(BT_CONFIRM_ALLOW));
+    prompt_button_primary(ui.confirm.primary, ui.confirm.primary_label, C_ACCENT);
+    lv_obj_set_width(ui.confirm.countdown, lv_obj_get_width(ui.confirm.track));
+    prompt_layout(&ui.confirm, true);
+    show_overlay(ui.confirm.page);
+}
+
+/* The carrying crab walks along the track as the image arrives; the percentage and the
+ * stage sit under it. The 320 x 240 screen drops the eyebrow and uses the original-size crab. */
+static void create_install_page(void)
+{
+    const int width = BOARD_DISPLAY_WIDTH, height = BOARD_DISPLAY_HEIGHT;
+    const bool wide = width >= 800, compact = height < 300;
+    const int margin = wide ? 32 : compact ? 12 : 24;
+    ui.install_page = box(ui.screen, 0, 0, width, height);
+    lv_obj_add_flag(ui.install_page, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_set_style_bg_color(ui.install_page, color(C_BG), 0);
+    lv_obj_set_style_bg_opa(ui.install_page, LV_OPA_COVER, 0);
+    const lv_font_t *small = compact ? &buddy_language_font_14 : &buddy_language_font_16;
+    const lv_font_t *title_font = wide ? &buddy_language_font_32 : compact ? &buddy_language_font_20 : &buddy_language_font_24;
+    if (!compact) text(ui.install_page, BT(BT_FIRMWARE_UPDATE), margin, margin, width / 2, small, C_ACCENT);
+    const int title_y = compact ? margin : margin + lv_font_get_line_height(small) + 6;
+    ui.install_version = text(ui.install_page, "", width / 2, compact ? title_y + (lv_font_get_line_height(title_font) - lv_font_get_line_height(small)) / 2 : margin,
+                              width / 2 - margin, small, C_MUTED);
+    lv_obj_set_style_text_align(ui.install_version, LV_TEXT_ALIGN_RIGHT, 0);
+    ui.install_title = text(ui.install_page, "", margin, title_y, width - margin * 2 - (compact ? 64 : 0), title_font, C_TEXT);
+    const int track_w = width - margin * 2 - (wide ? 96 : 0), track_h = compact ? 8 : 12;
+    const int track_x = (width - track_w) / 2, track_y = wide ? 250 : compact ? 112 : 244;
+    ui.install_crab = compact ? 48 : 96;
+    ui.install_track = box(ui.install_page, track_x, track_y, track_w, track_h);
+    lv_obj_set_style_bg_color(ui.install_track, color(C_RULE), 0);
+    lv_obj_set_style_bg_opa(ui.install_track, LV_OPA_COVER, 0);
+    lv_obj_set_style_radius(ui.install_track, LV_RADIUS_CIRCLE, 0);
+    ui.install_fill = box(ui.install_track, 0, 0, 0, track_h);
+    lv_obj_set_style_bg_opa(ui.install_fill, LV_OPA_COVER, 0);
+    lv_obj_set_style_radius(ui.install_fill, LV_RADIUS_CIRCLE, 0);
+    ui.install_mascot = lv_img_create(ui.install_page);
+    lv_img_set_antialias(ui.install_mascot, false);
+    lv_obj_set_size(ui.install_mascot, ui.install_crab, ui.install_crab);
+    lv_obj_clear_flag(ui.install_mascot, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_set_y(ui.install_mascot, track_y - ui.install_crab + ui.install_crab / 16);
+    const lv_font_t *percent_font = compact ? &buddy_language_font_24 : &buddy_language_font_48;
+    const int percent_y = track_y + track_h + (compact ? 6 : 18);
+    ui.install_percent = text(ui.install_page, "", margin, percent_y, width - margin * 2, percent_font, C_TEXT);
+    lv_obj_set_style_text_align(ui.install_percent, LV_TEXT_ALIGN_CENTER, 0);
+    const lv_font_t *stage_font = compact ? &buddy_language_font_14 : &buddy_language_font_20;
+    ui.install_stage_label = text(ui.install_page, "", margin, percent_y + lv_font_get_line_height(percent_font) + 2,
+                                  width - margin * 2, stage_font, C_MUTED);
+    lv_obj_set_style_text_align(ui.install_stage_label, LV_TEXT_ALIGN_CENTER, 0);
+    lv_label_set_long_mode(ui.install_stage_label, LV_LABEL_LONG_WRAP);
+    ui.install_stage_y = lv_obj_get_y(ui.install_stage_label);
+    /* The small screen wraps the note onto two lines right under the stage. */
+    const int stage_bottom = percent_y + lv_font_get_line_height(percent_font) + 2 + lv_font_get_line_height(stage_font);
+    ui.install_note = text(ui.install_page, BT(BT_KEEP_CLAWPAL_POWERED), margin,
+                           compact ? stage_bottom + 6 : height - margin - lv_font_get_line_height(small), width - margin * 2, small, C_MUTED);
+    lv_label_set_long_mode(ui.install_note, LV_LABEL_LONG_WRAP);
+    lv_obj_set_style_text_align(ui.install_note, LV_TEXT_ALIGN_CENTER, 0);
+    lv_obj_add_flag(ui.install_page, LV_OBJ_FLAG_HIDDEN);
+    if (!ui.overlay_timer) ui.overlay_timer = lv_timer_create(confirm_tick, 1000, NULL);
+}
+
+void buddy_ui_set_install(buddy_install_stage_t stage, uint32_t received, uint32_t total)
+{
+    if (!ui.screen) return;
+    if (stage == BUDDY_INSTALL_NONE) {
+        ui.install_stage = BUDDY_INSTALL_NONE;
+        if (ui.install_page) visible(ui.install_page, false);
+        refresh_display_power();
+        return;
+    }
+    if (!ui.install_page) create_install_page();
+    bool shown = ui.install_stage != BUDDY_INSTALL_NONE;
+    ui.install_stage = stage;
+    ui.install_tick = lv_tick_get();
+    bool failed = stage == BUDDY_INSTALL_FAILED;
+    uint32_t percent = stage == BUDDY_INSTALL_CHECKING || stage == BUDDY_INSTALL_RESTARTING ? 100 :
+                       total ? (uint32_t)((uint64_t)received * 100 / total) : 0;
+    if (percent > 100) percent = 100;
+    const int track_w = lv_obj_get_width(ui.install_track);
+    lv_obj_set_width(ui.install_fill, LV_MAX(lv_obj_get_height(ui.install_track), track_w * (int)percent / 100));
+    lv_obj_set_style_bg_color(ui.install_fill, color(failed ? C_WARNING : C_ACCENT), 0);
+    lv_obj_set_x(ui.install_mascot, lv_obj_get_x(ui.install_track) + (track_w - ui.install_crab) * (int)percent / 100);
+    char buffer[16];
+    snprintf(buffer, sizeof(buffer), "%lu%%", (unsigned long)percent);
+    set_label_if_changed(ui.install_percent, buffer);
+    set_label_if_changed(ui.install_title, BT(failed ? BT_UPDATE_STOPPED : BT_INSTALLING_UPDATE));
+    set_label_if_changed(ui.install_stage_label, BT(failed ? BT_UPDATE_FAILED_CURRENT_KEPT : stage == BUDDY_INSTALL_CHECKING ? BT_CHECKING_THE_SIGNATURE :
+        stage == BUDDY_INSTALL_RESTARTING ? BT_RESTARTING_INTO_THE_NEW_VERSION : BT_RECEIVING_THE_UPDATE));
+    lv_obj_set_style_text_color(ui.install_stage_label, color(failed ? C_WARNING : C_MUTED), 0);
+    set_label_if_changed(ui.install_version, ui.install_detail);
+    visible(ui.install_note, !failed);
+    visible(ui.install_percent, !failed);
+    /* A failure has no percentage; its explanation takes that space and may wrap. */
+    lv_obj_set_y(ui.install_stage_label, failed ? lv_obj_get_y(ui.install_percent) : ui.install_stage_y);
+    if (!shown) show_overlay(ui.install_page);
+    else refresh_display_power();
 }
 
 void buddy_ui_set_music_control_callback(buddy_music_control_callback_t callback)
@@ -3265,6 +3520,7 @@ buddy_ui_state_t buddy_ui_get_state(void)
         .game_active = music_connected() && ui.stats.game.active,
         .pc_away = ui.pc_away,
         .needs_you = ui.alert_key[0] != 0,
+        .install_stage = ui.install_stage,
         .game_fps = music_connected() && ui.stats.game.active ? ui.stats.game.fps : NAN,
     };
 }

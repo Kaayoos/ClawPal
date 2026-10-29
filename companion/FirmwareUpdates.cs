@@ -204,7 +204,7 @@ public sealed class FirmwareUpdates(Configuration config,DeviceSettingsClient se
             if(config.SettingsPending && (await settings.ReadAsync(token)).ProtocolSchema>=DeviceSettings.CurrentSchema)await settings.SyncAsync(token);
             var preferences=(await settings.ReadAsync(token)).Settings;
             var (confirmHttp,confirmUrl)=await Open(token);
-            using(confirmHttp)await DeviceSettingsClient.ConfirmOnDisplayAsync(confirmHttp,confirmUrl,"firmware",()=>Status=L.Text("tap_allow_on_your_clawpal_display_to_continue"),token);
+            using(confirmHttp)await DeviceSettingsClient.ConfirmOnDisplayAsync(confirmHttp,confirmUrl,"firmware",release.Version,()=>Status=L.Text("tap_allow_on_your_clawpal_display_to_continue"),token);
             settings.Suspended=true;maintenance(true);Status=L.Text("sending_firmware_over_wi_fi");
             var (http,url)=await Open(token);
             try { using(http){using var request=new HttpRequestMessage(HttpMethod.Post,url);

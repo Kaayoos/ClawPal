@@ -31,7 +31,10 @@ typedef struct {
     event_kind_t kind;
     union {
         buddy_stats_t stats;
-        buddy_confirm_action_t confirm;
+        struct {
+            buddy_confirm_action_t action;
+            char detail[BUDDY_CONFIRM_DETAIL_SIZE];
+        } confirm;
         struct {
             buddy_connection_state_t state;
             char ssid[33];
@@ -61,12 +64,22 @@ static void on_stats(const buddy_stats_t *stats)
     xQueueSend(ui_events, &event, 0);
 }
 
-static void on_confirm(buddy_confirm_action_t action)
+static void on_confirm(buddy_confirm_action_t action, const char *detail)
 {
     /* Dropped prompts are harmless: the companion repeats the request while it waits. */
     ui_event_t event = {.kind = EVENT_CONFIRM};
-    event.data.confirm = action;
+    event.data.confirm.action = action;
+    strlcpy(event.data.confirm.detail, detail ? detail : "", sizeof(event.data.confirm.detail));
     xQueueSend(ui_events, &event, 0);
+}
+
+/* Runs on the HTTP task during a Wi-Fi install. Progress may skip a frame rather than slow
+ * the upload; the final stages wait for the display. */
+static void on_install(buddy_install_stage_t stage, uint32_t received, uint32_t total)
+{
+    if (!board_lvgl_lock(stage == BUDDY_INSTALL_RECEIVING ? 20 : 1000)) return;
+    buddy_ui_set_install(stage, received, total);
+    board_lvgl_unlock();
 }
 
 static void update_clock(void)
@@ -119,6 +132,7 @@ void app_main(void)
     buddy_ui_init();
     buddy_ui_set_music_control_callback(buddy_network_music_control);
     buddy_ui_set_confirm_callback(buddy_network_confirm_result);
+    buddy_update_set_progress_callback(on_install);
     buddy_ui_set_connection(BUDDY_WIFI_CONNECTING, "", "", BT(BT_STARTING_WI_FI));
     update_clock();
     board_lvgl_unlock();
@@ -162,7 +176,7 @@ void app_main(void)
                 buddy_ui_set_connection(event.data.connection.state,
                     event.data.connection.ssid, event.data.connection.ip, event.data.connection.detail);
             } else if (received && event.kind == EVENT_CONFIRM) {
-                buddy_ui_request_confirmation(event.data.confirm);
+                buddy_ui_request_confirmation(event.data.confirm.action, event.data.confirm.detail);
             } else if (received) {
                 buddy_ui_update_stats(&event.data.stats);
                 if (last_log_us == 0 || now_us - last_log_us >= 60000000) {

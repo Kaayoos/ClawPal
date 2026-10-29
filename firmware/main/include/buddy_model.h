@@ -18,6 +18,18 @@ typedef enum {
     BUDDY_CONFIRM_WIFI,
 } buddy_confirm_action_t;
 
+/* What a confirmation is about: the new firmware version or Wi-Fi network name, or empty. */
+#define BUDDY_CONFIRM_DETAIL_SIZE 40
+
+/* Progress of a Wi-Fi firmware install, shown full screen while it runs. */
+typedef enum {
+    BUDDY_INSTALL_NONE,
+    BUDDY_INSTALL_RECEIVING,
+    BUDDY_INSTALL_CHECKING,
+    BUDDY_INSTALL_RESTARTING,
+    BUDDY_INSTALL_FAILED,
+} buddy_install_stage_t;
+
 typedef struct {
     bool running;
     bool available;

@@ -11,3 +11,6 @@
  * bytes followed by a NUL. Kept apart from networking so the build host can
  * test and fuzz it (tests/firmware_host). */
 bool buddy_telemetry_parse(const char *payload, size_t length, buddy_stats_t *stats);
+
+/* UTF-8 the display can show: no control characters, surrogates or line separators. */
+bool buddy_display_text_valid(const char *value, size_t length);

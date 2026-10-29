@@ -510,13 +510,23 @@ int main(int argc,char **argv){
     tap(46,H-22,90);live(400);if(buddy_ui_get_state().menu_open)return 6;
     // Remote firmware and Wi-Fi changes wait for a tap on the display; silence counts as a denial.
     buddy_ui_set_confirm_callback(confirm_result);
-    buddy_ui_request_confirmation(BUDDY_CONFIRM_FIRMWARE);live(300);buddy_ui_request_confirmation(BUDDY_CONFIRM_FIRMWARE);live(300);
+    buddy_ui_request_confirmation(BUDDY_CONFIRM_FIRMWARE,"0.10.2");live(300);buddy_ui_request_confirmation(BUDDY_CONFIRM_FIRMWARE,"0.10.2");live(300);
     if(!find_label(lv_scr_act(),BT(BT_CONFIRM_FIRMWARE_TITLE))||confirm_answers)return 8;save_frame("confirm-firmware");
     tap_overlay_label(BT(BT_CONFIRM_ALLOW));if(confirm_answers!=1||confirm_last!=BUDDY_CONFIRM_FIRMWARE||!confirm_approved)return 9;
     if(find_label(lv_scr_act(),BT(BT_CONFIRM_FIRMWARE_TITLE)))return 10;
-    buddy_ui_request_confirmation(BUDDY_CONFIRM_WIFI);live(300);save_frame("confirm-wifi");
+    // The approved update shows the carrying crab walking the track, then the check and restart.
+    buddy_ui_set_install(BUDDY_INSTALL_RECEIVING,0,2232320);live(300);
+    if(buddy_ui_get_state().install_stage!=BUDDY_INSTALL_RECEIVING||!find_label(lv_scr_act(),BT(BT_INSTALLING_UPDATE))||!find_label(lv_scr_act(),"0.10.2"))return 13;
+    buddy_ui_set_install(BUDDY_INSTALL_RECEIVING,1004544,2232320);live(300);if(!find_label(lv_scr_act(),"45%"))return 14;save_frame("install-progress");
+    buddy_ui_set_install(BUDDY_INSTALL_CHECKING,2232320,2232320);live(300);save_frame("install-checking");
+    // A failed install explains itself, then gets out of the way; the old firmware keeps running.
+    buddy_ui_set_install(BUDDY_INSTALL_FAILED,2232320,2232320);live(300);if(!find_label(lv_scr_act(),BT(BT_UPDATE_STOPPED)))return 15;save_frame("install-failed");
+    live(13000);if(buddy_ui_get_state().install_stage!=BUDDY_INSTALL_NONE||find_label(lv_scr_act(),BT(BT_UPDATE_STOPPED)))return 16;
+    buddy_ui_set_install(BUDDY_INSTALL_RESTARTING,2232320,2232320);live(300);save_frame("install-restarting");
+    buddy_ui_set_install(BUDDY_INSTALL_NONE,0,0);live(200);if(find_label(lv_scr_act(),BT(BT_INSTALLING_UPDATE)))return 17;
+    buddy_ui_request_confirmation(BUDDY_CONFIRM_WIFI,"Home Wi-Fi 5G");live(300);save_frame("confirm-wifi");
     tap_overlay_label(BT(BT_CONFIRM_DENY));if(confirm_answers!=2||confirm_last!=BUDDY_CONFIRM_WIFI||confirm_approved)return 11;
-    buddy_ui_request_confirmation(BUDDY_CONFIRM_WIFI);wait_ms(61000);
+    buddy_ui_request_confirmation(BUDDY_CONFIRM_WIFI,"Home Wi-Fi 5G");wait_ms(61000);
     if(confirm_answers!=3||confirm_approved||find_label(lv_scr_act(),BT(BT_CONFIRM_WIFI_TITLE)))return 12;
     // A new waiting task alerts again; Not now closes it without asking the PC for anything.
     stats.claude.activity.items[1]=(buddy_codex_task_t){ "Ship the release", "clawpal", "waiting", 5 };send_stats();live(400);
@@ -529,5 +539,5 @@ int main(int argc,char **argv){
     // All size classes retain the same offline fallback and wake/dim policy.
     buddy_ui_set_connection(BUDDY_PC_OFFLINE,"Home Wi-Fi","192.168.1.40","");wait_ms(61000);update_clock();
     if(buddy_ui_get_state().active_app!=BUDDY_APP_CLOCK)return 7;
-    printf("PASS %dx%d: all apps, footer navigation, remote-change confirmation, needs-you alert, album cover, away and offline fallback\n",W,H);return 0;
+    printf("PASS %dx%d: all apps, footer navigation, remote-change confirmation, install progress, needs-you alert, album cover, away and offline fallback\n",W,H);return 0;
 }

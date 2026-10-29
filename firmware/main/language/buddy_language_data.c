@@ -26,6 +26,7 @@ static const char text_0_activity_time_unknown[] = "Activity time unknown";
 static const char text_0_activity_unavailable[] = "Activity unavailable";
 static const char text_0_am[] = "AM";
 static const char text_0_apps[] = "Apps";
+static const char text_0_asked_label[] = "Asked";
 static const char text_0_authenticated_websocket_upgrade_required[] = "Authenticated WebSocket upgrade required";
 static const char text_0_authentication_required[] = "Authentication required";
 static const char text_0_automatic_reconnect[] = "Automatic reconnect";
@@ -40,6 +41,7 @@ static const char text_0_cached_lu_recorded_tasks[] = "Cached / %lu recorded tas
 static const char text_0_cached_snapshot[] = "Cached snapshot /";
 static const char text_0_cached_updated[] = "Cached / Updated";
 static const char text_0_carrying_your_very_important_stuff[] = "carrying your very important stuff";
+static const char text_0_checking_the_signature[] = "Checking the signature";
 static const char text_0_choose_an_app[] = "Choose an app";
 static const char text_0_choose_another_app_from_apps[] = "Choose another app from Apps";
 static const char text_0_claude[] = "Claude Code";
@@ -65,10 +67,10 @@ static const char text_0_completed[] = "Completed";
 static const char text_0_conditions[] = "Conditions";
 static const char text_0_confirm_allow[] = "Allow";
 static const char text_0_confirm_deny[] = "Deny";
-static const char text_0_confirm_firmware_body[] = "Your PC companion wants to install new display firmware over Wi-Fi. Allow it only if you started this update.";
+static const char text_0_confirm_firmware_body[] = "Only allow this if you started the update on your PC.";
 static const char text_0_confirm_firmware_title[] = "Install a firmware update?";
 static const char text_0_confirm_on_display_first[] = "Confirm this change on the display first";
-static const char text_0_confirm_wifi_body[] = "Your PC companion wants to move this display to a different Wi-Fi network. Allow it only if you requested this change.";
+static const char text_0_confirm_wifi_body[] = "Only allow this if you asked your PC to switch networks.";
 static const char text_0_confirm_wifi_title[] = "Change the Wi-Fi network?";
 static const char text_0_connect_clawpal[] = "Connect ClawPal";
 static const char text_0_connected[] = "Connected";
@@ -109,6 +111,7 @@ static const char text_0_experimental_hardware[] = "Experimental hardware - not 
 static const char text_0_feels_like[] = "Feels like";
 static const char text_0_finding_your_forecast[] = "Finding your forecast";
 static const char text_0_finish_wi_fi_setup_using_clawpal_on_your_pc[] = "Finish Wi-Fi setup using ClawPal on your PC.\nAfter setup, Buddy reconnects automatically.";
+static const char text_0_firmware_update[] = "Firmware update";
 static const char text_0_fog[] = "Fog";
 static const char text_0_forecast_date_format[] = "%s %02d";
 static const char text_0_forecast_is_loading[] = "Forecast is loading";
@@ -116,6 +119,7 @@ static const char text_0_forecast_unavailable_retrying_soon[] = "Forecast unavai
 static const char text_0_fps[] = "FPS";
 static const char text_0_freezing_drizzle[] = "Freezing drizzle";
 static const char text_0_freezing_rain[] = "Freezing rain";
+static const char text_0_from_label[] = "From";
 static const char text_0_game_activity_fps_unavailable[] = "Game activity / FPS unavailable";
 static const char text_0_game_activity_live_frame_rate[] = "Game activity / live frame rate";
 static const char text_0_game_activity_measuring_fps[] = "Game activity / measuring FPS...";
@@ -133,6 +137,8 @@ static const char text_0_hmm_clawsome_question[] = "hmm. clawsome question.";
 static const char text_0_home[] = "Home";
 static const char text_0_hours[] = "Hours";
 static const char text_0_humidity[] = "Humidity";
+static const char text_0_installed_label[] = "Installed";
+static const char text_0_installing_update[] = "Installing update";
 static const char text_0_interrupted[] = "Interrupted";
 static const char text_0_invalid_display_settings[] = "Invalid display settings";
 static const char text_0_invalid_form_size[] = "Invalid form size";
@@ -143,6 +149,7 @@ static const char text_0_joining_wi_fi[] = "Joining Wi-Fi";
 static const char text_0_joining_your_wi_fi[] = "Joining your Wi-Fi";
 static const char text_0_just_crabbin_around[] = "just crabbin’ around";
 static const char text_0_just_five_more_minutes[] = "just five more minutes…";
+static const char text_0_keep_clawpal_powered[] = "Keep ClawPal powered. Settings and pairing stay.";
 static const char text_0_keep_clawpal_running_in_your_pc_s_tray_both[] = "Keep ClawPal running in your PC's tray.\nBoth devices need to be on the same local network.";
 static const char text_0_keep_clawpal_running_in_your_pc_s_tray_limits[] = "Keep ClawPal running in your PC's tray.\nLimits will appear when your PC reconnects.";
 static const char text_0_keep_clawpal_running_in_your_pc_s_tray_recorded[] = "Keep ClawPal running in your PC's tray.\nRecorded activity returns when it reconnects.";
@@ -193,8 +200,10 @@ static const char text_0_month_9[] = "Oct";
 static const char text_0_mostly_clear[] = "Mostly clear";
 static const char text_0_music[] = "Music";
 static const char text_0_network[] = "Network";
+static const char text_0_network_label[] = "Network";
 static const char text_0_network_name[] = "Network name";
 static const char text_0_network_startup_failed_restart_buddy[] = "Network startup failed. Restart Buddy.";
+static const char text_0_new_label[] = "New";
 static const char text_0_next[] = "Next";
 static const char text_0_no_account_limits_available[] = "No account limits available";
 static const char text_0_no_limits_reported[] = "No limits reported";
@@ -245,6 +254,7 @@ static const char text_0_precip[] = "Precip. %";
 static const char text_0_precipitation[] = "Precipitation";
 static const char text_0_pretending_this_is_a_music_video[] = "pretending this is a music video";
 static const char text_0_previous[] = "Previous";
+static const char text_0_project_label[] = "Project";
 static const char text_0_rain[] = "Rain";
 static const char text_0_reading_your_claude_account_on_the_pc_your_limits[] = "Enable Live Claude limits in ClawPal settings for account usage. Claude must be signed in to a supported subscription.";
 static const char text_0_reading_your_codex_account_on_the_pc_your_limits[] = "Reading your Codex account on the PC.\nYour limits will appear when the response arrives.";
@@ -252,6 +262,7 @@ static const char text_0_ready[] = "Ready";
 static const char text_0_ready_5ba178[] = " / ready";
 static const char text_0_ready_to_start[] = "Ready to start";
 static const char text_0_ready_when_your_pc_is[] = "Ready when your PC is.";
+static const char text_0_receiving_the_update[] = "Receiving the update over Wi-Fi";
 static const char text_0_recent[] = "Recent";
 static const char text_0_recent_task_records_will_appear_when_the_pc_can[] = "Recent task records will appear when the PC can read them.";
 static const char text_0_recently_working[] = "Recently working";
@@ -265,6 +276,7 @@ static const char text_0_reset[] = "Reset";
 static const char text_0_reset_time_unavailable[] = "Reset time unavailable";
 static const char text_0_resets_in_s[] = "Resets in %s";
 static const char text_0_resets_value[] = "Resets %s";
+static const char text_0_restarting_into_the_new_version[] = "Restarting into the new version";
 static const char text_0_resume[] = "Resume";
 static const char text_0_resume_to_continue_or_reset_to_adjust[] = "Resume to continue, or Reset to adjust";
 static const char text_0_running[] = "Running";
@@ -342,8 +354,10 @@ static const char text_0_unknown[] = "Unknown";
 static const char text_0_untitled_task[] = "Untitled task";
 static const char text_0_untitled_track[] = "Untitled track";
 static const char text_0_up[] = "Up";
+static const char text_0_update_failed_current_kept[] = "The update didn't finish. The current version is still installed.";
 static const char text_0_update_or_install_claude_on_your_pc_buddy_needs[] = "Update or install Claude Code on your PC.\nBuddy needs its local account connection.";
 static const char text_0_update_or_install_codex_on_your_pc_buddy_needs[] = "Update or install Codex on your PC.\nBuddy needs its local account connection.";
+static const char text_0_update_stopped[] = "Update stopped";
 static const char text_0_updated[] = "Updated";
 static const char text_0_updated_lu_min_ago[] = "Updated %lu min ago";
 static const char text_0_usage[] = "Usage";
@@ -378,6 +392,7 @@ static const char text_0_weekday_5[] = "Fri";
 static const char text_0_weekday_6[] = "Sat";
 static const char text_0_weekly_limit[] = "Weekly limit";
 static const char text_0_welcome_home[] = "Welcome home";
+static const char text_0_wi_fi_change[] = "Wi-Fi change";
 static const char text_0_wi_fi_network[] = "Wi-Fi network";
 static const char text_0_wi_fi_not_configured[] = "Wi-Fi not configured";
 static const char text_0_wifi_password[] = "Wi-Fi password";
@@ -421,6 +436,7 @@ static const char text_1_activity_time_unknown[] = "Czas aktywności nieznany";
 static const char text_1_activity_unavailable[] = "Aktywność niedostępna";
 static const char text_1_am[] = "AM";
 static const char text_1_apps[] = "Apki";
+static const char text_1_asked_label[] = "Zapytano";
 static const char text_1_authenticated_websocket_upgrade_required[] = "Wymagane uwierzytelnione połączenie WebSocket";
 static const char text_1_authentication_required[] = "Wymagane uwierzytelnienie";
 static const char text_1_automatic_reconnect[] = "Automatyczne łączenie";
@@ -435,6 +451,7 @@ static const char text_1_cached_lu_recorded_tasks[] = "Zapis / Zadań: %lu";
 static const char text_1_cached_snapshot[] = "Zapis z pamięci /";
 static const char text_1_cached_updated[] = "Zapis / Odświeżono";
 static const char text_1_carrying_your_very_important_stuff[] = "niosę Twoje ważne sprawy";
+static const char text_1_checking_the_signature[] = "Sprawdzanie podpisu";
 static const char text_1_choose_an_app[] = "Wybierz apkę";
 static const char text_1_choose_another_app_from_apps[] = "Wybierz inną apkę w menu Apki";
 static const char text_1_claude[] = "Claude Code";
@@ -460,10 +477,10 @@ static const char text_1_completed[] = "Ukończono";
 static const char text_1_conditions[] = "Warunki";
 static const char text_1_confirm_allow[] = "Zezwól";
 static const char text_1_confirm_deny[] = "Odmów";
-static const char text_1_confirm_firmware_body[] = "Komputer chce zainstalować nowe oprogramowanie wyświetlacza przez Wi-Fi. Zezwól tylko, jeśli aktualizacja została uruchomiona przez Ciebie.";
+static const char text_1_confirm_firmware_body[] = "Zezwól tylko wtedy, gdy aktualizację uruchomiono na Twoim PC.";
 static const char text_1_confirm_firmware_title[] = "Zainstalować aktualizację?";
 static const char text_1_confirm_on_display_first[] = "Najpierw potwierdź tę zmianę na wyświetlaczu";
-static const char text_1_confirm_wifi_body[] = "Komputer chce przenieść ten wyświetlacz do innej sieci Wi-Fi. Zezwól tylko, jeśli ta zmiana została zlecona przez Ciebie.";
+static const char text_1_confirm_wifi_body[] = "Zezwól tylko wtedy, gdy zmianę sieci zlecono z Twojego PC.";
 static const char text_1_confirm_wifi_title[] = "Zmienić sieć Wi-Fi?";
 static const char text_1_connect_clawpal[] = "Połącz ClawPal";
 static const char text_1_connected[] = "Połączono";
@@ -504,6 +521,7 @@ static const char text_1_experimental_hardware[] = "Sprzęt eksperymentalny - be
 static const char text_1_feels_like[] = "Odczuwalna";
 static const char text_1_finding_your_forecast[] = "Szukam Twojej prognozy";
 static const char text_1_finish_wi_fi_setup_using_clawpal_on_your_pc[] = "Skonfiguruj Wi-Fi w ClawPal na PC.\nBuddy będzie łączyć się automatycznie.";
+static const char text_1_firmware_update[] = "Aktualizacja oprogramowania";
 static const char text_1_fog[] = "Mgła";
 static const char text_1_forecast_date_format[] = "%s %02d";
 static const char text_1_forecast_is_loading[] = "Wczytuję prognozę";
@@ -511,6 +529,7 @@ static const char text_1_forecast_unavailable_retrying_soon[] = "Prognoza niedos
 static const char text_1_fps[] = "FPS";
 static const char text_1_freezing_drizzle[] = "Marznąca mżawka";
 static const char text_1_freezing_rain[] = "Marznący deszcz";
+static const char text_1_from_label[] = "Od";
 static const char text_1_game_activity_fps_unavailable[] = "Gra / FPS niedostępne";
 static const char text_1_game_activity_live_frame_rate[] = "Gra / klatki na sekundę";
 static const char text_1_game_activity_measuring_fps[] = "Gra / mierzę FPS...";
@@ -528,6 +547,8 @@ static const char text_1_hmm_clawsome_question[] = "hmm, szczypiące pytanie";
 static const char text_1_home[] = "Dom";
 static const char text_1_hours[] = "Godziny";
 static const char text_1_humidity[] = "Wilgotność";
+static const char text_1_installed_label[] = "Zainstalowana";
+static const char text_1_installing_update[] = "Instalowanie aktualizacji";
 static const char text_1_interrupted[] = "Przerwano";
 static const char text_1_invalid_display_settings[] = "Nieprawidłowe ustawienia ekranu";
 static const char text_1_invalid_form_size[] = "Nieprawidłowy rozmiar formularza";
@@ -538,6 +559,7 @@ static const char text_1_joining_wi_fi[] = "Łączę z Wi-Fi";
 static const char text_1_joining_your_wi_fi[] = "Łączę z Twoim Wi-Fi";
 static const char text_1_just_crabbin_around[] = "tak sobie krabuję";
 static const char text_1_just_five_more_minutes[] = "jeszcze pięć minut…";
+static const char text_1_keep_clawpal_powered[] = "Nie odłączaj zasilania. Ustawienia i parowanie zostaną zachowane.";
 static const char text_1_keep_clawpal_running_in_your_pc_s_tray_both[] = "Pozostaw ClawPal w zasobniku PC.\nOba urządzenia muszą być w tej samej sieci.";
 static const char text_1_keep_clawpal_running_in_your_pc_s_tray_limits[] = "Pozostaw ClawPal w zasobniku PC.\nLimity wrócą po ponownym połączeniu.";
 static const char text_1_keep_clawpal_running_in_your_pc_s_tray_recorded[] = "Pozostaw ClawPal w zasobniku PC.\nAktywność wróci po ponownym połączeniu.";
@@ -588,8 +610,10 @@ static const char text_1_month_9[] = "paź";
 static const char text_1_mostly_clear[] = "Dość pogodnie";
 static const char text_1_music[] = "Muzyka";
 static const char text_1_network[] = "Sieć";
+static const char text_1_network_label[] = "Sieć";
 static const char text_1_network_name[] = "Nazwa sieci";
 static const char text_1_network_startup_failed_restart_buddy[] = "Nie udało się uruchomić sieci. Uruchom Buddy ponownie.";
+static const char text_1_new_label[] = "Nowa";
 static const char text_1_next[] = "Następny";
 static const char text_1_no_account_limits_available[] = "Brak dostępnych limitów konta";
 static const char text_1_no_limits_reported[] = "Brak zgłoszonych limitów";
@@ -640,6 +664,7 @@ static const char text_1_precip[] = "Opady %";
 static const char text_1_precipitation[] = "Opady";
 static const char text_1_pretending_this_is_a_music_video[] = "udaję, że to teledysk";
 static const char text_1_previous[] = "Poprzedni";
+static const char text_1_project_label[] = "Projekt";
 static const char text_1_rain[] = "Deszcz";
 static const char text_1_reading_your_claude_account_on_the_pc_your_limits[] = "Włącz Aktualne limity Claude w ustawieniach ClawPal. Claude musi być zalogowany na koncie z obsługiwaną subskrypcją.";
 static const char text_1_reading_your_codex_account_on_the_pc_your_limits[] = "Odczytuję konto Codex na PC.\nLimity pojawią się po otrzymaniu odpowiedzi.";
@@ -647,6 +672,7 @@ static const char text_1_ready[] = "Gotowy";
 static const char text_1_ready_5ba178[] = " / gotowy";
 static const char text_1_ready_to_start[] = "Gotowy do startu";
 static const char text_1_ready_when_your_pc_is[] = "Gotowy razem z Twoim PC.";
+static const char text_1_receiving_the_update[] = "Odbieranie aktualizacji przez Wi-Fi";
 static const char text_1_recent[] = "Niedawne";
 static const char text_1_recent_task_records_will_appear_when_the_pc_can[] = "Ostatnie zadania pojawią się, gdy PC je odczyta.";
 static const char text_1_recently_working[] = "Ostatnio aktywne";
@@ -660,6 +686,7 @@ static const char text_1_reset[] = "Wyzeruj";
 static const char text_1_reset_time_unavailable[] = "Czas odnowienia nieznany";
 static const char text_1_resets_in_s[] = "Odnowienie za %s";
 static const char text_1_resets_value[] = "Odnowienie: %s";
+static const char text_1_restarting_into_the_new_version[] = "Uruchamianie nowej wersji";
 static const char text_1_resume[] = "Wznów";
 static const char text_1_resume_to_continue_or_reset_to_adjust[] = "Wznów odliczanie lub wyzeruj, aby zmienić czas";
 static const char text_1_running[] = "Odliczam";
@@ -737,8 +764,10 @@ static const char text_1_unknown[] = "Nieznane";
 static const char text_1_untitled_task[] = "Zadanie bez tytułu";
 static const char text_1_untitled_track[] = "Utwór bez tytułu";
 static const char text_1_up[] = "Wysyłanie";
+static const char text_1_update_failed_current_kept[] = "Aktualizacja się nie powiodła. Obecna wersja pozostaje zainstalowana.";
 static const char text_1_update_or_install_claude_on_your_pc_buddy_needs[] = "Zainstaluj lub zaktualizuj Claude Code na PC.\nBuddy potrzebuje lokalnego dostępu do konta.";
 static const char text_1_update_or_install_codex_on_your_pc_buddy_needs[] = "Zainstaluj lub zaktualizuj Codex na PC.\nBuddy potrzebuje lokalnego dostępu do konta.";
+static const char text_1_update_stopped[] = "Aktualizacja przerwana";
 static const char text_1_updated[] = "Odświeżono";
 static const char text_1_updated_lu_min_ago[] = "Odświeżono %lu min temu";
 static const char text_1_usage[] = "Limity";
@@ -773,6 +802,7 @@ static const char text_1_weekday_5[] = "pt.";
 static const char text_1_weekday_6[] = "sob.";
 static const char text_1_weekly_limit[] = "Limit tygodniowy";
 static const char text_1_welcome_home[] = "Witaj w domu";
+static const char text_1_wi_fi_change[] = "Zmiana sieci Wi-Fi";
 static const char text_1_wi_fi_network[] = "Sieć Wi-Fi";
 static const char text_1_wi_fi_not_configured[] = "Wi-Fi nieskonfigurowane";
 static const char text_1_wifi_password[] = "Hasło Wi-Fi";
@@ -818,6 +848,7 @@ const char *const buddy_language_texts[][BT_COUNT] = {
         text_0_activity_unavailable,
         text_0_am,
         text_0_apps,
+        text_0_asked_label,
         text_0_authenticated_websocket_upgrade_required,
         text_0_authentication_required,
         text_0_automatic_reconnect,
@@ -832,6 +863,7 @@ const char *const buddy_language_texts[][BT_COUNT] = {
         text_0_cached_snapshot,
         text_0_cached_updated,
         text_0_carrying_your_very_important_stuff,
+        text_0_checking_the_signature,
         text_0_choose_an_app,
         text_0_choose_another_app_from_apps,
         text_0_claude,
@@ -901,6 +933,7 @@ const char *const buddy_language_texts[][BT_COUNT] = {
         text_0_feels_like,
         text_0_finding_your_forecast,
         text_0_finish_wi_fi_setup_using_clawpal_on_your_pc,
+        text_0_firmware_update,
         text_0_fog,
         text_0_forecast_date_format,
         text_0_forecast_is_loading,
@@ -908,6 +941,7 @@ const char *const buddy_language_texts[][BT_COUNT] = {
         text_0_fps,
         text_0_freezing_drizzle,
         text_0_freezing_rain,
+        text_0_from_label,
         text_0_game_activity_fps_unavailable,
         text_0_game_activity_live_frame_rate,
         text_0_game_activity_measuring_fps,
@@ -925,6 +959,8 @@ const char *const buddy_language_texts[][BT_COUNT] = {
         text_0_home,
         text_0_hours,
         text_0_humidity,
+        text_0_installed_label,
+        text_0_installing_update,
         text_0_interrupted,
         text_0_invalid_display_settings,
         text_0_invalid_form_size,
@@ -935,6 +971,7 @@ const char *const buddy_language_texts[][BT_COUNT] = {
         text_0_joining_your_wi_fi,
         text_0_just_crabbin_around,
         text_0_just_five_more_minutes,
+        text_0_keep_clawpal_powered,
         text_0_keep_clawpal_running_in_your_pc_s_tray_both,
         text_0_keep_clawpal_running_in_your_pc_s_tray_limits,
         text_0_keep_clawpal_running_in_your_pc_s_tray_recorded,
@@ -985,8 +1022,10 @@ const char *const buddy_language_texts[][BT_COUNT] = {
         text_0_mostly_clear,
         text_0_music,
         text_0_network,
+        text_0_network_label,
         text_0_network_name,
         text_0_network_startup_failed_restart_buddy,
+        text_0_new_label,
         text_0_next,
         text_0_no_account_limits_available,
         text_0_no_limits_reported,
@@ -1037,6 +1076,7 @@ const char *const buddy_language_texts[][BT_COUNT] = {
         text_0_precipitation,
         text_0_pretending_this_is_a_music_video,
         text_0_previous,
+        text_0_project_label,
         text_0_rain,
         text_0_reading_your_claude_account_on_the_pc_your_limits,
         text_0_reading_your_codex_account_on_the_pc_your_limits,
@@ -1044,6 +1084,7 @@ const char *const buddy_language_texts[][BT_COUNT] = {
         text_0_ready_5ba178,
         text_0_ready_to_start,
         text_0_ready_when_your_pc_is,
+        text_0_receiving_the_update,
         text_0_recent,
         text_0_recent_task_records_will_appear_when_the_pc_can,
         text_0_recently_working,
@@ -1057,6 +1098,7 @@ const char *const buddy_language_texts[][BT_COUNT] = {
         text_0_reset_time_unavailable,
         text_0_resets_in_s,
         text_0_resets_value,
+        text_0_restarting_into_the_new_version,
         text_0_resume,
         text_0_resume_to_continue_or_reset_to_adjust,
         text_0_running,
@@ -1134,8 +1176,10 @@ const char *const buddy_language_texts[][BT_COUNT] = {
         text_0_untitled_task,
         text_0_untitled_track,
         text_0_up,
+        text_0_update_failed_current_kept,
         text_0_update_or_install_claude_on_your_pc_buddy_needs,
         text_0_update_or_install_codex_on_your_pc_buddy_needs,
+        text_0_update_stopped,
         text_0_updated,
         text_0_updated_lu_min_ago,
         text_0_usage,
@@ -1170,6 +1214,7 @@ const char *const buddy_language_texts[][BT_COUNT] = {
         text_0_weekday_6,
         text_0_weekly_limit,
         text_0_welcome_home,
+        text_0_wi_fi_change,
         text_0_wi_fi_network,
         text_0_wi_fi_not_configured,
         text_0_wifi_password,
@@ -1215,6 +1260,7 @@ const char *const buddy_language_texts[][BT_COUNT] = {
         text_1_activity_unavailable,
         text_1_am,
         text_1_apps,
+        text_1_asked_label,
         text_1_authenticated_websocket_upgrade_required,
         text_1_authentication_required,
         text_1_automatic_reconnect,
@@ -1229,6 +1275,7 @@ const char *const buddy_language_texts[][BT_COUNT] = {
         text_1_cached_snapshot,
         text_1_cached_updated,
         text_1_carrying_your_very_important_stuff,
+        text_1_checking_the_signature,
         text_1_choose_an_app,
         text_1_choose_another_app_from_apps,
         text_1_claude,
@@ -1298,6 +1345,7 @@ const char *const buddy_language_texts[][BT_COUNT] = {
         text_1_feels_like,
         text_1_finding_your_forecast,
         text_1_finish_wi_fi_setup_using_clawpal_on_your_pc,
+        text_1_firmware_update,
         text_1_fog,
         text_1_forecast_date_format,
         text_1_forecast_is_loading,
@@ -1305,6 +1353,7 @@ const char *const buddy_language_texts[][BT_COUNT] = {
         text_1_fps,
         text_1_freezing_drizzle,
         text_1_freezing_rain,
+        text_1_from_label,
         text_1_game_activity_fps_unavailable,
         text_1_game_activity_live_frame_rate,
         text_1_game_activity_measuring_fps,
@@ -1322,6 +1371,8 @@ const char *const buddy_language_texts[][BT_COUNT] = {
         text_1_home,
         text_1_hours,
         text_1_humidity,
+        text_1_installed_label,
+        text_1_installing_update,
         text_1_interrupted,
         text_1_invalid_display_settings,
         text_1_invalid_form_size,
@@ -1332,6 +1383,7 @@ const char *const buddy_language_texts[][BT_COUNT] = {
         text_1_joining_your_wi_fi,
         text_1_just_crabbin_around,
         text_1_just_five_more_minutes,
+        text_1_keep_clawpal_powered,
         text_1_keep_clawpal_running_in_your_pc_s_tray_both,
         text_1_keep_clawpal_running_in_your_pc_s_tray_limits,
         text_1_keep_clawpal_running_in_your_pc_s_tray_recorded,
@@ -1382,8 +1434,10 @@ const char *const buddy_language_texts[][BT_COUNT] = {
         text_1_mostly_clear,
         text_1_music,
         text_1_network,
+        text_1_network_label,
         text_1_network_name,
         text_1_network_startup_failed_restart_buddy,
+        text_1_new_label,
         text_1_next,
         text_1_no_account_limits_available,
         text_1_no_limits_reported,
@@ -1434,6 +1488,7 @@ const char *const buddy_language_texts[][BT_COUNT] = {
         text_1_precipitation,
         text_1_pretending_this_is_a_music_video,
         text_1_previous,
+        text_1_project_label,
         text_1_rain,
         text_1_reading_your_claude_account_on_the_pc_your_limits,
         text_1_reading_your_codex_account_on_the_pc_your_limits,
@@ -1441,6 +1496,7 @@ const char *const buddy_language_texts[][BT_COUNT] = {
         text_1_ready_5ba178,
         text_1_ready_to_start,
         text_1_ready_when_your_pc_is,
+        text_1_receiving_the_update,
         text_1_recent,
         text_1_recent_task_records_will_appear_when_the_pc_can,
         text_1_recently_working,
@@ -1454,6 +1510,7 @@ const char *const buddy_language_texts[][BT_COUNT] = {
         text_1_reset_time_unavailable,
         text_1_resets_in_s,
         text_1_resets_value,
+        text_1_restarting_into_the_new_version,
         text_1_resume,
         text_1_resume_to_continue_or_reset_to_adjust,
         text_1_running,
@@ -1531,8 +1588,10 @@ const char *const buddy_language_texts[][BT_COUNT] = {
         text_1_untitled_task,
         text_1_untitled_track,
         text_1_up,
+        text_1_update_failed_current_kept,
         text_1_update_or_install_claude_on_your_pc_buddy_needs,
         text_1_update_or_install_codex_on_your_pc_buddy_needs,
+        text_1_update_stopped,
         text_1_updated,
         text_1_updated_lu_min_ago,
         text_1_usage,
@@ -1567,6 +1626,7 @@ const char *const buddy_language_texts[][BT_COUNT] = {
         text_1_weekday_6,
         text_1_weekly_limit,
         text_1_welcome_home,
+        text_1_wi_fi_change,
         text_1_wi_fi_network,
         text_1_wi_fi_not_configured,
         text_1_wifi_password,

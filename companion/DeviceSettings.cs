@@ -94,11 +94,13 @@ public sealed class DeviceSettingsClient(Configuration config)
         return body;
     }
     // Newer firmware asks for a tap on the display before firmware or Wi-Fi changes. Firmware without /confirm returns 404.
-    internal static async Task ConfirmOnDisplayAsync(HttpClient client, Uri address, string action, Action waiting, CancellationToken token)
+    // detail labels the prompt (the new firmware version or Wi-Fi network); older firmware ignores it.
+    internal static async Task ConfirmOnDisplayAsync(HttpClient client, Uri address, string action, string? detail, Action waiting, CancellationToken token)
     {
         var deadline=DateTimeOffset.UtcNow.AddSeconds(55);bool notified=false;
+        object request=action=="firmware"?new { action, version=detail }:new { action, network=detail };
         while(true){
-            using(var body=JsonBody(new { action }))
+            using(var body=JsonBody(request))
             using(var response=await client.PostAsync(new Uri(address,"/confirm"),body,token)){
                 if(response.StatusCode is HttpStatusCode.NotFound or HttpStatusCode.MethodNotAllowed)return;
                 response.EnsureSuccessStatusCode();
@@ -202,7 +204,7 @@ public sealed class DeviceSettingsClient(Configuration config)
             var (client,address)=await Open(token);
             using(client) {
                 await Read(client,address,token);
-                await ConfirmOnDisplayAsync(client,address,"wifi",()=>progress(L.Text("tap_allow_on_your_clawpal_display_to_continue")),token);
+                await ConfirmOnDisplayAsync(client,address,"wifi",ssid,()=>progress(L.Text("tap_allow_on_your_clawpal_display_to_continue")),token);
                 using var body=JsonBody(new { ssid,password });
                 using var response=await client.PostAsync(new Uri(address,"wifi"),body,token);
                 response.EnsureSuccessStatusCode();

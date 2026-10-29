@@ -43,6 +43,11 @@ static bool valid_display_utf8(const char *value, size_t length)
     return true;
 }
 
+bool buddy_display_text_valid(const char *value, size_t length)
+{
+    return value && valid_display_utf8(value, length);
+}
+
 static bool copy_json_string(const cJSON *object, const char *key, char *out, size_t size)
 {
     const cJSON *value = cJSON_GetObjectItemCaseSensitive(object, key);

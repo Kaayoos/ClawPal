@@ -15,6 +15,9 @@
 
 static bool boot_ready;
 static bool reboot_pending;
+static buddy_update_progress_t progress_callback;
+void buddy_update_set_progress_callback(buddy_update_progress_t callback){progress_callback=callback;}
+static void report(buddy_install_stage_t stage,size_t received,size_t total){if(progress_callback)progress_callback(stage,(uint32_t)received,(uint32_t)total);}
 static int64_t ready_since;
 
 static bool ota_ready(void)
@@ -117,9 +120,12 @@ esp_err_t buddy_update_upload(httpd_req_t *request)
     esp_err_t result=esp_ota_begin(target,request->content_len,&handle);
     if(result!=ESP_OK){free(buffer);return httpd_resp_send_err(request,HTTPD_500_INTERNAL_SERVER_ERROR,"Could not prepare inactive firmware slot");}
     mbedtls_sha256_context sha;mbedtls_sha256_init(&sha);mbedtls_sha256_starts(&sha,0);
-    size_t received=0;int64_t start=esp_timer_get_time();size_t count=first;
+    size_t received=0,total=request->content_len;int64_t start=esp_timer_get_time();size_t count=first;unsigned shown=0;
+    report(BUDDY_INSTALL_RECEIVING,0,total);
     while(result==ESP_OK){
         if(count){mbedtls_sha256_update(&sha,buffer,count);result=esp_ota_write(handle,buffer,count);received+=count;}
+        /* Each whole percent once; the screen is a courtesy and never slows the upload. */
+        if(received*100/total!=shown){shown=received*100/total;report(BUDDY_INSTALL_RECEIVING,received,total);}
         if(result!=ESP_OK || received==(size_t)request->content_len)break;
         if(esp_timer_get_time()-start>180000000){result=ESP_ERR_TIMEOUT;break;}
         int n=httpd_req_recv(request,(char *)buffer,MIN(4096,request->content_len-received));
@@ -129,12 +135,15 @@ esp_err_t buddy_update_upload(httpd_req_t *request)
     uint8_t digest[32];mbedtls_sha256_finish(&sha,digest);mbedtls_sha256_free(&sha);free(buffer);
     char actual[65];for(int i=0;i<32;i++)snprintf(actual+i*2,3,"%02x",digest[i]);
     if(result!=ESP_OK || received!=(size_t)request->content_len || strcmp(actual,expected)!=0){
-        esp_ota_abort(handle);return httpd_resp_send_err(request,HTTPD_400_BAD_REQUEST,"Incomplete or corrupted image; current firmware retained");
+        esp_ota_abort(handle);report(BUDDY_INSTALL_FAILED,received,total);
+        return httpd_resp_send_err(request,HTTPD_400_BAD_REQUEST,"Incomplete or corrupted image; current firmware retained");
     }
+    report(BUDDY_INSTALL_CHECKING,received,total);
     result=esp_ota_end(handle);
-    if(result!=ESP_OK)return httpd_resp_send_err(request,HTTPD_400_BAD_REQUEST,"Firmware validation failed: corrupt, or not signed with the ClawPal release key; current firmware retained");
+    if(result!=ESP_OK){report(BUDDY_INSTALL_FAILED,received,total);return httpd_resp_send_err(request,HTTPD_400_BAD_REQUEST,"Firmware validation failed: corrupt, or not signed with the ClawPal release key; current firmware retained");}
     result=esp_ota_set_boot_partition(target);
-    if(result!=ESP_OK)return httpd_resp_send_err(request,HTTPD_500_INTERNAL_SERVER_ERROR,"Could not activate new firmware");
+    if(result!=ESP_OK){report(BUDDY_INSTALL_FAILED,received,total);return httpd_resp_send_err(request,HTTPD_500_INTERNAL_SERVER_ERROR,"Could not activate new firmware");}
+    report(BUDDY_INSTALL_RESTARTING,received,total);
     reboot_pending=true;httpd_resp_set_type(request,"application/json");
     result=httpd_resp_sendstr(request,"{\"accepted\":true,\"restarting\":true}");
     if(xTaskCreate(restart_task,"ota_restart",2048,NULL,2,NULL)!=pdPASS)esp_restart();

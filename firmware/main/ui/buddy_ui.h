@@ -60,6 +60,7 @@ typedef struct {
     float game_fps;
     uint32_t pc_away;
     uint32_t needs_you;
+    uint32_t install_stage;
 } buddy_ui_state_t;
 
 /* Invoke with the board LVGL lock held. The UI owns no network resources. */
@@ -76,7 +77,9 @@ void buddy_ui_set_music_control_callback(buddy_music_control_callback_t callback
 /* Shows an Allow/Deny prompt over every app; repeated requests for the same action are ignored.
  * The callback receives the answer, or a denial when the prompt times out. */
 void buddy_ui_set_confirm_callback(buddy_confirm_callback_t callback);
-void buddy_ui_request_confirmation(buddy_confirm_action_t action);
+void buddy_ui_request_confirmation(buddy_confirm_action_t action, const char *detail);
+/* Full-screen install progress with the carrying crab; NONE hides it. A failure hides itself. */
+void buddy_ui_set_install(buddy_install_stage_t stage, uint32_t received, uint32_t total);
 
 /* Takes ownership of a heap buffer of size x size RGB565 little-endian pixels; the music
  * page shows it while telemetry's music art_id equals `id`. */

@@ -594,7 +594,7 @@ static esp_err_t health_handler(httpd_req_t *request)
         "{\"type\":\"buddy.health\",\"v\":1,\"id\":\"%s\",\"state\":%d,\"version\":\"%s\",\"system\":%s,"
         "\"ui\":{\"app\":\"%s\",\"automatic\":%s,\"menu_open\":%s,"
         "\"dimmed\":%s,\"screen_off\":%s,\"night_hours\":%s,\"display_idle_ms\":%lu,"
-        "\"transition\":%s,\"has_stats\":%s,\"auto_open_apps\":%s,\"away\":%s,\"needs_you\":%s,\"last_stats_age_ms\":%lu,"
+        "\"transition\":%s,\"has_stats\":%s,\"auto_open_apps\":%s,\"away\":%s,\"needs_you\":%s,\"install_stage\":%lu,\"last_stats_age_ms\":%lu,"
         "\"music\":{\"running\":%s,\"available\":%s,\"automatic\":%s},"
         "\"codex\":{\"running\":%s,\"available\":%s,\"stale\":%s,\"automatic\":%s,"
         "\"tasks_available\":%s,\"tasks_stale\":%s,\"working_count\":%lu,\"task_count\":%lu},"
@@ -619,6 +619,7 @@ static esp_err_t health_handler(httpd_req_t *request)
         ui_state.auto_open_apps ? "true" : "false",
         ui_state.pc_away ? "true" : "false",
         ui_state.needs_you ? "true" : "false",
+        (unsigned long)ui_state.install_stage,
         (unsigned long)ui_state.last_stats_age_ms,
         ui_state.music_running ? "true" : "false",
         ui_state.music_available ? "true" : "false",
@@ -803,7 +804,20 @@ static esp_err_t settings_handler(httpd_req_t *request)
     return httpd_resp_sendstr(request, "{\"saved\":true,\"restarting\":false,\"schema\":6}");
 }
 
-/* POST {"action":"firmware"|"wifi"}: shows the prompt, then reports pending, approved or denied. */
+static bool release_version(const char *value)
+{
+    unsigned dots = 0;
+    size_t length = strlen(value);
+    if (length < 5 || length > 15 || !isdigit((unsigned char)value[0]) || !isdigit((unsigned char)value[length - 1])) return false;
+    for (const char *p = value; *p; ++p) {
+        if (*p == '.') { if (p[1] == '.') return false; ++dots; }
+        else if (!isdigit((unsigned char)*p)) return false;
+    }
+    return dots == 2;
+}
+
+/* POST {"action":"firmware"|"wifi"}: shows the prompt, then reports pending, approved or denied.
+ * Optional "version" (firmware) or "network" (Wi-Fi) only label the prompt; they authorize nothing. */
 static esp_err_t confirm_handler(httpd_req_t *request)
 {
     if (require_auth(request) != ESP_OK) return ESP_FAIL;
@@ -812,6 +826,14 @@ static esp_err_t confirm_handler(httpd_req_t *request)
     buddy_confirm_action_t action = !cJSON_IsString(name) ? BUDDY_CONFIRM_NONE :
         strcmp(name->valuestring, "firmware") == 0 ? BUDDY_CONFIRM_FIRMWARE :
         strcmp(name->valuestring, "wifi") == 0 ? BUDDY_CONFIRM_WIFI : BUDDY_CONFIRM_NONE;
+    char detail[BUDDY_CONFIRM_DETAIL_SIZE] = "";
+    const cJSON *version = cJSON_GetObjectItemCaseSensitive(json, "version");
+    const cJSON *network = cJSON_GetObjectItemCaseSensitive(json, "network");
+    if (action == BUDDY_CONFIRM_FIRMWARE && cJSON_IsString(version) && release_version(version->valuestring))
+        strlcpy(detail, version->valuestring, sizeof(detail));
+    else if (action == BUDDY_CONFIRM_WIFI && cJSON_IsString(network) && network->valuestring[0] && strlen(network->valuestring) <= 32 &&
+             buddy_display_text_valid(network->valuestring, strlen(network->valuestring)))
+        strlcpy(detail, network->valuestring, sizeof(detail));
     cJSON_Delete(json);
     if (action == BUDDY_CONFIRM_NONE) return httpd_resp_send_err(request, HTTPD_400_BAD_REQUEST, "Unknown confirmation");
     int64_t now = esp_timer_get_time();
@@ -825,7 +847,7 @@ static esp_err_t confirm_handler(httpd_req_t *request)
         prompt = true;
     }
     taskEXIT_CRITICAL(&confirm_lock);
-    if (prompt && callbacks.on_confirm) callbacks.on_confirm(action);
+    if (prompt && callbacks.on_confirm) callbacks.on_confirm(action, detail);
     char response[32];
     snprintf(response, sizeof(response), "{\"state\":\"%s\"}", state);
     httpd_resp_set_type(request, "application/json");
