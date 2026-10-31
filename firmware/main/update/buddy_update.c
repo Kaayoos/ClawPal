@@ -56,6 +56,11 @@ void buddy_update_boot_ready(void)
     if(!pending_validation() || esp_ota_mark_app_valid_cancel_rollback()==ESP_OK) boot_ready=true;
 }
 
+bool buddy_update_boot_confirmed(void)
+{
+    return boot_ready;
+}
+
 esp_err_t buddy_update_info(httpd_req_t *request)
 {
     const esp_partition_t *running=esp_ota_get_running_partition();

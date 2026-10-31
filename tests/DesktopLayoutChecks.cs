@@ -30,7 +30,7 @@ internal static class DesktopLayoutChecks
                     NoNativeBars();
                 }
                 form.ClientSize=new(960,680);
-                foreach(string name in new[]{"Apps","Clock & weather","PC companion","Device","Updates","Screen"}){
+                foreach(string name in new[]{"Appearance","Apps","Clock & weather","PC companion","Device","Updates","Screen"}){
                     Page(name);int left=scroll.Content.Left,width=scroll.Content.Width;NoNativeBars();Application.DoEvents();
                     scroll.ScrollTo(scroll.MaximumOffset);Application.DoEvents();
                     Check(scroll.Content.Left==left&&scroll.Content.Width==width,"Scrolling preserves page width and horizontal position");

@@ -1,4 +1,5 @@
 #include "buddy_ui_motion.h"
+#include "buddy_theme.h"
 
 static void set_translate_y(void *object, int32_t value)
 {
@@ -17,6 +18,8 @@ void buddy_ui_motion_enter(lv_obj_t *object, int16_t offset_y,
 {
     if (!object) return;
     buddy_ui_motion_cancel(object);
+    /* Calmer themes travel a shorter distance over the same time. */
+    offset_y = (int16_t)(offset_y * buddy_theme.motion_pct / 100);
     if (!duration_ms || !offset_y) return;
 
     lv_anim_t animation;

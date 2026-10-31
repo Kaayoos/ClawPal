@@ -45,6 +45,8 @@ typedef struct {
 } ui_event_t;
 
 static QueueHandle_t ui_events;
+/* When saved settings asked for a different look; the UI is rebuilt by restarting. */
+static int64_t restart_requested_us;
 
 static void on_state(buddy_connection_state_t state, const char *ssid,
                      const char *ip, const char *detail)
@@ -88,7 +90,14 @@ static void update_clock(void)
     static uint32_t revision;
     if (revision != preferences.revision) {
         setenv("TZ", preferences.timezone, 1); tzset();
-        buddy_ui_apply_settings(&preferences); revision = preferences.revision;
+        /* Applying the rest now would mix two looks on screen until the restart. */
+        if (buddy_settings_restart_needed(&preferences)) {
+            if (!restart_requested_us) restart_requested_us = esp_timer_get_time();
+        } else {
+            restart_requested_us = 0;
+            buddy_ui_apply_settings(&preferences);
+        }
+        revision = preferences.revision;
     }
     buddy_weather_t weather = buddy_weather_get();
     buddy_ui_set_weather(&weather);
@@ -191,6 +200,20 @@ void app_main(void)
                 last_clock_us = now_us;
             }
             board_lvgl_unlock();
+        }
+        /* The companion's read-back lands well inside the delay. Never restart an image
+         * that is still pending verification, or during an approval or install. */
+        if (restart_requested_us && now_us - restart_requested_us >= 3000000 && buddy_update_boot_confirmed()) {
+            board_lvgl_lock(-1);
+            bool safe = buddy_ui_restart_safe();
+            if (safe) buddy_ui_begin_restart();
+            board_lvgl_unlock();
+            if (safe) {
+                ESP_LOGI(TAG, "Restarting to apply a new look");
+                vTaskDelay(pdMS_TO_TICKS(BUDDY_UI_RESTART_FADE_MS + 200));
+                board_set_backlight(false);
+                esp_restart();
+            }
         }
     }
 }

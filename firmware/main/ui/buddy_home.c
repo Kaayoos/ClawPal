@@ -9,12 +9,15 @@
 #include "buddy_home_logos.h"
 #include "buddy_clock_font.h"
 #include "buddy_music_font.h"
+#include "buddy_numeral_fonts.h"
 #include "buddy_mascot.h"
+#include "buddy_weather.h"
 #include "esp_heap_caps.h"
 #include "esp_random.h"
 #include <math.h>
 #include <stdio.h>
 #include <string.h>
+#include <time.h>
 
 #define HOME_BG BUDDY_COLOR_BG
 #define HOME_INK BUDDY_COLOR_TEXT
@@ -41,6 +44,9 @@ static const home_quotes_t quotes[BUDDY_MASCOT_STATE_COUNT] = {
 static struct {
     lv_obj_t *page, *time, *date, *crab, *greeting, *wifi;
     lv_obj_t *statuses[BUDDY_APP_COUNT], *rows[BUDDY_APP_COUNT], *titles[BUDDY_APP_COUNT], *weather_icon;
+    /* Without a mascot the left side is a desk clock: the time, the day and month, and the week. */
+    lv_obj_t *week, *week_days[7], *week_mark, *lines[BUDDY_APP_COUNT];
+    int rows_top, week_today;
     lv_img_dsc_t frame;
     uint8_t *pixels;
     uint32_t reaction_tick, taps, activity_tick, frame_tick;
@@ -136,21 +142,66 @@ static void draw_wifi(lv_event_t *event)
     lv_area_t point = {centre.x - 2, centre.y - 2, centre.x + 2, centre.y + 2}; lv_draw_rect(ctx, &dot, &point);
 }
 
+/* A Monday-first week justified across the given width: the first name starts on the clock's left
+ * margin, the last ends on the right, and the gaps between names are equal. Today is in full ink
+ * with an accent bar as wide as its name. */
+static void place_week(int x, int y, int width, const lv_font_t *font)
+{
+    lv_obj_set_pos(home.week, x, y); lv_obj_set_size(home.week, width, font->line_height + 8);
+    int widths[7], total = 0;
+    for (unsigned i = 0; i < 7; ++i) {
+        lv_point_t size; lv_txt_get_size(&size, lv_label_get_text(home.week_days[i]), font, 0, 0, LV_COORD_MAX, LV_TEXT_FLAG_NONE);
+        widths[i] = size.x; total += size.x;
+    }
+    int gap = (width - total) / 6, left = 0;
+    for (int i = 0; i < 7; left += widths[i] + gap, ++i) {
+        /* Sunday takes the rounding, so the strip always ends exactly on the right edge. */
+        lv_obj_set_pos(home.week_days[i], i == 6 ? width - widths[i] : left, 0); lv_obj_set_width(home.week_days[i], widths[i]);
+        lv_obj_set_style_text_font(home.week_days[i], font, 0);
+    }
+    lv_obj_set_y(home.week_mark, font->line_height + 4);
+    home.week_today = -1;
+}
+static void create_week(int x, int y, int width)
+{
+    home.week = plain(home.page, 0, 0, 1, 1);
+    for (unsigned i = 0; i < 7; ++i)
+        home.week_days[i] = label(home.week, buddy_weekday((int)(i + 1) % 7), 0, 0, 40, &buddy_language_font_16, HOME_SECONDARY);
+    home.week_mark = plain(home.week, 0, 0, 18, 2);
+    lv_obj_set_style_bg_color(home.week_mark, lv_color_hex(HOME_ACCENT), 0); lv_obj_set_style_bg_opa(home.week_mark, LV_OPA_COVER, 0);
+    place_week(x, y, width, &buddy_language_font_16);
+    lv_obj_add_flag(home.week, LV_OBJ_FLAG_HIDDEN);
+}
+
 lv_obj_t *buddy_home_create(lv_obj_t *screen, lv_event_cb_t open_app, lv_event_cb_t weather_icon)
 {
+    const bool crab = buddy_theme_has_mascot();
     home.page = plain(screen, 0, 0, BOARD_DISPLAY_WIDTH, BOARD_DISPLAY_HEIGHT-44);
     lv_obj_set_style_bg_color(home.page, lv_color_hex(HOME_BG), 0); lv_obj_set_style_bg_opa(home.page, LV_OPA_COVER, 0);
     home.time = label(home.page, "--:--", 28, 28, 395, &buddy_clock_font, HOME_INK);
     lv_obj_set_style_text_align(home.time, LV_TEXT_ALIGN_CENTER, 0);
     home.date = label(home.page, BT(BT_WAITING_FOR_TIME), 32, 118, 387, &buddy_language_font_24, HOME_SECONDARY);
     lv_obj_set_style_text_align(home.date, LV_TEXT_ALIGN_CENTER, 0);
-    home.pixels = heap_caps_malloc(CRAB_BYTES, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
-    home.frame = (lv_img_dsc_t){.header = {.cf = LV_IMG_CF_INDEXED_4BIT, .w = CRAB_SIZE, .h = CRAB_SIZE}, .data_size = CRAB_BYTES, .data = home.pixels};
-    home.crab = lv_img_create(home.page); lv_obj_set_pos(home.crab, 78, 117); lv_img_set_antialias(home.crab, false);
-    lv_obj_clear_flag(home.crab, LV_OBJ_FLAG_CLICKABLE);
-    /* The generous pet target covers the visible crab, including transparent pixels. */
-    lv_obj_t *pet = plain(home.page, 66, 180, 312, 211); lv_obj_add_flag(pet, LV_OBJ_FLAG_CLICKABLE);
-    lv_obj_add_event_cb(pet, pet_crab, LV_EVENT_CLICKED, NULL);
+    lv_obj_t *pet = NULL;
+    if (crab) {
+        home.pixels = heap_caps_malloc(CRAB_BYTES, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+        home.frame = (lv_img_dsc_t){.header = {.cf = LV_IMG_CF_INDEXED_4BIT, .w = CRAB_SIZE, .h = CRAB_SIZE}, .data_size = CRAB_BYTES, .data = home.pixels};
+        home.crab = lv_img_create(home.page); lv_obj_set_pos(home.crab, 78, 117); lv_img_set_antialias(home.crab, false);
+        lv_obj_clear_flag(home.crab, LV_OBJ_FLAG_CLICKABLE);
+        /* The generous pet target covers the visible crab, including transparent pixels. */
+        pet = plain(home.page, 66, 180, 312, 211); lv_obj_add_flag(pet, LV_OBJ_FLAG_CLICKABLE);
+        lv_obj_add_event_cb(pet, pet_crab, LV_EVENT_CLICKED, NULL);
+    } else {
+        /* The shortcuts already say what each app is doing, so this side keeps only the time:
+         * large light numerals, the date, and a hairline that fills as the day goes by. */
+        lv_obj_set_style_text_font(home.time, &buddy_numeral_font_128, 0);
+        /* One left edge: the date as a heading, the time, then the week directly under the time and
+         * as wide as it. The block sits in the middle of the column. */
+        lv_obj_set_pos(home.time, 42, 169); lv_obj_set_width(home.time, 392); lv_obj_set_style_text_align(home.time, LV_TEXT_ALIGN_LEFT, 0);
+        lv_obj_set_pos(home.date, 44, 125); lv_obj_set_width(home.date, 380); lv_obj_set_style_text_align(home.date, LV_TEXT_ALIGN_LEFT, 0);
+        lv_obj_set_style_text_color(home.date, lv_color_hex(HOME_INK), 0);
+        create_week(44, 275, 292);
+    }
     memset(home.last_quotes, UINT8_MAX, sizeof(home.last_quotes));
     home.activity_state = BUDDY_MASCOT_IDLE;
     home.activity_tick = home.frame_tick = lv_tick_get();
@@ -177,6 +228,13 @@ lv_obj_t *buddy_home_create(lv_obj_t *screen, lv_event_cb_t open_app, lv_event_c
         home.titles[app] = label(row, names[app], 82, 4, 234, &buddy_language_font_24, HOME_INK);
         home.statuses[app] = label(row, BT(BT_WAITING), 82, 38, 234, &buddy_language_font_20, HOME_SECONDARY);
         lv_obj_set_height(home.statuses[app], 27);
+        if (!crab) {
+            /* Hairlines separate the shortcuts instead of the crab's open spacing. */
+            lv_obj_add_flag(row, LV_OBJ_FLAG_OVERFLOW_VISIBLE);
+            home.lines[app] = plain(row, 82, 0, 234, 1);
+            lv_obj_set_style_bg_color(home.lines[app], lv_color_hex(HOME_SEAM), 0); lv_obj_set_style_bg_opa(home.lines[app], LV_OPA_COVER, 0);
+            lv_obj_align(home.lines[app], LV_ALIGN_BOTTOM_LEFT, 82, 6);
+        }
     }
     if(BOARD_DISPLAY_WIDTH<800){
         int w=BOARD_DISPLAY_WIDTH;bool tiny=BOARD_DISPLAY_HEIGHT<400;
@@ -184,14 +242,30 @@ lv_obj_t *buddy_home_create(lv_obj_t *screen, lv_event_cb_t open_app, lv_event_c
         lv_obj_set_style_bg_color(home.page,lv_color_hex(HOME_ACCENT),LV_PART_SCROLLBAR);lv_obj_set_style_width(home.page,3,LV_PART_SCROLLBAR);
         lv_obj_set_pos(home.time,12,tiny?4:30);lv_obj_set_width(home.time,tiny?w-120:260);lv_obj_set_style_text_font(home.time,&buddy_language_font_48,0);
         lv_obj_set_pos(home.date,12,tiny?65:96);lv_obj_set_width(home.date,tiny?w-116:260);lv_obj_set_style_text_font(home.date,&buddy_language_font_16,0);
-        lv_obj_set_pos(home.crab,w-CRAB_SIZE-12,HOME_CRAB_Y);lv_obj_set_pos(pet,w-CRAB_SIZE-12,0);lv_obj_set_size(pet,CRAB_SIZE,CRAB_SIZE);
+        if(crab){lv_obj_set_pos(home.crab,w-CRAB_SIZE-12,HOME_CRAB_Y);lv_obj_set_pos(pet,w-CRAB_SIZE-12,0);lv_obj_set_size(pet,CRAB_SIZE,CRAB_SIZE);}
+        else{/* Square screens keep the full clock face; the smallest drops the hour labels. */
+            lv_obj_set_style_text_font(home.time,tiny?&buddy_language_font_48:&buddy_clock_font,0);
+            lv_obj_set_pos(home.time,12,tiny?24:56);lv_obj_set_width(home.time,w-24);lv_obj_set_pos(home.date,12,tiny?4:18);if(!tiny)lv_obj_set_style_text_font(home.date,&buddy_language_font_20,0);lv_obj_set_width(home.date,w-24);
+            place_week(12,tiny?90:137,w-24,tiny?&buddy_language_font_14:&buddy_language_font_16);
+            home.rows_top=tiny?124:196;}
         lv_obj_set_pos(home.greeting,12,tiny?94:190);lv_obj_set_width(home.greeting,w-24);lv_obj_set_height(home.greeting,30);lv_obj_set_style_text_font(home.greeting,&buddy_language_font_16,0);
         lv_obj_add_flag(seam,LV_OBJ_FLAG_HIDDEN);lv_obj_add_flag(home.wifi,LV_OBJ_FLAG_HIDDEN);
-        for(unsigned app=0;app<BUDDY_APP_COUNT;++app)if(home.rows[app]){lv_obj_set_x(home.rows[app],12);lv_obj_set_width(home.rows[app],w-24);lv_obj_set_width(home.titles[app],w-110);lv_obj_set_style_text_font(home.titles[app],&buddy_language_font_20,0);lv_obj_set_width(home.statuses[app],w-110);lv_obj_set_style_text_font(home.statuses[app],&buddy_language_font_16,0);}
+        for(unsigned app=0;app<BUDDY_APP_COUNT;++app)if(home.rows[app]){lv_obj_set_x(home.rows[app],12);lv_obj_set_width(home.rows[app],w-24);lv_obj_set_width(home.titles[app],w-110);lv_obj_set_style_text_font(home.titles[app],&buddy_language_font_20,0);lv_obj_set_width(home.statuses[app],w-110);lv_obj_set_style_text_font(home.statuses[app],&buddy_language_font_16,0);if(home.lines[app])lv_obj_set_width(home.lines[app],w-24-82);}
     }
+    if (!crab) lv_obj_add_flag(home.greeting, LV_OBJ_FLAG_HIDDEN);
+    buddy_theme_numerals(home.time);
     buddy_settings_t settings = buddy_settings_get(); buddy_home_apply_settings(&settings);
     buddy_home_tick();
     return home.page;
+}
+
+/* Local time, or false before the clock has been set. */
+static bool local_now(struct tm *local)
+{
+    time_t now = time(NULL);
+    if (now < 1700000000) return false;
+    localtime_r(&now, local);
+    return true;
 }
 
 void buddy_home_update(const buddy_stats_t *stats, bool connected, bool wifi, bool codex_cached,
@@ -210,7 +284,7 @@ void buddy_home_update(const buddy_stats_t *stats, bool connected, bool wifi, bo
         if (!home.reacting) show_activity_caption();
     }
     if (home.wifi_ready != wifi) { home.wifi_ready = wifi; lv_obj_invalidate(home.wifi); }
-    set_text(home.time, time); set_text(home.date, date);
+    set_text(home.time, time); if (!home.week) set_text(home.date, date);
     set_text(home.statuses[0], connected ? BT(BT_ONLINE) : wifi ? BT(BT_PC_OFFLINE) : BT(BT_CONNECTING_5F04AE));
     char value[80];
     const buddy_codex_window_t *window = stats && stats->codex.primary.available ? &stats->codex.primary : stats ? &stats->codex.secondary : NULL;
@@ -236,25 +310,54 @@ void buddy_home_update(const buddy_stats_t *stats, bool connected, bool wifi, bo
     buddy_ui_state_t ui = buddy_ui_get_state();
     snprintf(value, sizeof(value), "%lu:%02lu%s", (unsigned long)(ui.timer_remaining_s / 60), (unsigned long)(ui.timer_remaining_s % 60), ui.timer_running ? BT(BT_RUNNING_12D2CF) : BT(BT_READY_5BA178));
     set_text(home.statuses[BUDDY_APP_TIMER], value); lv_obj_invalidate(home.weather_icon);
+    if (!home.week) return;
+    /* The week strip names the day, so the date above it keeps only the day and month. */
+    struct tm local;
+    if (!local_now(&local)) {
+        set_text(home.date, date); lv_obj_add_flag(home.week, LV_OBJ_FLAG_HIDDEN); home.week_today = -1;
+        return;
+    }
+    /* There is room for the whole month; Polish uses its date form ("12 października"). */
+    static const buddy_text_key_t months[] = { BT_MONTH_LONG_0, BT_MONTH_LONG_1, BT_MONTH_LONG_2, BT_MONTH_LONG_3,
+        BT_MONTH_LONG_4, BT_MONTH_LONG_5, BT_MONTH_LONG_6, BT_MONTH_LONG_7, BT_MONTH_LONG_8, BT_MONTH_LONG_9,
+        BT_MONTH_LONG_10, BT_MONTH_LONG_11 };
+    snprintf(value, sizeof(value), BT(BT_DAY_MONTH), local.tm_mday, BT(months[local.tm_mon % 12]));
+    if (!buddy_settings_get().use_24h) {
+        size_t used = strlen(value);
+        snprintf(value + used, sizeof(value) - used, " / %s", BT(local.tm_hour < 12 ? BT_AM : BT_PM));
+    }
+    set_text(home.date, value);
+    lv_obj_clear_flag(home.week, LV_OBJ_FLAG_HIDDEN);
+    int today = (local.tm_wday + 6) % 7;
+    if (today == home.week_today) return;
+    home.week_today = today;
+    for (int i = 0; i < 7; ++i)
+        lv_obj_set_style_text_color(home.week_days[i], lv_color_hex(i == today ? HOME_INK : HOME_SECONDARY), 0);
+    lv_obj_update_layout(home.week);
+    lv_obj_set_x(home.week_mark, lv_obj_get_x(home.week_days[today]));
+    lv_obj_set_width(home.week_mark, lv_obj_get_width(home.week_days[today]));
 }
 
 void buddy_home_apply_settings(const buddy_settings_t *settings)
 {
     if (!home.page) return;
     for (unsigned app = 0; app < BUDDY_APP_COUNT; ++app) if (home.rows[app]) lv_obj_add_flag(home.rows[app], LV_OBJ_FLAG_HIDDEN);
+    lv_obj_t *last = NULL;
     for (unsigned i = 0; i < settings->home_count; ++i) {
         unsigned app = settings->home_order[i];
         if (app >= BUDDY_APP_COUNT || app == BUDDY_APP_HOME || !(settings->enabled_apps & (1U << app))) continue;
         lv_obj_t *row = home.rows[app];
-        lv_obj_set_y(row,BOARD_DISPLAY_WIDTH<800?(BOARD_DISPLAY_HEIGHT<400?124:228)+(int)i*76:(settings->home_count > 4 ? 49 + (int)i * 76 : 67 + (int)i * 89));
+        lv_obj_set_y(row,BOARD_DISPLAY_WIDTH<800?(home.rows_top?home.rows_top:BOARD_DISPLAY_HEIGHT<400?124:228)+(int)i*76:(settings->home_count > 4 ? 49 + (int)i * 76 : 67 + (int)i * 89));
         lv_obj_set_height(row, settings->home_count > 4 ? 70 : 78);
         lv_obj_clear_flag(row, LV_OBJ_FLAG_HIDDEN);
+        if (home.lines[app]) { lv_obj_clear_flag(home.lines[app], LV_OBJ_FLAG_HIDDEN); last = home.lines[app]; }
     }
+    if (last) lv_obj_add_flag(last, LV_OBJ_FLAG_HIDDEN);
 }
 
 void buddy_home_tick(void)
 {
-    if (!home.page || lv_obj_has_flag(home.page, LV_OBJ_FLAG_HIDDEN)) return;
+    if (!home.page || !home.crab || lv_obj_has_flag(home.page, LV_OBJ_FLAG_HIDDEN)) return;
     uint32_t elapsed = lv_tick_elaps(home.reaction_tick);
     if (home.reacting && elapsed >= 4800) {
         home.reacting = false;

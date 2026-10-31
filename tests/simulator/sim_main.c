@@ -16,6 +16,7 @@
 #include "esp_app_desc.h"
 #include "esp_random.h"
 #include "buddy_ui.h"
+#include "buddy_theme.h"
 #include "buddy_settings.h"
 #include "buddy_weather.h"
 #define BUDDY_LANGUAGE_LVGL
@@ -106,6 +107,8 @@ static FILE *events;
 static int frame_index;
 static double frame_clock;           /* fractional ms accumulator for 60 fps */
 static char out_dir[512];
+/* The look under test: argv[2] names a theme and argv[3] an accent, as the settings JSON does. */
+static uint8_t sim_theme, sim_accent;
 
 static void step(uint32_t ms)
 {
@@ -196,6 +199,7 @@ static void base_settings(const uint8_t *order, unsigned count)
     settings.dim_behavior = 1; settings.dim_brightness = 40; settings.dim_after_seconds = 60;
     settings.night_enabled = true; settings.night_start = 1; settings.night_end = 10;
     settings.offline_app = 1;
+    settings.theme = sim_theme; settings.accent = sim_accent;
     snprintf(settings.language, sizeof(settings.language), "en");
     snprintf(settings.city, sizeof(settings.city), "Warsaw");
     snprintf(settings.timezone, sizeof(settings.timezone), "UTC0");
@@ -403,8 +407,16 @@ static void boot(const uint8_t *order, unsigned count)
 }
 
 
+/* Themes without a mascot must not show a crab anywhere; every crab frame is 4-bit indexed. */
+static bool shows_crab(lv_obj_t *root){
+    if(lv_obj_has_flag(root,LV_OBJ_FLAG_HIDDEN))return false;
+    if(lv_obj_check_type(root,&lv_img_class)){const void *src=lv_img_get_src(root);
+        if(src&&lv_img_src_get_type(src)==LV_IMG_SRC_VARIABLE&&((const lv_img_dsc_t *)src)->header.cf==LV_IMG_CF_INDEXED_4BIT)return true;}
+    for(uint32_t i=0;i<lv_obj_get_child_cnt(root);++i)if(shows_crab(lv_obj_get_child(root,i)))return true;return false;
+}
 static void save_frame(const char *name){
-    lv_refr_now(display);char path[700];snprintf(path,sizeof(path),"%s/%s.ppm",out_dir,name);FILE *file=fopen(path,"wb");if(!file){perror(path);exit(1);}fprintf(file,"P6\n%d %d\n255\n",W,H);
+    lv_refr_now(display);
+    if(!buddy_theme_has_mascot()&&(shows_crab(lv_scr_act())||shows_crab(lv_layer_top()))){fprintf(stderr,"A crab is visible in %s\n",name);exit(47);}char path[700];snprintf(path,sizeof(path),"%s/%s.ppm",out_dir,name);FILE *file=fopen(path,"wb");if(!file){perror(path);exit(1);}fprintf(file,"P6\n%d %d\n255\n",W,H);
     for(unsigned i=0;i<W*H;++i){uint16_t c=framebuffer[i];uint8_t rgb[]={((c>>11)&31)*255/31,((c>>5)&63)*255/63,(c&31)*255/31};fwrite(rgb,1,3,file);}fclose(file);
 }
 static lv_obj_t *find_label(lv_obj_t *root,const char *text){
@@ -448,6 +460,8 @@ static void scroll_page(void){
 }
 int main(int argc,char **argv){
     if(argc<2)return 2;snprintf(out_dir,sizeof(out_dir),"%s",argv[1]);
+    for(unsigned i=0;argc>2&&i<BUDDY_THEME_COUNT;++i)if(!strcmp(argv[2],buddy_theme_ids[i]))sim_theme=(uint8_t)i;
+    for(unsigned i=0;argc>3&&i<BUDDY_ACCENT_COUNT;++i)if(!strcmp(argv[3],buddy_accent_ids[i]))sim_accent=(uint8_t)i;
     static const uint8_t order[]={0,2,4,7,6};boot(order,5);
     music_playing("Golden Hour Drive","Neon Harbor","Coastline Sessions",71,204);send_stats();
     // A task waiting for an answer covers every app; Show on PC asks the companion to bring it forward.
@@ -508,6 +522,11 @@ int main(int argc,char **argv){
     buddy_ui_select_app(BUDDY_APP_HOME);live(600);tap(46,H-22,90);live(500);if(!buddy_ui_get_state().menu_open)return 5;save_frame("apps");
     if(W<800){for(int i=0;i<4;++i)scroll_page();save_frame("apps-scrolled");}
     tap(46,H-22,90);live(400);if(buddy_ui_get_state().menu_open)return 6;
+    // A swipe across the grid opens nothing; a tap on a tile opens its app.
+    tap(46,H-22,90);live(500);scroll_page();if(!buddy_ui_get_state().menu_open||buddy_ui_get_state().active_app!=BUDDY_APP_HOME)return 50;
+    lv_obj_t *tile=find_label(lv_scr_act(),BT(BT_WEATHER));if(!tile)return 51;lv_obj_scroll_to_view_recursive(tile,LV_ANIM_OFF);live(100);
+    tap_label(BT(BT_WEATHER));live(400);if(buddy_ui_get_state().menu_open||buddy_ui_get_state().active_app!=BUDDY_APP_WEATHER)return 52;
+    buddy_ui_select_app(BUDDY_APP_HOME);live(600);
     // Remote firmware and Wi-Fi changes wait for a tap on the display; silence counts as a denial.
     buddy_ui_set_confirm_callback(confirm_result);
     buddy_ui_request_confirmation(BUDDY_CONFIRM_FIRMWARE,"0.10.2");live(300);buddy_ui_request_confirmation(BUDDY_CONFIRM_FIRMWARE,"0.10.2");live(300);
@@ -539,5 +558,8 @@ int main(int argc,char **argv){
     // All size classes retain the same offline fallback and wake/dim policy.
     buddy_ui_set_connection(BUDDY_PC_OFFLINE,"Home Wi-Fi","192.168.1.40","");wait_ms(61000);update_clock();
     if(buddy_ui_get_state().active_app!=BUDDY_APP_CLOCK)return 7;
+    // A new look fades every surface out under a short note before the restart.
+    if(!buddy_ui_restart_safe())return 48;buddy_ui_begin_restart();live(BUDDY_UI_RESTART_FADE_MS+100);
+    if(!find_label(lv_layer_top(),BT(BT_APPLYING_YOUR_NEW_LOOK)))return 49;save_frame("restart");
     printf("PASS %dx%d: all apps, footer navigation, remote-change confirmation, install progress, needs-you alert, album cover, away and offline fallback\n",W,H);return 0;
 }

@@ -86,6 +86,18 @@ internal static class SettingsChecks
         Check(upgraded.ProtocolSchema==4 && DeviceSettingsClient.Equivalent(upgraded.Settings,fahrenheitSettings with{WeatherFahrenheit=false}),"schema 4 preserves language and preferences while defaulting weather to Celsius");
         bool incompleteUnits=false;try{DeviceSettingsClient.Parse(fahrenheitJson.Replace("\"weather_fahrenheit\":true,",""));}catch(IOException){incompleteUnits=true;}Check(incompleteUnits,"new settings require a temperature unit field");
         bool invalidUnits=false;try{DeviceSettingsClient.Parse(fahrenheitJson.Replace("\"weather_fahrenheit\":true","\"weather_fahrenheit\":\"fahrenheit\""));}catch(JsonException){invalidUnits=true;}Check(invalidUnits,"untyped temperature preferences are rejected");
+        // Looks: the display and companion share themes/themes.json; older displays keep the crab.
+        Check(Themes.Ids.SequenceEqual(new[]{"crab","studio"})&&Themes.AccentIds.Contains("champagne"),"the companion reads the same theme catalog as the firmware");
+        Check(new DeviceSettings().Theme=="crab"&&!Themes.Get("crab","sage").HasAccents&&Themes.Get("crab","sage").Accent==Themes.Get("crab",null).Accent,"the crab keeps its own accent");
+        Check(Themes.Get("studio","ice").Accent==Themes.AccentColor("ice")&&!Themes.Get("studio","ice").Mascot,"Studio takes the chosen accent and has no mascot");
+        var studio=custom with{Theme="studio",Accent="sage"};string studioJson=JsonSerializer.Serialize(studio,DeviceSettingsClient.Json);
+        Check(studioJson.Contains("\"theme\":\"studio\"")&&studioJson.Contains("\"accent\":\"sage\"")&&DeviceSettingsClient.Equivalent(studio,DeviceSettingsClient.Parse(studioJson).Settings),"the look round-trips with the wireless settings");
+        Check(!DeviceSettingsClient.Equivalent(custom,studio)&&!DeviceSettingsClient.Equivalent(studio,studio with{Accent="ice"}),"a different look or accent cannot be falsely marked synced");
+        var beforeLooks=DeviceSettingsClient.Parse(JsonSerializer.Serialize(studio with{Schema=6},DeviceSettingsClient.Json).Replace("\"theme\":\"studio\",","").Replace("\"accent\":\"sage\",",""));
+        Check(beforeLooks.ProtocolSchema==6&&beforeLooks.Settings.Theme=="crab"&&beforeLooks.Settings.Accent=="champagne","schema 6 displays are read as the crab");
+        bool missingLook=false;try{DeviceSettingsClient.Parse(studioJson.Replace("\"theme\":\"studio\",",""));}catch(IOException){missingLook=true;}Check(missingLook,"schema 7 settings require a theme");
+        bool unknownLook=false;try{(custom with{Theme="neon"}).Validate();}catch(ArgumentException){unknownLook=true;}Check(unknownLook,"unknown looks are rejected before sending");
+        bool setupLook=false;try{new SetupOptions("COM3","Home","password123","Warsaw",52.2,21.0,"UTC0",false,false,false,Theme:"studio",Accent:"gold").Validate();}catch(ArgumentException){setupLook=true;}Check(setupLook,"setup rejects an unknown accent");
         Exception? failure=null;
         var thread=new Thread(()=>{
             try {

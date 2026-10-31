@@ -31,7 +31,7 @@ internal sealed class ClawTextField : UserControl
         base.OnPaint(e);e.Graphics.SmoothingMode=SmoothingMode.AntiAlias;
         ClawTheme.Fill(e.Graphics,ClawTheme.Surface,new RectangleF(0,0,Width-1,Height-1),8);
         using var path=ClawTheme.Round(new RectangleF(.5f,.5f,Width-2,Height-2),8);
-        using var pen=new Pen(ContainsFocus?ClawTheme.Orange:hover?ClawTheme.Muted:ClawTheme.Border);e.Graphics.DrawPath(pen,path);
+        using var pen=new Pen(ContainsFocus?ClawTheme.Accent:hover?ClawTheme.Muted:ClawTheme.Border);e.Graphics.DrawPath(pen,path);
     }
 }
 
@@ -75,7 +75,7 @@ internal sealed class ChoiceBox : ClawButton
         bool hot=ClientRectangle.Contains(PointToClient(MousePosition));
         ClawTheme.Fill(e.Graphics,hot&&Enabled?ClawTheme.Hover:ClawTheme.Surface,new RectangleF(0,0,Width-1,Height-1),8);
         using var outline=ClawTheme.Round(new RectangleF(.5f,.5f,Width-2,Height-2),8);
-        using var border=new Pen(Enabled&&(Focused||menu.Visible)?ClawTheme.Orange:ClawTheme.Border);e.Graphics.DrawPath(border,outline);
+        using var border=new Pen(Enabled&&(Focused||menu.Visible)?ClawTheme.Accent:ClawTheme.Border);e.Graphics.DrawPath(border,outline);
         ClawTheme.Text(e.Graphics,Text,Font,Enabled?ClawTheme.Ink:ClawTheme.Muted,new Rectangle(14,0,Math.Max(1,Width-52),Height));
         using var pen=new Pen(Enabled?ClawTheme.Muted:ClawTheme.Border,1.6f);int x=Width-22,y=Height/2;
         e.Graphics.DrawLines(pen,new Point[]{new(x-4,y-2),new(x,y+2),new(x+4,y-2)});
@@ -89,8 +89,8 @@ internal sealed class ChoiceBox : ClawButton
         protected override void OnRenderItemText(ToolStripItemTextRenderEventArgs e)
         {
             bool selected=e.Item is ToolStripMenuItem {Checked:true};
-            ClawTheme.Text(e.Graphics,e.Text??"",e.TextFont!,!e.Item.Enabled?ClawTheme.Muted:selected?ClawTheme.Orange:ClawTheme.Ink,new Rectangle(12,0,e.ToolStrip!.Width-46,e.Item.Height));
-            if(selected){e.Graphics.SmoothingMode=SmoothingMode.AntiAlias;using var pen=new Pen(ClawTheme.Orange,1.8f);int x=e.ToolStrip!.Width-24,y=e.Item.Height/2;e.Graphics.DrawLines(pen,new Point[]{new(x-4,y),new(x-1,y+3),new(x+5,y-4)});}
+            ClawTheme.Text(e.Graphics,e.Text??"",e.TextFont!,!e.Item.Enabled?ClawTheme.Muted:selected?ClawTheme.Accent:ClawTheme.Ink,new Rectangle(12,0,e.ToolStrip!.Width-46,e.Item.Height));
+            if(selected){e.Graphics.SmoothingMode=SmoothingMode.AntiAlias;using var pen=new Pen(ClawTheme.Accent,1.8f);int x=e.ToolStrip!.Width-24,y=e.Item.Height/2;e.Graphics.DrawLines(pen,new Point[]{new(x-4,y),new(x-1,y+3),new(x+5,y-4)});}
         }
         protected override void OnRenderArrow(ToolStripArrowRenderEventArgs e){e.ArrowColor=ClawTheme.Muted;base.OnRenderArrow(e);}
     }
@@ -141,7 +141,7 @@ internal sealed class ClawTimeInput : UserControl
     protected override void OnPaint(PaintEventArgs e)
     {
         e.Graphics.SmoothingMode=SmoothingMode.AntiAlias;ClawTheme.Fill(e.Graphics,ClawTheme.Surface,new RectangleF(0,0,Width-1,Height-1),8);
-        using var path=ClawTheme.Round(new RectangleF(.5f,.5f,Width-2,Height-2),8);using var pen=new Pen(ContainsFocus?ClawTheme.Orange:ClawTheme.Border);e.Graphics.DrawPath(pen,path);
+        using var path=ClawTheme.Round(new RectangleF(.5f,.5f,Width-2,Height-2),8);using var pen=new Pen(ContainsFocus?ClawTheme.Accent:ClawTheme.Border);e.Graphics.DrawPath(pen,path);
     }
 }
 
@@ -170,8 +170,8 @@ internal sealed class ClawSlider : Control
     protected override void OnPaint(PaintEventArgs e)
     {
         e.Graphics.SmoothingMode=SmoothingMode.AntiAlias;var rail=Rail;int x=rail.Left+(int)(rail.Width*(value-Minimum)/(float)Math.Max(1,Maximum-Minimum));
-        ClawTheme.Fill(e.Graphics,ClawTheme.Border,rail,2);if(x>rail.Left+4)ClawTheme.Fill(e.Graphics,Enabled?ClawTheme.Orange:ClawTheme.Muted,new RectangleF(rail.Left,rail.Top,x-rail.Left,rail.Height),2);
-        using var knob=new SolidBrush(Enabled?ClawTheme.Orange:ClawTheme.Muted);e.Graphics.FillEllipse(knob,x-8,Height/2-8,16,16);
+        ClawTheme.Fill(e.Graphics,ClawTheme.Border,rail,2);if(x>rail.Left+4)ClawTheme.Fill(e.Graphics,Enabled?ClawTheme.Accent:ClawTheme.Muted,new RectangleF(rail.Left,rail.Top,x-rail.Left,rail.Height),2);
+        using var knob=new SolidBrush(Enabled?ClawTheme.Accent:ClawTheme.Muted);e.Graphics.FillEllipse(knob,x-8,Height/2-8,16,16);
         if(Focused&&ShowFocusCues){using var focus=new Pen(ClawTheme.Ink);e.Graphics.DrawEllipse(focus,x-12,Height/2-12,24,24);}
         ClawTheme.Text(e.Graphics,$"{Value}%",Font,Enabled?ClawTheme.Ink:ClawTheme.Muted,new Rectangle(Width-68,0,68,Height),TextFormatFlags.Right|TextFormatFlags.VerticalCenter);
     }

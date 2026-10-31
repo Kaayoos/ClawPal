@@ -1,0 +1,34 @@
+{
+  "accents": [
+    {"id": "champagne", "color": "#D8C3A0"},
+    {"id": "sage", "color": "#A8BDA6"},
+    {"id": "ice", "color": "#A9C3DE"},
+    {"id": "silver", "color": "#E4E4E2"},
+    {"id": "rose", "color": "#DDAAB0"},
+    {"id": "lavender", "color": "#B8AFDD"},
+    {"id": "copper", "color": "#D69E7E"},
+    {"id": "teal", "color": "#8CC5BF"}
+  ],
+  "themes": [
+    {
+      "id": "crab",
+      "colors": {
+        "bg": "#101010", "surface": "#191919", "pressed": "#282522", "text": "#F5F1EB", "muted": "#B1A9A0",
+        "rule": "#39342F", "accent": "#FF8B4F", "warning": "#F5BD73", "clock_bg": "#0C0C0C", "clock_text": "#CFC7BE",
+        "weather_app": "#55D5EC", "weather_mark": "#96A7AB"
+      },
+      "shape": {"border_w": 2, "gauge_div": 10, "ring_div": 20, "chart_w": 3, "track_h": 4, "motion_pct": 100},
+      "flags": {"mascot": true, "accents": false, "outlined_cards": false, "light_numerals": false, "prompt_tile": true, "app_flourish": true}
+    },
+    {
+      "id": "studio",
+      "colors": {
+        "bg": "#0E0E10", "surface": "#151517", "pressed": "#1F1F22", "text": "#ECEBE8", "muted": "#8D8C89",
+        "rule": "#2A2A2E", "accent": "#D8C3A0", "warning": "#E8B86B", "clock_bg": "#0A0A0B", "clock_text": "#D9D8D4",
+        "weather_app": "#9DBFCB", "weather_mark": "#8D8C89"
+      },
+      "shape": {"border_w": 1, "gauge_div": 18, "ring_div": 40, "chart_w": 2, "track_h": 3, "motion_pct": 70},
+      "flags": {"mascot": false, "accents": true, "outlined_cards": true, "light_numerals": true, "prompt_tile": false, "app_flourish": false}
+    }
+  ]
+}

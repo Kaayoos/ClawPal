@@ -7,11 +7,15 @@
 #include <string.h>
 
 static atomic_uint language;
+static atomic_bool studio;
 typedef struct label_binding { lv_obj_t *label;buddy_text_key_t key;struct label_binding *next; } label_binding_t;
 static label_binding_t *bindings;
 const char *buddy_text(buddy_text_key_t key)
 {
-    return (unsigned)key<BT_COUNT?buddy_language_texts[atomic_load(&language)][key]:"";
+    if((unsigned)key>=BT_COUNT)return "";
+    unsigned current=atomic_load(&language);
+    const char *variant=atomic_load(&studio)?buddy_language_studio_texts[current][key]:NULL;
+    return variant?variant:buddy_language_texts[current][key];
 }
 bool buddy_language_supported(const char *code)
 {
@@ -23,13 +27,15 @@ const char *buddy_language_code(void){return buddy_language_codes[atomic_load(&l
 int buddy_text_key(const char *text)
 {
     // Pointer identity ensures a song title or SSID resembling a label is never translated.
-    for(unsigned i=0;i<buddy_language_count;i++)for(unsigned k=0;k<BT_COUNT;k++)if(text==buddy_language_texts[i][k])return (int)k;
+    if(!text)return -1;
+    for(unsigned i=0;i<buddy_language_count;i++)for(unsigned k=0;k<BT_COUNT;k++)if(text==buddy_language_texts[i][k]||text==buddy_language_studio_texts[i][k])return (int)k;
     return -1;
 }
 const char *buddy_retranslate(const char *text){int key=buddy_text_key(text);return key<0?text:BT(key);}
 const char *buddy_retranslate_copy(const char *text)
 {
-    for(unsigned i=0;i<buddy_language_count;i++)for(unsigned k=0;k<BT_COUNT;k++)if(strcmp(text,buddy_language_texts[i][k])==0)return BT(k);
+    for(unsigned i=0;i<buddy_language_count;i++)for(unsigned k=0;k<BT_COUNT;k++)
+        if(strcmp(text,buddy_language_texts[i][k])==0||(buddy_language_studio_texts[i][k]&&strcmp(text,buddy_language_studio_texts[i][k])==0))return BT(k);
     return text;
 }
 static void label_deleted(lv_event_t *event)
@@ -54,6 +60,12 @@ void buddy_language_set(const char *code)
     if(next==atomic_load(&language))return;
     // Called by the UI task while holding the LVGL lock, never by the network worker.
     atomic_store(&language,next);
+    for(label_binding_t *item=bindings;item;item=item->next)lv_label_set_text(item->label,BT(item->key));
+}
+void buddy_language_set_studio(bool enabled)
+{
+    if(enabled==atomic_load(&studio))return;
+    atomic_store(&studio,enabled);
     for(label_binding_t *item=bindings;item;item=item->next)lv_label_set_text(item->label,BT(item->key));
 }
 const char *buddy_weekday(int day)

@@ -1,5 +1,6 @@
 #include "buddy_language.h"
 #include "buddy_settings.h"
+#include "buddy_theme_data.h"
 #include <math.h>
 #include <stdlib.h>
 #include <string.h>
@@ -8,11 +9,19 @@
 
 static portMUX_TYPE settings_lock = portMUX_INITIALIZER_UNLOCKED;
 static buddy_settings_t current;
+static uint8_t boot_theme, boot_accent;
 static bool integer(const cJSON *json, const char *key, int low, int high, int *out)
 {
     const cJSON *v = cJSON_GetObjectItemCaseSensitive(json, key);
     if (!cJSON_IsNumber(v) || v->valuedouble != v->valueint || v->valueint < low || v->valueint > high) return false;
     *out = v->valueint; return true;
+}
+static bool named(const cJSON *json, const char *key, const char *const *names, unsigned count, uint8_t *out)
+{
+    const cJSON *v = cJSON_GetObjectItemCaseSensitive(json, key);
+    if (!cJSON_IsString(v)) return false;
+    for (unsigned i = 0; i < count; ++i) if (strcmp(v->valuestring, names[i]) == 0) { *out = (uint8_t)i; return true; }
+    return false;
 }
 
 bool buddy_settings_parse(const cJSON *json, buddy_settings_t *out)
@@ -26,7 +35,7 @@ bool buddy_settings_parse(const cJSON *json, buddy_settings_t *out)
     const cJSON *lat = cJSON_GetObjectItemCaseSensitive(json, "latitude");
     const cJSON *lon = cJSON_GetObjectItemCaseSensitive(json, "longitude");
     const cJSON *tz = cJSON_GetObjectItemCaseSensitive(json, "timezone");
-    if (!cJSON_IsObject(json) || !cJSON_IsNumber(schema) || (schema->valuedouble != 2 && schema->valuedouble != 3 && schema->valuedouble != 4 && schema->valuedouble != 5 && schema->valuedouble != BUDDY_SETTINGS_SCHEMA) ||
+    if (!cJSON_IsObject(json) || !cJSON_IsNumber(schema) || (schema->valuedouble != 2 && schema->valuedouble != 3 && schema->valuedouble != 4 && schema->valuedouble != 5 && schema->valuedouble != 6 && schema->valuedouble != BUDDY_SETTINGS_SCHEMA) ||
         !cJSON_IsNumber(apps) || apps->valuedouble != apps->valueint || !(apps->valueint & 32) || apps->valueint < 0 || apps->valueint > (schema->valueint == 2 ? 63 : schema->valueint < 6 ? 127 : 255) ||
         !cJSON_IsArray(order) || cJSON_GetArraySize(order) > BUDDY_HOME_SLOTS ||
         !cJSON_IsBool(hours) || !cJSON_IsBool(weather) ||
@@ -61,6 +70,8 @@ bool buddy_settings_parse(const cJSON *json, buddy_settings_t *out)
         if(!cJSON_IsBool(fahrenheit))return false;
         value.weather_fahrenheit=cJSON_IsTrue(fahrenheit);
     }
+    if(schema->valueint>=7&&(!named(json,"theme",buddy_theme_ids,BUDDY_THEME_COUNT,&value.theme)||
+        !named(json,"accent",buddy_accent_ids,BUDDY_ACCENT_COUNT,&value.accent)))return false;
     unsigned used = 0;
     const cJSON *item;
     cJSON_ArrayForEach(item, order) {
@@ -86,6 +97,8 @@ cJSON *buddy_settings_json(const buddy_settings_t *s)
     cJSON_AddBoolToObject(json, "use_24h", s->use_24h);
     cJSON_AddBoolToObject(json, "weather_enabled", s->weather_enabled);
     cJSON_AddBoolToObject(json, "weather_fahrenheit", s->weather_fahrenheit);
+    cJSON_AddStringToObject(json, "theme", buddy_theme_ids[s->theme < BUDDY_THEME_COUNT ? s->theme : 0]);
+    cJSON_AddStringToObject(json, "accent", buddy_accent_ids[s->accent < BUDDY_ACCENT_COUNT ? s->accent : 0]);
     cJSON_AddStringToObject(json, "city", s->city);
     cJSON_AddStringToObject(json, "timezone", s->timezone);
     cJSON_AddNumberToObject(json, "latitude", s->latitude);
@@ -108,6 +121,11 @@ buddy_settings_t buddy_settings_get(void)
     buddy_settings_t copy = current;
     portEXIT_CRITICAL(&settings_lock);
     return copy;
+}
+
+bool buddy_settings_restart_needed(const buddy_settings_t *s)
+{
+    return s->theme != boot_theme || (s->theme < BUDDY_THEME_COUNT && buddy_themes[s->theme].accents && s->accent != boot_accent);
 }
 
 esp_err_t buddy_settings_save(const buddy_settings_t *settings)
@@ -133,7 +151,15 @@ esp_err_t buddy_settings_save(const buddy_settings_t *settings)
     return result;
 }
 
+static esp_err_t load_settings(void);
 esp_err_t buddy_settings_init(void)
+{
+    esp_err_t result = load_settings();
+    boot_theme = current.theme; boot_accent = current.accent;
+    return result;
+}
+
+static esp_err_t load_settings(void)
 {
     current = (buddy_settings_t){.revision = 1, .enabled_apps = 255, .home_count = 5,
         .home_order = {0,4,7,2,1}, .use_24h = true, .weather_enabled = true,
@@ -157,6 +183,13 @@ esp_err_t buddy_settings_init(void)
     size = sizeof(current.timezone); nvs_get_str(nvs, "timezone", current.timezone, &size);
     char value[32] = "0"; size = sizeof(value); nvs_get_str(nvs, "latitude", value, &size); current.latitude = atof(value);
     strcpy(value, "0"); size = sizeof(value); nvs_get_str(nvs, "longitude", value, &size); current.longitude = atof(value);
+    /* The USB installer writes the look chosen during setup as plain names. */
+    size = sizeof(value);
+    if (nvs_get_str(nvs, "theme", value, &size) == ESP_OK)
+        for (unsigned i = 0; i < BUDDY_THEME_COUNT; ++i) if (strcmp(value, buddy_theme_ids[i]) == 0) current.theme = (uint8_t)i;
+    size = sizeof(value);
+    if (nvs_get_str(nvs, "accent", value, &size) == ESP_OK)
+        for (unsigned i = 0; i < BUDDY_ACCENT_COUNT; ++i) if (strcmp(value, buddy_accent_ids[i]) == 0) current.accent = (uint8_t)i;
     nvs_close(nvs);
     return ESP_OK;
 }

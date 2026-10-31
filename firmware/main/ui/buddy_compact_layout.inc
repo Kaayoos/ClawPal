@@ -78,9 +78,8 @@ static void compact_layout(void){
     else{timer_ring_layout(12,52,190,&buddy_language_font_32,false);timer_stepper_rows(216,56,w-228,48,58);
         timer_presets_layout(12,262,w-24,44);timer_buttons_layout(12,320,w-24,52);}
     compact_agent(&ui.codex);compact_agent(&ui.claude);
-    // App chooser is a touch list, not a shrunken desktop grid.
-    small_text(lv_obj_get_child(ui.chooser,0),12,12,w-24,32,&buddy_language_font_24);small_text(lv_obj_get_child(ui.chooser,1),12,48,w-24,38,&buddy_language_font_14);
-    for(int i=0;i<BUDDY_APP_COUNT;++i){lv_obj_t *row=ui.app_rows[i];place(row,12,88+i*64,w-24,60);small_text(lv_obj_get_child(row,1),60,4,w-84,26,&buddy_language_font_20);small_text(ui.app_hint[i],60,33,w-84,20,&buddy_language_font_14);visible(ui.app_description[i],false);visible(ui.app_current[i],false);}
+    // The app chooser's grid places itself; only its heading shrinks here.
+    small_text(ui.chooser_title,12,tiny?6:10,w-24,tiny?28:34,tiny?&buddy_language_font_20:&buddy_language_font_24);
     place(ui.app_transition,(w-128)/2,body-104,128,104);
     place(ui.apps_button,0,body,100,44);place(ui.details_button,100,body,w-204,44);small_text(ui.details_text,0,13,w-204,24,&buddy_language_font_14);
     place(ui.nav_button,w-100,body,100,44);small_text(ui.nav_text,0,13,88,24,&buddy_language_font_16);

@@ -37,13 +37,13 @@
 The crab lives on the Home screen next to a clock and shortcuts to your apps:
 
 - Live PC stats, with optional in-game FPS
-- A music player for Spotify, Apple Music, TIDAL, browsers and any other app that shows up in Windows' media controls, with the album cover, seeking, shuffle, repeat and volume
+- Media, for whatever is playing: Spotify, Apple Music, TIDAL, browsers and any other app that shows up in Windows' media controls, with the album cover, seeking, shuffle, repeat and volume. Spotify keeps its own logo
 - Codex and Claude Code usage gauges with reset countdowns, a pace forecast and recent tasks
 - A full-screen alert on any app when Claude Code or Codex is waiting for your answer; **Show on PC** brings that window to the front
 - Weather now, for the next 24 hours and for five days
 - A clock and a timer with quick presets and an end time
 
-Music, Codex and Claude Code can open their apps on the display automatically, or you can keep Home on screen. When you lock the PC or it goes to sleep, the crab naps instead of reporting the PC offline. Tap your crab for a hello.
+Media, Codex and Claude Code can open their apps on the display automatically, or you can keep Home on screen. When you lock the PC or it goes to sleep, the crab naps instead of reporting the PC offline. Tap your crab for a hello.
 
 <p align="center">
   <img src="assets/ClawPal-promo.gif" alt="ClawPal promo animation">

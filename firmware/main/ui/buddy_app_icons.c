@@ -2,11 +2,16 @@
 #include "buddy_app_icons.h"
 #include "buddy_home_logos.h"
 
+/* Media icons wear Spotify's logo only while Spotify is the player; any other player gets the line icon. */
+static lv_obj_t *media_icons[4];
+static bool media_spotify;
+
 static void draw_icon(lv_event_t *event)
 {
     lv_obj_t *obj=lv_event_get_target(event);
     lv_draw_ctx_t *ctx=lv_event_get_draw_ctx(event);
     buddy_app_t app=(buddy_app_t)(uintptr_t)lv_event_get_user_data(event);
+    if(app==BUDDY_APP_MUSIC&&media_spotify)return;
     lv_area_t a;lv_obj_get_coords(obj,&a);
     int size=lv_obj_get_width(obj);
     lv_draw_line_dsc_t line;lv_draw_line_dsc_init(&line);
@@ -19,10 +24,20 @@ static void draw_icon(lv_event_t *event)
     if(app==BUDDY_APP_MONITOR){BOX(12,17,76,51,3);LINE(50,70,50,84);LINE(31,86,69,86);}
     else if(app==BUDDY_APP_HOME){LINE(12,45,50,13);LINE(50,13,88,45);LINE(23,38,23,85);LINE(77,38,77,85);LINE(23,85,77,85);LINE(43,85,43,60);LINE(43,60,59,60);LINE(59,60,59,85);}
     else if(app==BUDDY_APP_WEATHER){BOX(13,12,38,38,LV_RADIUS_CIRCLE);rect.bg_opa=LV_OPA_COVER;rect.bg_color=lv_color_hex(BUDDY_COLOR_BG);BOX(20,47,64,34,16);BOX(34,33,36,42,18);rect.border_width=0;BOX(27,57,47,20,0);}
+    /* A play mark in a rounded frame, nudged right so the triangle looks centred. */
+    else if(app==BUDDY_APP_MUSIC){BOX(13,17,74,66,size/6);LINE(43,36,43,64);LINE(43,36,64,50);LINE(43,64,64,50);}
     else {BOX(17,19,66,66,LV_RADIUS_CIRCLE);LINE(50,52,50,32);LINE(50,52,67,60);if(app==BUDDY_APP_TIMER){LINE(40,8,60,8);LINE(50,8,50,16);LINE(79,17,87,25);}}
 #undef BOX
 #undef LINE
 #undef POINT
+}
+
+static lv_obj_t *logo(lv_obj_t *icon,const lv_img_dsc_t *source,int size)
+{
+    lv_obj_t *image=lv_img_create(icon);lv_img_set_src(image,source);
+    lv_img_set_pivot(image,0,0);lv_img_set_zoom(image,(uint16_t)(256*size/56));
+    lv_obj_clear_flag(image,LV_OBJ_FLAG_CLICKABLE);
+    return image;
 }
 
 lv_obj_t *buddy_app_icon_create(lv_obj_t *parent,buddy_app_t app,int x,int y,int size)
@@ -30,10 +45,23 @@ lv_obj_t *buddy_app_icon_create(lv_obj_t *parent,buddy_app_t app,int x,int y,int
     lv_obj_t *icon=lv_obj_create(parent);lv_obj_remove_style_all(icon);
     lv_obj_set_pos(icon,x,y);lv_obj_set_size(icon,size,size);
     lv_obj_clear_flag(icon,LV_OBJ_FLAG_CLICKABLE|LV_OBJ_FLAG_SCROLLABLE);
-    if(app==BUDDY_APP_MUSIC || app==BUDDY_APP_CODEX || app==BUDDY_APP_CLAUDE){
-        lv_obj_t *image=lv_img_create(icon);lv_img_set_src(image,app==BUDDY_APP_MUSIC?&buddy_logo_spotify:app==BUDDY_APP_CLAUDE?&buddy_logo_claude:&buddy_logo_codex);
-        lv_img_set_pivot(image,0,0);lv_img_set_zoom(image,(uint16_t)(256*size/56));
-        lv_obj_clear_flag(image,LV_OBJ_FLAG_CLICKABLE);
-    }else lv_obj_add_event_cb(icon,draw_icon,LV_EVENT_DRAW_MAIN,(void *)(uintptr_t)app);
+    if(app==BUDDY_APP_CODEX || app==BUDDY_APP_CLAUDE)logo(icon,app==BUDDY_APP_CLAUDE?&buddy_logo_claude:&buddy_logo_codex,size);
+    else lv_obj_add_event_cb(icon,draw_icon,LV_EVENT_DRAW_MAIN,(void *)(uintptr_t)app);
+    if(app==BUDDY_APP_MUSIC){
+        lv_obj_t *spotify=logo(icon,&buddy_logo_spotify,size);if(!media_spotify)lv_obj_add_flag(spotify,LV_OBJ_FLAG_HIDDEN);
+        for(unsigned i=0;i<sizeof(media_icons)/sizeof(media_icons[0]);++i)if(!media_icons[i]){media_icons[i]=icon;break;}
+    }
     return icon;
+}
+
+void buddy_app_icons_set_spotify(bool spotify)
+{
+    if(spotify==media_spotify)return;
+    media_spotify=spotify;
+    for(unsigned i=0;i<sizeof(media_icons)/sizeof(media_icons[0]);++i){
+        if(!media_icons[i])continue;
+        lv_obj_t *image=lv_obj_get_child(media_icons[i],0);
+        if(spotify)lv_obj_clear_flag(image,LV_OBJ_FLAG_HIDDEN);else lv_obj_add_flag(image,LV_OBJ_FLAG_HIDDEN);
+        lv_obj_invalidate(media_icons[i]);
+    }
 }

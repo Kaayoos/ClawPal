@@ -23,6 +23,7 @@ typedef enum {
     BT_ACTIVITY_TIME_UNKNOWN,
     BT_ACTIVITY_UNAVAILABLE,
     BT_AM,
+    BT_APPLYING_YOUR_NEW_LOOK,
     BT_APPS,
     BT_ASKED_LABEL,
     BT_AUTHENTICATED_WEBSOCKET_UPGRADE_REQUIRED,
@@ -87,6 +88,7 @@ typedef enum {
     BT_COULDN_T_SEND_TRY_AGAIN,
     BT_CPU,
     BT_CPU_0F_GPU_0F,
+    BT_CPU_0F_GPU_0F_LINES,
     BT_CPU_LOAD_60_SECONDS,
     BT_CRABBY_BUSINESS,
     BT_CREATED_BY_MINIMALPULSE,
@@ -95,6 +97,7 @@ typedef enum {
     BT_DAILY_LIMIT,
     BT_DATE_FORMAT,
     BT_DAY,
+    BT_DAY_MONTH,
     BT_DETAILS,
     BT_DISPLAY_BUSY,
     BT_DO_NOT_DISTURB_THE_GROOVE,
@@ -195,6 +198,18 @@ typedef enum {
     BT_MONTH_7,
     BT_MONTH_8,
     BT_MONTH_9,
+    BT_MONTH_LONG_0,
+    BT_MONTH_LONG_1,
+    BT_MONTH_LONG_10,
+    BT_MONTH_LONG_11,
+    BT_MONTH_LONG_2,
+    BT_MONTH_LONG_3,
+    BT_MONTH_LONG_4,
+    BT_MONTH_LONG_5,
+    BT_MONTH_LONG_6,
+    BT_MONTH_LONG_7,
+    BT_MONTH_LONG_8,
+    BT_MONTH_LONG_9,
     BT_MOSTLY_CLEAR,
     BT_MUSIC,
     BT_NETWORK,
@@ -416,3 +431,5 @@ typedef enum {
 extern const char *const buddy_language_codes[];
 extern const unsigned buddy_language_count;
 extern const char *const buddy_language_texts[][BT_COUNT];
+/* Studio theme wording; NULL keeps the base text. */
+extern const char *const buddy_language_studio_texts[][BT_COUNT];

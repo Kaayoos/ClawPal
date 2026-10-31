@@ -41,4 +41,15 @@ class CatalogChecks(unittest.TestCase):
         self.pl['display']['clock']=self.pl['display']['home']='Ten sam tekst';self.save();catalogs.generate(self.root)
         generated=(self.root/'firmware/main/language/buddy_language_data.c').read_text(encoding='utf-8')
         self.assertIn('text_1_clock[] = "Ten sam tekst"',generated);self.assertIn('text_1_home[] = "Ten sam tekst"',generated)
+    def test_studio_wording_overrides_existing_keys_only(self):
+        self.assertEqual(set(self.en['display_studio']),set(self.pl['display_studio']))
+        self.pl['display_studio']['typo']='Tekst';self.save()
+        with self.assertRaises(ValueError):catalogs.generate(self.root)
+    def test_studio_wording_keeps_placeholders(self):
+        self.en['display_studio']['resets_value']='Resets %d';self.save()
+        with self.assertRaises(ValueError):catalogs.generate(self.root)
+    def test_studio_wording_compiles_beside_the_base_text(self):
+        catalogs.generate(self.root);generated=(self.root/'firmware/main/language/buddy_language_data.c').read_text(encoding='utf-8')
+        self.assertIn('[BT_YOUR_APPS_AND_YOUR_CRAB] = studio_0_your_apps_and_your_crab',generated)
+        self.assertIn('text_0_your_apps_and_your_crab[] = "Your apps and your crab"',generated)
 if __name__=='__main__':unittest.main()

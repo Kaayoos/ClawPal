@@ -14,7 +14,7 @@ public static class DisplayApps
     public static DisplayApp[] All => [
         new(0,L.Text("pc_monitor"),L.Text("live_pc_readings_and_optional_game_fps"),"working"),
         new(1,L.Text("clock"),L.Text("local_time_with_an_optional_little_forecast"),"sleeping"),
-        new(2,L.Text("spotify"),L.Text("playback_track_names_and_music_controls"),"music"),
+        new(2,L.Text("media"),L.Text("playback_track_names_and_music_controls"),"music"),
         new(3,L.Text("timer"),L.Text("an_adjustable_countdown_for_anything"),"thinking"),
         new(4,L.Text("codex"),L.Text("account_limits_and_recorded_task_activity"),"typing"),
         new(7,L.Text("claude_code"),L.Text("claude_description"),"typing"),
@@ -24,7 +24,7 @@ public static class DisplayApps
 
 public sealed record DeviceSettings
 {
-    public const int CurrentSchema=6;
+    public const int CurrentSchema=7;
     public int Schema { get; init; } = CurrentSchema;
     public string Language { get; init; } = "en";
     public int EnabledApps { get; init; } = 255;
@@ -43,9 +43,13 @@ public sealed record DeviceSettings
     public int NightStart { get; init; } = 1;
     public int NightEnd { get; init; } = 10;
     public int OfflineApp { get; init; } = 1;
+    public string Theme { get; init; } = Themes.Default;
+    public string Accent { get; init; } = Themes.DefaultAccent;
     public DeviceSettings Upgrade() {
         var value=Schema==2 ? this with {EnabledApps=EnabledApps|64,Language="en",WeatherFahrenheit=false} : Schema==3 ? this with {Language="en",WeatherFahrenheit=false} : Schema==4 ? this with {WeatherFahrenheit=false} : this;
-        return Schema is >=2 and <6 ? value with {Schema=CurrentSchema,EnabledApps=value.EnabledApps|128} : value;
+        if(Schema is >=2 and <6)value=value with {EnabledApps=value.EnabledApps|128};
+        // Displays from before themes keep the crab.
+        return Schema is >=2 and <7 ? value with {Schema=CurrentSchema,Theme=Themes.Default,Accent=Themes.DefaultAccent} : value;
     }
     public bool Enabled(int app) => app is >= 0 and <= 7 && (EnabledApps & (1 << app)) != 0;
     public DeviceSettings SetEnabled(int app, bool enabled)
@@ -74,6 +78,7 @@ public sealed record DeviceSettings
         if (string.IsNullOrWhiteSpace(City) || Encoding.UTF8.GetByteCount(City) > 63 || City.Contains('\0')) throw new ArgumentException(L.Text("choose_a_location_with_a_name_shorter_than_64"));
         if (!double.IsFinite(Latitude) || !double.IsFinite(Longitude) || Math.Abs(Latitude)>90 || Math.Abs(Longitude)>180) throw new ArgumentException(L.Text("choose_a_valid_weather_location"));
         if (!Regex.IsMatch(Timezone ?? "", "^[A-Za-z0-9+,.:/<>-]{3,127}$")) throw new ArgumentException(L.Text("choose_a_supported_time_zone"));
+        if (!Themes.Supports(Theme,Accent)) throw new ArgumentException(L.Text("choose_an_available_look"));
     }
     internal static DeviceSettings FromConfiguration(Configuration config) => new() {
         City=string.IsNullOrWhiteSpace(config.City)?"Weather":config.City,
@@ -120,7 +125,7 @@ public sealed class DeviceSettingsClient(Configuration config)
         a.DimBehavior==b.DimBehavior && a.DimAfterSeconds==b.DimAfterSeconds && a.DimBrightness==b.DimBrightness &&
         a.NightEnabled==b.NightEnabled && a.NightStart==b.NightStart && a.NightEnd==b.NightEnd && a.OfflineApp==b.OfflineApp &&
         a.Use24h==b.Use24h && a.WeatherEnabled==b.WeatherEnabled && a.WeatherFahrenheit==b.WeatherFahrenheit && a.City==b.City && a.Timezone==b.Timezone &&
-        Math.Abs(a.Latitude-b.Latitude)<0.0000001 && Math.Abs(a.Longitude-b.Longitude)<0.0000001;
+        Math.Abs(a.Latitude-b.Latitude)<0.0000001 && Math.Abs(a.Longitude-b.Longitude)<0.0000001 && a.Theme==b.Theme && a.Accent==b.Accent;
     public static string FailureMessage(Exception error) => error switch {
         NotSupportedException => error.Message,
         HttpRequestException e when e.StatusCode is HttpStatusCode.BadRequest or HttpStatusCode.LengthRequired => L.Text("the_display_rejected_the_settings_request_update_the_companion"),
@@ -146,7 +151,7 @@ public sealed class DeviceSettingsClient(Configuration config)
     {
         using var json=JsonDocument.Parse(response);
         var settings=JsonSerializer.Deserialize<DeviceSettings>(response,Json) ?? throw new IOException(L.Text("the_display_returned_empty_settings"));
-        if (!json.RootElement.TryGetProperty("schema",out var schema) || schema.GetInt32() is not (2 or 3 or 4 or 5 or 6)) throw new NotSupportedException(L.Text("update_the_display_firmware_to_use_wireless_configuration"));
+        if (!json.RootElement.TryGetProperty("schema",out var schema) || schema.GetInt32() is not (2 or 3 or 4 or 5 or 6 or 7)) throw new NotSupportedException(L.Text("update_the_display_firmware_to_use_wireless_configuration"));
         foreach(string key in new[]{"enabled_apps","home_order","use_24h","weather_enabled","city","latitude","longitude","timezone"})
             if(!json.RootElement.TryGetProperty(key,out _))throw new IOException(L.Text("the_display_returned_incomplete_settings"));
         if(schema.GetInt32()>=3)
@@ -154,6 +159,7 @@ public sealed class DeviceSettingsClient(Configuration config)
                 if(!json.RootElement.TryGetProperty(key,out _))throw new IOException(L.Text("the_display_returned_incomplete_screen_settings"));
         if(schema.GetInt32()>=4 && !json.RootElement.TryGetProperty("language",out _))throw new IOException(L.Text("the_display_returned_incomplete_settings"));
         if(schema.GetInt32()>=5 && !json.RootElement.TryGetProperty("weather_fahrenheit",out _))throw new IOException(L.Text("the_display_returned_incomplete_settings"));
+        if(schema.GetInt32()>=7 && (!json.RootElement.TryGetProperty("theme",out _)||!json.RootElement.TryGetProperty("accent",out _)))throw new IOException(L.Text("the_display_returned_incomplete_settings"));
         settings=settings.Upgrade();settings.Validate();
         string Value(string key)=>json.RootElement.TryGetProperty(key,out var item) && item.ValueKind==JsonValueKind.String?item.GetString()??"":"";
         return new(settings,Value("version"),Value("wifi_ssid"),Value("model"),schema.GetInt32());
@@ -177,6 +183,7 @@ public sealed class DeviceSettingsClient(Configuration config)
     public async Task SyncAsync(CancellationToken token)
     {
         await gate.WaitAsync(token);
+        bool restarting=false;
         try {
             if (!config.SettingsPending || config.DisplaySettings is not { } settings) return;
             settings.Validate(); Status=L.Text("sending_settings_over_wi_fi");
@@ -188,11 +195,13 @@ public sealed class DeviceSettingsClient(Configuration config)
                 response.EnsureSuccessStatusCode();
                 using var ack=JsonDocument.Parse(await response.Content.ReadAsStringAsync(token));
                 if (!ack.RootElement.TryGetProperty("saved",out var saved) || saved.ValueKind!=JsonValueKind.True) throw new IOException(L.Text("the_display_did_not_confirm_saving_settings"));
+                // A new look applies after a short restart, which the display starts a few seconds after this reply.
+                restarting=ack.RootElement.TryGetProperty("restarting",out var restart) && restart.ValueKind==JsonValueKind.True;
                 var confirmed=await Read(client,address,token);
                 if (!Equivalent(settings,confirmed.Settings)) throw new IOException(L.Text("the_display_settings_have_not_matched_yet_clawpal_will"));
             }
             config.ConfirmDisplaySettings(settings);
-            Status=config.SettingsPending?L.Text("newer_changes_are_waiting_to_sync"):L.Text("saved_on_your_display_over_wi_fi");
+            Status=config.SettingsPending?L.Text("newer_changes_are_waiting_to_sync"):restarting?L.Text("display_restarting_new_look"):L.Text("saved_on_your_display_over_wi_fi");
         } catch(NotSupportedException e) { NeedsFirmwareUpdate=true;Status=e.Message;throw; }
         finally { gate.Release(); }
     }

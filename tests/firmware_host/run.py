@@ -31,10 +31,10 @@ def main():
     args = parser.parse_args()
     if not args.cjson or not (args.cjson / "cJSON.c").exists():
         sys.exit("cJSON source not found; pass --cjson or set IDF_PATH")
-    sources = [HERE / "test_parsers.c", MAIN / "settings/buddy_settings.c",
+    sources = [HERE / "test_parsers.c", MAIN / "settings/buddy_settings.c", MAIN / "ui/buddy_theme_data.c",
                MAIN / "weather/buddy_weather_parse.c",
                MAIN / "network/buddy_telemetry_parse.c", MAIN / "network/buddy_auth.c", args.cjson / "cJSON.c"]
-    includes = [HERE / "shim", args.cjson, MAIN / "settings", MAIN / "weather", MAIN / "language",
+    includes = [HERE / "shim", args.cjson, MAIN / "settings", MAIN / "weather", MAIN / "language", MAIN / "ui",
                 MAIN / "network", MAIN / "include"]
     with tempfile.TemporaryDirectory() as out:
         exe = pathlib.Path(out) / "firmware_parsers"

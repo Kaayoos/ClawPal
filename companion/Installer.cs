@@ -12,12 +12,13 @@ namespace ClawPal.Companion;
 public sealed record FirmwarePart(string File, string Offset, string Sha256);
 public sealed record BoardProfile(string Id, string Name, string Chip, int Width, int Height, int FlashBytes, string Version, string ToolSha256, FirmwarePart[] Parts);
 public sealed record BackupRecord(string BoardId, string DeviceId, long Bytes, string Sha256, DateTimeOffset Created);
-public sealed record SetupOptions(string Port, string Ssid, string Password, string City, double Latitude, double Longitude, string Timezone, bool TrackFps, bool AutoOpen, bool StartWithWindows, bool CreateBackup = true, string CompanionLanguage = "en", string DisplayLanguage = "en", string BoardId = BoardCatalog.DefaultId)
+public sealed record SetupOptions(string Port, string Ssid, string Password, string City, double Latitude, double Longitude, string Timezone, bool TrackFps, bool AutoOpen, bool StartWithWindows, bool CreateBackup = true, string CompanionLanguage = "en", string DisplayLanguage = "en", string BoardId = BoardCatalog.DefaultId, string Theme = Themes.Default, string Accent = Themes.DefaultAccent)
 {
     public void Validate()
     {
         BoardCatalog.Get(BoardId);
         if(!L.Supports(CompanionLanguage)||!L.Supports(DisplayLanguage))throw new ArgumentException(L.Text("unsupported_language"));
+        if(!Themes.Supports(Theme,Accent))throw new ArgumentException(L.Text("choose_an_available_look"));
         if (!Regex.IsMatch(Port, "^COM[0-9]+$")) throw new ArgumentException(L.Text("select_a_connected_usb_serial_port"));
         if (string.IsNullOrWhiteSpace(Ssid) || Encoding.UTF8.GetByteCount(Ssid) > 32 || Ssid.Contains('\0')) throw new ArgumentException(L.Text("enter_a_wi_fi_name_of_1_32_utf"));
         int bytes = Encoding.UTF8.GetByteCount(Password);
@@ -193,7 +194,7 @@ public sealed class Installer
             File.Copy(Configuration.ConfigPath, Path.Combine(folder, "companion-config.json"));
         string token = Convert.ToHexString(RandomNumberGenerator.GetBytes(32)).ToLowerInvariant();
         string setupKey = Convert.ToHexString(RandomNumberGenerator.GetBytes(8)).ToLowerInvariant();
-        var values = new Dictionary<string, string> { ["ssid"] = options.Ssid, ["password"] = options.Password, ["token"] = token, ["setup_key"] = setupKey, ["city"] = options.City, ["latitude"] = options.Latitude.ToString("F6", CultureInfo.InvariantCulture), ["longitude"] = options.Longitude.ToString("F6", CultureInfo.InvariantCulture), ["timezone"] = options.Timezone, ["language"] = options.DisplayLanguage };
+        var values = new Dictionary<string, string> { ["ssid"] = options.Ssid, ["password"] = options.Password, ["token"] = token, ["setup_key"] = setupKey, ["city"] = options.City, ["latitude"] = options.Latitude.ToString("F6", CultureInfo.InvariantCulture), ["longitude"] = options.Longitude.ToString("F6", CultureInfo.InvariantCulture), ["timezone"] = options.Timezone, ["language"] = options.DisplayLanguage, ["theme"] = options.Theme, ["accent"] = options.Accent };
         string nvs = Path.Combine(Configuration.DirectoryPath, "provision-" + Guid.NewGuid().ToString("N") + ".bin");
         try
         {
@@ -211,7 +212,7 @@ public sealed class Installer
             foreach (var part in board.Parts) { verify.Add(part.Offset); verify.Add(Path.Combine(PayloadPath, part.File)); }
             // NVS is excluded here: first boot can legitimately change its contents.
             await Tool(board, options.Port, verify.ToArray());
-            config.SetupComplete=true; config.DisplaySettings=DeviceSettings.FromConfiguration(config) with {Language=options.DisplayLanguage}; config.SettingsPending=false; config.Save();
+            config.SetupComplete=true; config.DisplaySettings=DeviceSettings.FromConfiguration(config) with {Language=options.DisplayLanguage,Theme=options.Theme,Accent=options.Accent}; config.SettingsPending=false; config.Save();
             pairingReady();
             progress.Report(L.Text("firmware_installed_waiting_for_clawpal_on_wi_fi"));
             return folder;

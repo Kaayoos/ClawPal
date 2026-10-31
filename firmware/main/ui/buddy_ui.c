@@ -14,6 +14,7 @@
 #include "lvgl.h"
 #include "esp_log.h"
 #include "esp_app_desc.h"
+#include "esp_heap_caps.h"
 #include "buddy_mascot.h"
 #include "buddy_clock_font.h"
 #include "buddy_music_font.h"
@@ -112,8 +113,7 @@ static struct {
     lv_obj_t *timer_presets[4], *timer_preset_labels[4];
     agent_view_t codex, claude;
     lv_obj_t *apps_button, *apps_text, *nav_button;
-    lv_obj_t *app_rows[BUDDY_APP_COUNT], *app_current[BUDDY_APP_COUNT];
-    lv_obj_t *app_description[BUDDY_APP_COUNT], *app_hint[BUDDY_APP_COUNT], *app_mascots[BUDDY_APP_COUNT];
+    lv_obj_t *chooser_title, *app_rows[BUDDY_APP_COUNT], *app_names[BUDDY_APP_COUNT], *app_description[BUDDY_APP_COUNT];
     lv_obj_t *music_link, *music_link_title, *music_link_bars[3];
     lv_obj_t *timer_link, *timer_link_title, *timer_link_progress;
     lv_obj_t *app_transition, *transition_image;
@@ -129,7 +129,7 @@ static struct {
     lv_obj_t *detail_ssid, *detail_ip, *detail_state, *detail_message;
     lv_obj_t *mascot, *startup, *startup_mascot;
     lv_img_dsc_t startup_frame;
-    uint8_t startup_pixels[BUDDY_MASCOT_DOUBLE_BYTES];
+    uint8_t *startup_pixels; /* The doubled crab, in PSRAM; NULL when the theme has none. */
     buddy_mascot_state_t mascot_state;
     uint32_t mascot_started, startup_started, happy_started;
     buddy_app_t active_app;
@@ -193,6 +193,7 @@ static struct {
 static void refresh_visibility(void);
 static void refresh_display_power(void);
 static void refresh_footer(void);
+static void chooser_layout(void);
 static void maybe_auto_app(void);
 static void refresh_music(void);
 static lv_obj_t *usage_gauge(lv_obj_t *parent);
@@ -526,56 +527,39 @@ static void usage_window_name(char *buffer, size_t size, uint32_t minutes)
 static void refresh_app_cards(void)
 {
     if (!ui.app_description[0] || !ui.menu_open) return;
-    char value[96];
+    char value[96], time[24];
     set_label_if_changed(ui.app_description[BUDDY_APP_HOME], BT(BT_YOUR_APPS_AND_YOUR_CRAB));
-    set_label_if_changed(ui.app_hint[BUDDY_APP_HOME], BT(BT_WELCOME_HOME));
     if (music_connected() && isfinite(ui.stats.cpu_usage) && isfinite(ui.stats.gpu_usage))
-        snprintf(value, sizeof(value), BT(BT_CPU_0F_GPU_0F), ui.stats.cpu_usage, ui.stats.gpu_usage);
+        snprintf(value, sizeof(value), BT(BT_CPU_0F_GPU_0F_LINES), ui.stats.cpu_usage, ui.stats.gpu_usage);
     else snprintf(value, sizeof(value), "%s", connection_name());
     set_label_if_changed(ui.app_description[BUDDY_APP_MONITOR], value);
-    set_label_if_changed(ui.app_hint[BUDDY_APP_MONITOR], music_connected() ? BT(BT_LIVE_PC_READINGS) : BT(BT_AUTOMATIC_RECONNECT));
     set_label_if_changed(ui.app_description[BUDDY_APP_CLOCK], lv_label_get_text(ui.clock));
-    set_label_if_changed(ui.app_hint[BUDDY_APP_CLOCK], BT(BT_LOCAL_TIME));
     if (ui.weather.available) {
         char temperature[24];buddy_weather_format_temperature(temperature,sizeof(temperature),ui.weather.temperature_c,view_settings.weather_fahrenheit);
-        snprintf(value,sizeof(value),"%s / %s",temperature,buddy_weather_description(ui.weather.code,ui.weather.is_day));
+        snprintf(value,sizeof(value),"%s\n%s",temperature,buddy_weather_description(ui.weather.code,ui.weather.is_day));
     }
     else snprintf(value,sizeof(value),"%s",ui.weather.failed ? BT(BT_WEATHER_UNAVAILABLE) : BT(BT_WEATHER_LOADING));
     set_label_if_changed(ui.app_description[BUDDY_APP_WEATHER],value);
-    set_label_if_changed(ui.app_hint[BUDDY_APP_WEATHER],buddy_weather_city());
     const buddy_music_t *music = &ui.stats.music;
-    bool available = music_connected() && music->available;
-    set_label_if_changed(ui.app_description[BUDDY_APP_MUSIC], available && music->title[0] ?
-        music->title : music_connected() && music->running ? BT(BT_START_A_SONG_ON_YOUR_PC) : BT(BT_WAITING_FOR_SPOTIFY));
-    set_label_if_changed(ui.app_hint[BUDDY_APP_MUSIC], available ?
-        (music->playing ? BT(BT_PLAYING_ON_YOUR_PC) : BT(BT_PAUSED_ON_YOUR_PC)) : BT(BT_SPOTIFY_ON_YOUR_PC));
-    countdown_text(value, sizeof(value), (ui.timer_remaining_ms + 999U) / 1000U);
+    set_label_if_changed(ui.app_description[BUDDY_APP_MUSIC], music_connected() && music->available ?
+        (music->title[0] ? music->title : BT(BT_PLAYING)) : music_connected() && music->running ? BT(BT_NOT_PLAYING) : BT(BT_WAITING_FOR_SPOTIFY));
+    countdown_text(time, sizeof(time), (ui.timer_remaining_ms + 999U) / 1000U);
+    snprintf(value, sizeof(value), "%s\n%s", time, ui.timer_running ? BT(BT_RUNNING) :
+        ui.timer_completed ? BT(BT_TIME_S_UP) : ui.timer_started ? BT(BT_PAUSED) : BT(BT_READY));
     set_label_if_changed(ui.app_description[BUDDY_APP_TIMER], value);
-    set_label_if_changed(ui.app_hint[BUDDY_APP_TIMER], ui.timer_running ? BT(BT_RUNNING_IN_BACKGROUND) :
-        ui.timer_completed ? BT(BT_TIME_S_UP) : ui.timer_started ? BT(BT_PAUSED) : BT(BT_READY_TO_START));
-    if (codex_has_windows()) {
-        const buddy_codex_window_t *window = usage_window_available(&ui.stats.codex.primary) ?
-            &ui.stats.codex.primary : &ui.stats.codex.secondary;
-        snprintf(value, sizeof(value), BT(BT_0F_REMAINING), window->remaining_percent);
-    } else snprintf(value, sizeof(value), "%s", codex_status_text());
-    set_label_if_changed(ui.app_description[BUDDY_APP_CODEX], value);
-    set_label_if_changed(ui.app_hint[BUDDY_APP_CODEX], codex_has_windows() ? codex_status_text() : BT(BT_LIMITS_FROM_YOUR_PC));
-    if (codex_tasks_available() && !codex_tasks_stale() && ui.stats.codex.activity.working_count) {
-        snprintf(value, sizeof(value), BT(BT_LU_RECENTLY_WORKING), (unsigned long)ui.stats.codex.activity.working_count);
-        set_label_if_changed(ui.app_description[BUDDY_APP_CODEX], value);
-        set_label_if_changed(ui.app_hint[BUDDY_APP_CODEX], BT(BT_RECORDED_LOCALLY));
-    }
-    if (claude_has_windows()) {
-        const buddy_codex_window_t *window = usage_window_available(&ui.stats.claude.primary) ?
-            &ui.stats.claude.primary : &ui.stats.claude.secondary;
-        snprintf(value, sizeof(value), BT(BT_0F_REMAINING), window->remaining_percent);
-    } else snprintf(value, sizeof(value), "%s", claude_status_text());
-    set_label_if_changed(ui.app_description[BUDDY_APP_CLAUDE], value);
-    set_label_if_changed(ui.app_hint[BUDDY_APP_CLAUDE], claude_has_windows() ? claude_status_text() : BT(BT_LIMITS_FROM_YOUR_PC));
-    if (claude_tasks_available() && !claude_tasks_stale() && ui.stats.claude.activity.working_count) {
-        snprintf(value, sizeof(value), BT(BT_LU_RECENTLY_WORKING), (unsigned long)ui.stats.claude.activity.working_count);
-        set_label_if_changed(ui.app_description[BUDDY_APP_CLAUDE], value);
-        set_label_if_changed(ui.app_hint[BUDDY_APP_CLAUDE], BT(BT_RECORDED_LOCALLY));
+    const struct { buddy_app_t app; const buddy_codex_t *agent; bool windows, working; const char *status; } agents[] = {
+        { BUDDY_APP_CODEX, &ui.stats.codex, codex_has_windows(), codex_tasks_available() && !codex_tasks_stale(), codex_status_text() },
+        { BUDDY_APP_CLAUDE, &ui.stats.claude, claude_has_windows(), claude_tasks_available() && !claude_tasks_stale(), claude_status_text() },
+    };
+    for (unsigned i = 0; i < 2; ++i) {
+        const buddy_codex_t *agent = agents[i].agent;
+        if (agents[i].working && agent->activity.working_count)
+            snprintf(value, sizeof(value), BT(BT_LU_RECENTLY_WORKING), (unsigned long)agent->activity.working_count);
+        else if (agents[i].windows) {
+            const buddy_codex_window_t *window = usage_window_available(&agent->primary) ? &agent->primary : &agent->secondary;
+            snprintf(value, sizeof(value), BT(BT_0F_REMAINING), window->remaining_percent);
+        } else snprintf(value, sizeof(value), "%s", agents[i].status);
+        set_label_if_changed(ui.app_description[agents[i].app], value);
     }
 }
 
@@ -695,6 +679,7 @@ static buddy_mascot_state_t mascot_state(void)
 static void update_large_frame(const lv_img_dsc_t *source)
 {
     uint8_t *target = ui.startup_pixels;
+    if (!target) return;
     memcpy(target, source->data, 64); /* Original BGRA palette. */
     for (unsigned y = 0; y < 48; ++y) {
         uint8_t *row = target + 64 + y * 2 * 48;
@@ -716,6 +701,9 @@ static void update_large_frame(const lv_img_dsc_t *source)
     lv_obj_invalidate(target_image);
 }
 
+static void feed_mascot(void);
+
+/* The UI heartbeat: timers, pending commands, live indicators and, when the theme has one, the crab. */
 static void mascot_tick(lv_timer_t *timer)
 {
     (void)timer;
@@ -774,6 +762,12 @@ static void mascot_tick(lv_timer_t *timer)
     }
     if (ui.alert_key[0] && ui.alert.tile)
         lv_obj_set_style_border_opa(ui.alert.tile, (lv_tick_get() / 600U) % 2U ? LV_OPA_COVER : LV_OPA_20, 0);
+    if (buddy_theme_has_mascot()) feed_mascot();
+}
+
+/* Hands the current crab frame to whichever crab is on screen. */
+static void feed_mascot(void)
+{
     buddy_mascot_state_t state = mascot_state();
     if (state != ui.mascot_state) {
         ui.mascot_state = state;
@@ -800,17 +794,34 @@ static void create_startup(void)
     lv_obj_add_flag(ui.startup, LV_OBJ_FLAG_CLICKABLE);
     lv_obj_set_style_bg_color(ui.startup, color(C_BG), 0);
     lv_obj_set_style_bg_opa(ui.startup, LV_OPA_COVER, 0);
+    /* Internal RAM stays free for Wi-Fi and TLS; the frame falls back there only without PSRAM. */
+    if (buddy_theme_has_mascot() && !ui.startup_pixels) {
+        ui.startup_pixels = heap_caps_malloc(BUDDY_MASCOT_DOUBLE_BYTES, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+        if (!ui.startup_pixels) ui.startup_pixels = heap_caps_malloc(BUDDY_MASCOT_DOUBLE_BYTES, MALLOC_CAP_8BIT);
+    }
     ui.startup_frame = (lv_img_dsc_t) {
         .header = { .cf = LV_IMG_CF_INDEXED_4BIT, .always_zero = 0, .w = 96, .h = 96 },
-        .data_size = sizeof(ui.startup_pixels), .data = ui.startup_pixels,
+        .data_size = BUDDY_MASCOT_DOUBLE_BYTES, .data = ui.startup_pixels,
     };
-    ui.startup_mascot = lv_img_create(ui.startup);
-    lv_img_set_antialias(ui.startup_mascot, false);
-    lv_obj_set_pos(ui.startup_mascot, (BOARD_DISPLAY_WIDTH-96)/2, (BOARD_DISPLAY_HEIGHT-230)/2+20);
-    lv_obj_t *title = text(ui.startup, BT(BT_CLAWPAL), 12, (BOARD_DISPLAY_HEIGHT-230)/2+140, BOARD_DISPLAY_WIDTH-24, &buddy_language_font_32, C_TEXT);
+    const bool crab = buddy_theme_has_mascot();
+    if (crab) {
+        ui.startup_mascot = lv_img_create(ui.startup);
+        lv_img_set_antialias(ui.startup_mascot, false);
+        lv_obj_set_pos(ui.startup_mascot, (BOARD_DISPLAY_WIDTH-96)/2, (BOARD_DISPLAY_HEIGHT-230)/2+20);
+    }
+    const lv_font_t *wordmark = !crab && BOARD_DISPLAY_HEIGHT >= 400 ? &buddy_language_font_48 : &buddy_language_font_32;
+    const int title_y = crab ? (BOARD_DISPLAY_HEIGHT-230)/2+140 : BOARD_DISPLAY_HEIGHT/2 - lv_font_get_line_height(wordmark) + 4;
+    lv_obj_t *title = text(ui.startup, BT(BT_CLAWPAL), 12, title_y, BOARD_DISPLAY_WIDTH-24, wordmark, C_TEXT);
     lv_obj_set_style_text_align(title, LV_TEXT_ALIGN_CENTER, 0);
-    lv_obj_t *subtitle = text(ui.startup, BT(BT_YOUR_LITTLE_DESK_COMPANION), 12, (BOARD_DISPLAY_HEIGHT-230)/2+186, BOARD_DISPLAY_WIDTH-24, &buddy_language_font_16, C_MUTED);
+    lv_obj_t *subtitle = text(ui.startup, BT(BT_YOUR_LITTLE_DESK_COMPANION), 12, crab ? (BOARD_DISPLAY_HEIGHT-230)/2+186 : BOARD_DISPLAY_HEIGHT/2 + 18, BOARD_DISPLAY_WIDTH-24, &buddy_language_font_16, C_MUTED);
     lv_obj_set_style_text_align(subtitle, LV_TEXT_ALIGN_CENTER, 0);
+    if (!crab) {
+        lv_obj_t *line = box(ui.startup, (BOARD_DISPLAY_WIDTH - 48) / 2, BOARD_DISPLAY_HEIGHT/2 + 6, 48, 1);
+        lv_obj_set_style_bg_color(line, color(C_ACCENT), 0);
+        lv_obj_set_style_bg_opa(line, LV_OPA_COVER, 0);
+        buddy_ui_motion_enter(title, 10, 600, 0);
+        buddy_ui_motion_enter(subtitle, 10, 600, 120);
+    }
     mascot_tick(NULL);
     ui.mascot_timer = lv_timer_create(mascot_tick, BUDDY_MASCOT_FRAME_MS, NULL);
 }
@@ -851,23 +862,42 @@ static void refresh_visibility(void)
     lv_label_set_text(ui.apps_text, ui.menu_open ? BT(BT_CLOSE) : BT(BT_APPS));
     lv_obj_set_style_text_color(ui.apps_text, color(need_setup ? C_MUTED : C_ACCENT), 0);
     lv_obj_set_style_opa(ui.apps_button, need_setup ? LV_OPA_50 : LV_OPA_COVER, 0);
-    for (unsigned i = 0; i < sizeof(app_catalog) / sizeof(app_catalog[0]); ++i) {
-        if (!ui.menu_open) buddy_ui_motion_cancel(ui.app_rows[i]);
-        bool selected = app_catalog[i].id == ui.active_app;
-        lv_label_set_text(ui.app_current[i], selected ? BT(BT_CURRENT) : BT(BT_OPEN));
-        lv_obj_set_style_bg_opa(ui.app_rows[i], selected ? LV_OPA_COVER : LV_OPA_TRANSP, 0);
-    }
-    unsigned position = 1;
-    lv_obj_set_y(ui.app_rows[BUDDY_APP_HOME], BOARD_DISPLAY_WIDTH<800?88:80);
-    for (unsigned i = 0; i < BUDDY_APP_COUNT; ++i) {
-        if (i == BUDDY_APP_HOME) continue;
-        bool enabled = app_enabled((buddy_app_t)i); visible(ui.app_rows[i], enabled);
-        if (enabled) lv_obj_set_y(ui.app_rows[i], (BOARD_DISPLAY_WIDTH<800?88:80) + (int)position++ * (BOARD_DISPLAY_WIDTH<800?64:44));
-    }
+    if (!ui.menu_open) for (unsigned i = 0; i < BUDDY_APP_COUNT; ++i) buddy_ui_motion_cancel(ui.app_rows[i]);
+    chooser_layout();
     visible(ui.weather_row, view_settings.weather_enabled);
     visible(ui.weather_note, view_settings.weather_enabled);
     refresh_activity();
     refresh_display_power();
+}
+
+/* The Apps menu is a launcher grid: four tiles across on the wide screen, three on the others. */
+typedef struct { int columns, margin, gap, top, width, height, icon, pad; } chooser_grid_t;
+static chooser_grid_t chooser_grid(void)
+{
+    chooser_grid_t grid = BOARD_DISPLAY_WIDTH >= 800 ? (chooser_grid_t){ 4, 28, 16, 76, 0, 166, 48, 18 } :
+        BOARD_DISPLAY_HEIGHT < 400 ? (chooser_grid_t){ 3, 12, 6, 40, 0, 72, 32, 8 } : (chooser_grid_t){ 3, 12, 8, 52, 0, 120, 32, 10 };
+    grid.width = (BOARD_DISPLAY_WIDTH - 2 * grid.margin - (grid.columns - 1) * grid.gap) / grid.columns;
+    return grid;
+}
+
+/* Home leads, the enabled apps follow in their usual order; the open app wears an accent outline. */
+static void chooser_layout(void)
+{
+    static const buddy_app_t order[] = { BUDDY_APP_HOME, BUDDY_APP_MONITOR, BUDDY_APP_CLOCK, BUDDY_APP_MUSIC,
+        BUDDY_APP_TIMER, BUDDY_APP_CODEX, BUDDY_APP_WEATHER, BUDDY_APP_CLAUDE };
+    const chooser_grid_t grid = chooser_grid();
+    unsigned position = 0;
+    for (unsigned i = 0; i < sizeof(order) / sizeof(order[0]); ++i) {
+        lv_obj_t *tile = ui.app_rows[order[i]];
+        bool shown = order[i] == BUDDY_APP_HOME || app_enabled(order[i]), selected = order[i] == ui.active_app;
+        visible(tile, shown);
+        lv_obj_set_style_border_color(tile, color(selected ? C_ACCENT : C_RULE), 0);
+        lv_obj_set_style_border_width(tile, selected ? buddy_theme.border_w : buddy_theme.outlined_cards ? 1 : 0, 0);
+        if (!shown) continue;
+        lv_obj_set_pos(tile, grid.margin + (int)(position % grid.columns) * (grid.width + grid.gap),
+                       grid.top + (int)(position / grid.columns) * (grid.height + grid.gap));
+        ++position;
+    }
 }
 
 static void refresh_footer(void)
@@ -977,6 +1007,7 @@ static void animate_destination(void)
 
 static void begin_app_transition(void)
 {
+    if (!buddy_theme.app_flourish) { ui.transition_active = false; return; }
     if (ui.active_app == BUDDY_APP_HOME || ui.active_app == BUDDY_APP_WEATHER) { ui.transition_active = false; return; }
     if (ui.active_app == BUDDY_APP_MUSIC || ui.active_app == BUDDY_APP_TIMER || ui.active_app == BUDDY_APP_CODEX || ui.active_app == BUDDY_APP_CLAUDE) {
         ui.transition_active = false;
@@ -1208,7 +1239,7 @@ static void create_channel(channel_t *channel, const char *name, bool gpu)
     lv_obj_add_flag(channel->button, LV_OBJ_FLAG_CLICKABLE);
     lv_obj_set_style_bg_color(channel->button, color(C_PRESSED), LV_STATE_PRESSED);
     lv_obj_set_style_border_color(channel->button, color(C_ACCENT), 0);
-    lv_obj_set_style_border_width(channel->button, 2, 0);
+    lv_obj_set_style_border_width(channel->button, buddy_theme.border_w, 0);
     lv_obj_set_style_border_opa(channel->button, LV_OPA_TRANSP, 0);
     lv_obj_add_event_cb(channel->button, channel_clicked, LV_EVENT_CLICKED, gpu ? (void *)1 : NULL);
     channel->gauge = usage_gauge(channel->button);
@@ -1234,8 +1265,8 @@ static void channel_layout(channel_t *channel, int x, int y, int width, int heig
     int pad = (height - gauge) / 2, text_x = pad + gauge + 18, text_w = width - text_x - 14;
     lv_obj_set_pos(channel->gauge, pad, pad);
     lv_obj_set_size(channel->gauge, gauge, gauge);
-    lv_obj_set_style_arc_width(channel->gauge, gauge / 10, LV_PART_MAIN);
-    lv_obj_set_style_arc_width(channel->gauge, gauge / 10, LV_PART_INDICATOR);
+    lv_obj_set_style_arc_width(channel->gauge, gauge / buddy_theme.gauge_div, LV_PART_MAIN);
+    lv_obj_set_style_arc_width(channel->gauge, gauge / buddy_theme.gauge_div, LV_PART_INDICATOR);
     lv_obj_set_style_text_font(channel->usage, usage_font, 0);
     lv_obj_align(channel->usage, LV_ALIGN_CENTER, 0, -8);
     lv_obj_align(channel->usage_caption, LV_ALIGN_CENTER, 0, lv_font_get_line_height(usage_font) / 2 + 2);
@@ -1381,7 +1412,7 @@ static lv_obj_t *progress_bar(lv_obj_t *parent, int x, int y, int width)
     lv_obj_t *bar = lv_bar_create(parent);
     lv_obj_remove_style_all(bar);
     lv_obj_set_pos(bar, x, y);
-    lv_obj_set_size(bar, width, 4);
+    lv_obj_set_size(bar, width, buddy_theme.track_h);
     lv_bar_set_range(bar, 0, 1000);
     lv_obj_set_style_bg_color(bar, color(C_RULE), LV_PART_MAIN);
     lv_obj_set_style_bg_opa(bar, LV_OPA_COVER, LV_PART_MAIN);
@@ -1522,6 +1553,7 @@ static void refresh_music(void)
     if (accent != ui.music_accent) apply_music_accent(accent);
     /* Any Windows player can fill this page; only Spotify gets its logo. */
     bool spotify = strcmp(music->source, "Spotify") == 0;
+    buddy_app_icons_set_spotify(live && spotify);
     set_label_if_changed(ui.music_heading, live && music->source[0] ? music->source : BT(BT_MUSIC));
     if (BOARD_DISPLAY_WIDTH >= 800) {
         visible(ui.music_logo, live && spotify);
@@ -1732,6 +1764,12 @@ static lv_obj_t *surface_card(lv_obj_t *parent, int radius)
     lv_obj_set_style_bg_color(card, color(BUDDY_COLOR_SURFACE), 0);
     lv_obj_set_style_bg_opa(card, LV_OPA_COVER, 0);
     lv_obj_set_style_radius(card, radius, 0);
+    /* Outlined themes draw the same card as a hairline on the page. */
+    if (buddy_theme.outlined_cards) {
+        lv_obj_set_style_bg_opa(card, LV_OPA_TRANSP, 0);
+        lv_obj_set_style_border_width(card, 1, 0);
+        lv_obj_set_style_border_color(card, color(C_RULE), 0);
+    }
     return card;
 }
 
@@ -1741,7 +1779,7 @@ static void agent_card_layout(agent_view_t *view, unsigned i, int width, int hei
                               const lv_font_t *countdown_font, const lv_font_t *small_font)
 {
     lv_obj_set_size(view->cards[i], width, height);
-    int pad = (height - gauge) / 2, arc = gauge / 10;
+    int pad = (height - gauge) / 2, arc = gauge / buddy_theme.gauge_div;
     lv_obj_set_pos(view->gauges[i], pad, pad);
     lv_obj_set_size(view->gauges[i], gauge, gauge);
     lv_obj_set_style_arc_width(view->gauges[i], arc, LV_PART_MAIN);
@@ -2360,7 +2398,7 @@ static void create_music_page(void)
     for (unsigned i = 0; i < 2; ++i) {
         ui.music_rings[i] = box(ui.music_cover, 0, 0, 10, 10);
         lv_obj_set_style_radius(ui.music_rings[i], LV_RADIUS_CIRCLE, 0);
-        lv_obj_set_style_border_width(ui.music_rings[i], 2, 0);
+        lv_obj_set_style_border_width(ui.music_rings[i], buddy_theme.border_w, 0);
         lv_obj_set_style_border_opa(ui.music_rings[i], i ? LV_OPA_50 : LV_OPA_30, 0);
     }
     /* The inner ring doubles as a darker record label behind the crab. */
@@ -2425,10 +2463,11 @@ static void timer_ring_layout(int x, int y, int size, const lv_font_t *time_font
 {
     lv_obj_set_pos(ui.timer_ring, x, y);
     lv_obj_set_size(ui.timer_ring, size, size);
-    lv_obj_set_style_arc_width(ui.timer_ring, size / 20, LV_PART_MAIN);
-    lv_obj_set_style_arc_width(ui.timer_ring, size / 20, LV_PART_INDICATOR);
+    lv_obj_set_style_arc_width(ui.timer_ring, size / buddy_theme.ring_div, LV_PART_MAIN);
+    lv_obj_set_style_arc_width(ui.timer_ring, size / buddy_theme.ring_div, LV_PART_INDICATOR);
     lv_obj_set_style_text_font(ui.timer_time, time_font, 0);
     int time_h = lv_font_get_line_height(time_font);
+    mascot = mascot && buddy_theme_has_mascot();
     visible(ui.timer_mascot, mascot);
     lv_obj_align(ui.timer_mascot, LV_ALIGN_CENTER, 0, -time_h / 2 - 44);
     lv_obj_align(ui.timer_time, LV_ALIGN_CENTER, 0, mascot ? time_h / 2 : -10);
@@ -2598,26 +2637,31 @@ static void create_app_surfaces(void)
     ui.chooser = box(ui.screen, 0, 0, 800, 440);
     lv_obj_set_style_bg_color(ui.chooser, color(C_BG), 0);
     lv_obj_set_style_bg_opa(ui.chooser, LV_OPA_COVER, 0);
-    text(ui.chooser, BT(BT_APPS), 28, 18, 744, &buddy_language_font_32, C_TEXT);
-    text(ui.chooser, BT(BT_YOUR_APPS_TOGETHER_TAP_ONE_TO_OPEN), 28, 56, 744, &buddy_language_font_16, C_MUTED);
+    ui.chooser_title = text(ui.chooser, BT(BT_APPS), 28, 20, 744, &buddy_language_font_32, C_TEXT);
+    /* Each tile: the app's icon, its name, then a line or two of what it shows now. The smallest
+     * screen keeps the icon and name, centred. */
+    const chooser_grid_t grid = chooser_grid();
+    const bool wide = BOARD_DISPLAY_WIDTH >= 800, tiny = BOARD_DISPLAY_HEIGHT < 400;
+    const int inner = grid.width - 2 * grid.pad, name_y = grid.pad + grid.icon + (wide ? 12 : 6);
     for (unsigned i = 0; i < sizeof(app_catalog) / sizeof(app_catalog[0]); ++i) {
-        unsigned position = i == BUDDY_APP_HOME ? 0 : i + 1;
-        lv_obj_t *row = box(ui.chooser, 28, 80 + (int)position * 44, 744, 42);
-        ui.app_rows[i] = row;
-        lv_obj_add_flag(row, LV_OBJ_FLAG_CLICKABLE);
-        lv_obj_set_style_bg_color(row, color(C_PRESSED), 0);
-        lv_obj_set_style_bg_color(row, color(C_RULE), LV_STATE_PRESSED);
-        lv_obj_set_style_bg_opa(row, LV_OPA_COVER, LV_STATE_PRESSED);
-        lv_obj_set_style_radius(row, 8, 0);
-        lv_obj_add_event_cb(row, app_clicked, LV_EVENT_CLICKED, (void *)(uintptr_t)app_catalog[i].id);
-        buddy_app_icon_create(row, (buddy_app_t)i, 12, 3, 36);
-        text(row, BT(app_catalog[i].title), 72, 4, 170, &buddy_language_font_20, C_TEXT);
-        ui.app_description[i] = text(row, BT(app_catalog[i].description), 250, 13, 350, &buddy_language_font_20, C_TEXT);
-        lv_obj_set_height(ui.app_description[i], 26);
-        ui.app_hint[i] = text(row, "", 72, 26, 170, &buddy_language_font_14, C_MUTED);
-        lv_obj_set_height(ui.app_hint[i], 16);
-        ui.app_current[i] = text(row, BT(BT_OPEN), 642, 17, 82, &buddy_language_font_14, C_ACCENT);
-        lv_obj_set_style_text_align(ui.app_current[i], LV_TEXT_ALIGN_RIGHT, 0);
+        lv_obj_t *tile = surface_card(ui.chooser, wide ? 14 : 12);
+        ui.app_rows[i] = tile;
+        lv_obj_set_size(tile, grid.width, grid.height);
+        /* A finger that slides off a tile is scrolling or changing its mind, not choosing it. */
+        lv_obj_add_flag(tile, LV_OBJ_FLAG_CLICKABLE);
+        lv_obj_clear_flag(tile, LV_OBJ_FLAG_PRESS_LOCK);
+        lv_obj_set_style_bg_color(tile, color(C_PRESSED), LV_STATE_PRESSED);
+        lv_obj_set_style_bg_opa(tile, LV_OPA_COVER, LV_STATE_PRESSED);
+        lv_obj_add_event_cb(tile, app_clicked, LV_EVENT_CLICKED, (void *)(uintptr_t)app_catalog[i].id);
+        buddy_app_icon_create(tile, (buddy_app_t)i, tiny ? (grid.width - grid.icon) / 2 : grid.pad, grid.pad, grid.icon);
+        ui.app_names[i] = text(tile, BT(app_catalog[i].title), tiny ? 4 : grid.pad, name_y, tiny ? grid.width - 8 : inner,
+                               wide ? &buddy_language_font_20 : tiny ? &buddy_language_font_14 : &buddy_language_font_16, C_TEXT);
+        if (tiny) lv_obj_set_style_text_align(ui.app_names[i], LV_TEXT_ALIGN_CENTER, 0);
+        ui.app_description[i] = text(tile, "", grid.pad, name_y + (wide ? 28 : 22), inner,
+                                     wide ? &buddy_language_font_16 : &buddy_language_font_14, C_MUTED);
+        lv_obj_set_style_text_line_space(ui.app_description[i], 2, 0);
+        lv_obj_set_height(ui.app_description[i], wide ? 46 : 40);
+        if (tiny) visible(ui.app_description[i], false);
     }
 
     /* Short reconnect flourish lives over the trace, away from readings and Apps. */
@@ -2632,9 +2676,41 @@ static void create_app_surfaces(void)
 
 #include "buddy_compact_layout.inc"
 
+/* Themes without a mascot hide each crab and let the neighbouring content take its place.
+ * Objects stay in their creation order, which the compact layout relies on. */
+static void theme_layout(void)
+{
+    lv_obj_t *numbers[] = { ui.clock_large, ui.timer_time, ui.cpu.usage, ui.gpu.usage,
+        ui.codex.remaining[0], ui.codex.remaining[1], ui.claude.remaining[0], ui.claude.remaining[1] };
+    for (unsigned i = 0; i < sizeof(numbers) / sizeof(numbers[0]); ++i) buddy_theme_numerals(numbers[i]);
+    if (buddy_theme_has_mascot()) return;
+    const bool compact = BOARD_DISPLAY_WIDTH < 800, tiny = BOARD_DISPLAY_HEIGHT < 400;
+    lv_obj_t *crabs[] = { ui.mascot, ui.clock_mascot, ui.timer_mascot, ui.codex.mascot, ui.claude.mascot, ui.transition_image };
+    for (unsigned i = 0; i < sizeof(crabs) / sizeof(crabs[0]); ++i) visible(crabs[i], false);
+    lv_obj_set_x(ui.monitor_title, compact ? 12 : 28);
+    lv_obj_set_x(ui.host, compact ? 12 : 29);
+    if (compact && !tiny) lv_obj_set_x(ui.status, 12);
+    if (!compact) {
+        agent_view_t *views[] = { &ui.codex, &ui.claude };
+        for (unsigned i = 0; i < 2; ++i) {
+            lv_obj_set_style_text_align(views[i]->status, LV_TEXT_ALIGN_LEFT, 0);
+            lv_obj_set_style_text_align(views[i]->age, LV_TEXT_ALIGN_LEFT, 0);
+            lv_obj_set_pos(views[i]->status, 604, 112);
+            lv_obj_set_pos(views[i]->age, 604, 164);
+        }
+    }
+    /* The record sleeve keeps its rings around a quiet note instead of the dancing crab. */
+    lv_img_set_src(ui.music_buddy, LV_SYMBOL_AUDIO);
+    lv_obj_set_style_text_font(ui.music_buddy, compact ? &buddy_language_font_32 : &buddy_language_font_48, 0);
+    lv_obj_set_style_text_color(ui.music_buddy, color(C_ACCENT), 0);
+    lv_obj_center(ui.music_buddy);
+}
+
 void buddy_ui_init(void)
 {
     if (ui.screen) return;
+    buddy_settings_t look = buddy_settings_get();
+    buddy_theme_select(look.theme, look.accent);
     ui.connection = BUDDY_WIFI_CONNECTING;
     ui.active_app = BUDDY_APP_HOME;
     ui.last_stats_tick = lv_tick_get();
@@ -2720,7 +2796,7 @@ void buddy_ui_init(void)
     lv_chart_set_div_line_count(ui.chart, 2, 0);
     lv_obj_set_style_line_color(ui.chart, color(C_RULE), LV_PART_MAIN);
     lv_obj_set_style_line_width(ui.chart, 1, LV_PART_MAIN);
-    lv_obj_set_style_line_width(ui.chart, 3, LV_PART_ITEMS);
+    lv_obj_set_style_line_width(ui.chart, buddy_theme.chart_w, LV_PART_ITEMS);
     lv_obj_set_style_size(ui.chart, 0, LV_PART_INDICATOR);
     lv_obj_clear_flag(ui.chart, LV_OBJ_FLAG_SCROLLABLE | LV_OBJ_FLAG_CLICKABLE);
     ui.cpu_series = lv_chart_add_series(ui.chart, color(C_ACCENT), LV_CHART_AXIS_PRIMARY_Y);
@@ -2771,7 +2847,7 @@ void buddy_ui_init(void)
     lv_obj_set_style_radius(ui.apps_button, 8, 0);
     lv_obj_add_event_cb(ui.apps_button, apps_clicked, LV_EVENT_CLICKED, NULL);
     for (unsigned i = 0; i < 4; ++i) {
-        lv_obj_t *cell = box(ui.apps_button, 12 + (i % 2) * 7, 15 + (i / 2) * 7, 4, 4);
+        lv_obj_t *cell = box(ui.apps_button, 12 + (i % 2) * 7, 19 + (i / 2) * 7, 4, 4);
         lv_obj_set_style_bg_color(cell, color(C_ACCENT), 0);
         lv_obj_set_style_bg_opa(cell, LV_OPA_COVER, 0);
     }
@@ -2793,6 +2869,7 @@ void buddy_ui_init(void)
     ui.nav_text = text(nav, BT(BT_DETAILS), 8, 13, 125, &buddy_language_font_16, C_ACCENT);
     lv_obj_set_style_text_align(ui.nav_text, LV_TEXT_ALIGN_RIGHT, 0);
     compact_layout();
+    theme_layout();
     select_channel(false);
     refresh_connection();
     ui.history_timer = lv_timer_create(history_tick, 1000, NULL);
@@ -3069,6 +3146,29 @@ void buddy_ui_apply_settings(const buddy_settings_t *settings)
     refresh_visibility(); refresh_connection(); refresh_music(); refresh_codex(); refresh_claude(); refresh_home(); refresh_footer();
 }
 
+bool buddy_ui_restart_safe(void)
+{
+    return ui.confirm_action == BUDDY_CONFIRM_NONE && ui.install_stage == BUDDY_INSTALL_NONE;
+}
+
+static void set_opacity(void *object, int32_t value) { lv_obj_set_style_opa(object, (lv_opa_t)value, 0); }
+
+void buddy_ui_begin_restart(void)
+{
+    lv_obj_t *shade = box(lv_layer_top(), 0, 0, BOARD_DISPLAY_WIDTH, BOARD_DISPLAY_HEIGHT);
+    lv_obj_add_flag(shade, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_set_style_bg_color(shade, color(C_BG), 0);
+    lv_obj_set_style_bg_opa(shade, LV_OPA_COVER, 0);
+    lv_obj_t *note = text(shade, BT(BT_APPLYING_YOUR_NEW_LOOK), 12, BOARD_DISPLAY_HEIGHT / 2 - 14, BOARD_DISPLAY_WIDTH - 24,
+                          BOARD_DISPLAY_HEIGHT < 400 ? &buddy_language_font_16 : &buddy_language_font_20, C_MUTED);
+    lv_obj_set_style_text_align(note, LV_TEXT_ALIGN_CENTER, 0);
+    lv_obj_set_style_opa(shade, LV_OPA_TRANSP, 0);
+    lv_anim_t fade; lv_anim_init(&fade); lv_anim_set_var(&fade, shade);
+    lv_anim_set_exec_cb(&fade, set_opacity); lv_anim_set_values(&fade, LV_OPA_TRANSP, LV_OPA_COVER);
+    lv_anim_set_time(&fade, BUDDY_UI_RESTART_FADE_MS); lv_anim_set_path_cb(&fade, lv_anim_path_ease_out);
+    lv_anim_start(&fade);
+}
+
 /* ---- Full-screen overlays: the approval prompt, the needs-you alert and the install screen ---- */
 
 /* Sizes for the three screen classes: 800 x 480, 480 x 480 and 320 x 240. The smallest
@@ -3080,14 +3180,17 @@ typedef struct {
 
 static prompt_metrics_t prompt_metrics(void)
 {
+    prompt_metrics_t m;
     if (BOARD_DISPLAY_WIDTH >= 800)
-        return (prompt_metrics_t){ 32, 136, 28, 64, 34, 220, &buddy_language_font_16, &buddy_language_font_32,
+        m = (prompt_metrics_t){ 32, 136, 28, 64, 34, 220, &buddy_language_font_16, &buddy_language_font_32,
             &buddy_language_font_20, &buddy_language_font_20, &buddy_language_font_20 };
-    if (BOARD_DISPLAY_HEIGHT >= 400)
-        return (prompt_metrics_t){ 24, 112, 20, 60, 30, 150, &buddy_language_font_16, &buddy_language_font_24,
+    else if (BOARD_DISPLAY_HEIGHT >= 400)
+        m = (prompt_metrics_t){ 24, 112, 20, 60, 30, 150, &buddy_language_font_16, &buddy_language_font_24,
             &buddy_language_font_16, &buddy_language_font_16, &buddy_language_font_20 };
-    return (prompt_metrics_t){ 12, 0, 10, 40, 22, 96, &buddy_language_font_14, &buddy_language_font_20,
+    else m = (prompt_metrics_t){ 12, 0, 10, 40, 22, 96, &buddy_language_font_14, &buddy_language_font_20,
         &buddy_language_font_14, &buddy_language_font_14, &buddy_language_font_16 };
+    if (!buddy_theme.prompt_tile) m.tile = 0;
+    return m;
 }
 
 #define PROMPT_LOGO 32
@@ -3132,7 +3235,7 @@ static void create_prompt(prompt_view_t *view, lv_event_cb_t clicked)
         view->tile = surface_card(view->page, 20);
         lv_obj_set_pos(view->tile, m.margin, m.margin);
         lv_obj_set_size(view->tile, m.tile, m.tile);
-        lv_obj_set_style_border_width(view->tile, 2, 0);
+        lv_obj_set_style_border_width(view->tile, buddy_theme.border_w, 0);
         lv_obj_set_style_border_color(view->tile, color(C_RULE), 0);
         view->mascot = lv_img_create(view->tile);
         lv_img_set_antialias(view->mascot, false);
@@ -3401,9 +3504,9 @@ static void create_install_page(void)
                               width / 2 - margin, small, C_MUTED);
     lv_obj_set_style_text_align(ui.install_version, LV_TEXT_ALIGN_RIGHT, 0);
     ui.install_title = text(ui.install_page, "", margin, title_y, width - margin * 2 - (compact ? 64 : 0), title_font, C_TEXT);
-    const int track_w = width - margin * 2 - (wide ? 96 : 0), track_h = compact ? 8 : 12;
+    const int track_w = width - margin * 2 - (wide ? 96 : 0), track_h = buddy_theme.track_h * (compact ? 2 : 3);
     const int track_x = (width - track_w) / 2, track_y = wide ? 250 : compact ? 112 : 244;
-    ui.install_crab = compact ? 48 : 96;
+    ui.install_crab = !buddy_theme_has_mascot() ? 0 : compact ? 48 : 96;
     ui.install_track = box(ui.install_page, track_x, track_y, track_w, track_h);
     lv_obj_set_style_bg_color(ui.install_track, color(C_RULE), 0);
     lv_obj_set_style_bg_opa(ui.install_track, LV_OPA_COVER, 0);
@@ -3411,20 +3514,25 @@ static void create_install_page(void)
     ui.install_fill = box(ui.install_track, 0, 0, 0, track_h);
     lv_obj_set_style_bg_opa(ui.install_fill, LV_OPA_COVER, 0);
     lv_obj_set_style_radius(ui.install_fill, LV_RADIUS_CIRCLE, 0);
-    ui.install_mascot = lv_img_create(ui.install_page);
-    lv_img_set_antialias(ui.install_mascot, false);
-    lv_obj_set_size(ui.install_mascot, ui.install_crab, ui.install_crab);
-    lv_obj_clear_flag(ui.install_mascot, LV_OBJ_FLAG_CLICKABLE);
-    lv_obj_set_y(ui.install_mascot, track_y - ui.install_crab + ui.install_crab / 16);
+    if (ui.install_crab) {
+        ui.install_mascot = lv_img_create(ui.install_page);
+        lv_img_set_antialias(ui.install_mascot, false);
+        lv_obj_set_size(ui.install_mascot, ui.install_crab, ui.install_crab);
+        lv_obj_clear_flag(ui.install_mascot, LV_OBJ_FLAG_CLICKABLE);
+        lv_obj_set_y(ui.install_mascot, track_y - ui.install_crab + ui.install_crab / 16);
+    }
     const lv_font_t *percent_font = compact ? &buddy_language_font_24 : &buddy_language_font_48;
     const int percent_y = track_y + track_h + (compact ? 6 : 18);
     ui.install_percent = text(ui.install_page, "", margin, percent_y, width - margin * 2, percent_font, C_TEXT);
+    buddy_theme_numerals(ui.install_percent);
     lv_obj_set_style_text_align(ui.install_percent, LV_TEXT_ALIGN_CENTER, 0);
     const lv_font_t *stage_font = compact ? &buddy_language_font_14 : &buddy_language_font_20;
     ui.install_stage_label = text(ui.install_page, "", margin, percent_y + lv_font_get_line_height(percent_font) + 2,
                                   width - margin * 2, stage_font, C_MUTED);
     lv_obj_set_style_text_align(ui.install_stage_label, LV_TEXT_ALIGN_CENTER, 0);
     lv_label_set_long_mode(ui.install_stage_label, LV_LABEL_LONG_WRAP);
+    /* Positions read back only after a layout pass; before it every label reports y = 0. */
+    lv_obj_update_layout(ui.install_page);
     ui.install_stage_y = lv_obj_get_y(ui.install_stage_label);
     /* The small screen wraps the note onto two lines right under the stage. */
     const int stage_bottom = percent_y + lv_font_get_line_height(percent_font) + 2 + lv_font_get_line_height(stage_font);
@@ -3456,7 +3564,7 @@ void buddy_ui_set_install(buddy_install_stage_t stage, uint32_t received, uint32
     const int track_w = lv_obj_get_width(ui.install_track);
     lv_obj_set_width(ui.install_fill, LV_MAX(lv_obj_get_height(ui.install_track), track_w * (int)percent / 100));
     lv_obj_set_style_bg_color(ui.install_fill, color(failed ? C_WARNING : C_ACCENT), 0);
-    lv_obj_set_x(ui.install_mascot, lv_obj_get_x(ui.install_track) + (track_w - ui.install_crab) * (int)percent / 100);
+    if (ui.install_mascot) lv_obj_set_x(ui.install_mascot, lv_obj_get_x(ui.install_track) + (track_w - ui.install_crab) * (int)percent / 100);
     char buffer[16];
     snprintf(buffer, sizeof(buffer), "%lu%%", (unsigned long)percent);
     set_label_if_changed(ui.install_percent, buffer);

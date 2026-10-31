@@ -20,9 +20,10 @@ document is also bundled in the companion's About page alongside full licenses.
   [Anthropic newsroom and media resources](https://www.anthropic.com/news).
   Copyright and trademark rights remain with Anthropic; the mark is outside
   ClawPal’s GPL grant. No affiliation or endorsement is claimed.
-- **Montserrat Medium:** copyright holders and Reserved Font Names are listed
-  in [the SIL Open Font License](LICENSES/Montserrat-OFL.txt). Generated bitmap
-  fonts derive from this font; original font source is included in assets/fonts.
+- **Montserrat Medium and Light:** copyright holders and Reserved Font Names are
+  listed in [the SIL Open Font License](LICENSES/Montserrat-OFL.txt). Generated
+  bitmap fonts derive from these fonts; original font sources are included in
+  assets/fonts.
 - **Weather and app symbols:** drawn in ClawPal source; the third-party logos
   above remain unchanged in color and proportions.
 

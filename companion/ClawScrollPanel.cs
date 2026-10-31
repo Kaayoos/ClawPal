@@ -78,7 +78,7 @@ internal sealed class ClawScrollPanel : Panel, IMessageFilter
     protected override void OnPaint(PaintEventArgs e)
     {
         base.OnPaint(e);if(MaximumOffset==0)return;e.Graphics.SmoothingMode=System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
-        ClawTheme.Fill(e.Graphics,dragging?ClawTheme.Orange:Color.FromArgb(106,94,84),Thumb,3);
+        ClawTheme.Fill(e.Graphics,dragging?ClawTheme.Accent:ClawTheme.Thumb,Thumb,3);
     }
     protected override void OnMouseDown(MouseEventArgs e)
     {

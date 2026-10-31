@@ -7,6 +7,7 @@
 #include <time.h>
 #include "buddy_language.h"
 #include "buddy_settings.h"
+#include "buddy_theme_data.h"
 #include "buddy_weather_parse.h"
 
 /* The parsers only need text lookups to exist; display text is not under test. */
@@ -23,20 +24,26 @@ static void check(bool value, const char *name)
 #include "test_telemetry.c"
 #include "test_auth.c"
 
-static bool settings(const char *city, const char *timezone, int schema, int apps, buddy_settings_t *out)
+/* `look` holds the schema 7 theme fields, or nothing for older payloads. */
+static bool settings_look(const char *city, const char *timezone, int schema, int apps, const char *look, buddy_settings_t *out)
 {
     char json[1024];
     snprintf(json, sizeof(json),
         "{\"schema\":%d,\"enabled_apps\":%d,\"home_order\":[0,4],\"use_24h\":true,\"weather_enabled\":true,"
         "\"city\":\"%s\",\"latitude\":52.2,\"longitude\":21.0,\"timezone\":\"%s\",\"language\":\"pl\","
         "\"weather_fahrenheit\":false,\"dim_behavior\":1,\"dim_after_seconds\":60,\"dim_brightness\":40,"
-        "\"night_enabled\":true,\"night_start\":1,\"night_end\":10,\"offline_app\":1}",
-        schema, apps, city, timezone);
+        "%s\"night_enabled\":true,\"night_start\":1,\"night_end\":10,\"offline_app\":1}",
+        schema, apps, city, timezone, look);
     cJSON *root = cJSON_Parse(json);
     buddy_settings_t value;
     bool valid = root && buddy_settings_parse(root, out ? out : &value);
     cJSON_Delete(root);
     return valid;
+}
+
+static bool settings(const char *city, const char *timezone, int schema, int apps, buddy_settings_t *out)
+{
+    return settings_look(city, timezone, schema, apps, schema >= 7 ? "\"theme\":\"crab\",\"accent\":\"champagne\"," : "", out);
 }
 
 static void settings_checks(void)
@@ -52,7 +59,22 @@ static void settings_checks(void)
     check(!settings("Warsaw", "UTC0;rm", 6, 255, NULL), "time zone outside the POSIX character set is rejected");
     check(!settings("", "UTC0", 6, 255, NULL), "empty city is rejected");
     check(!settings("Warsaw", "UTC0", 6, 255 & ~32, NULL), "Home app cannot be disabled");
-    check(!settings("Warsaw", "UTC0", 7, 255, NULL), "unknown settings schema is rejected");
+    check(!settings("Warsaw", "UTC0", 8, 255, NULL), "unknown settings schema is rejected");
+    check(settings("Warsaw", "UTC0", 6, 255, &parsed) && parsed.theme == BUDDY_THEME_CRAB && parsed.accent == BUDDY_ACCENT_CHAMPAGNE,
+          "schema 6 settings keep the crab theme");
+    check(settings_look("Warsaw", "UTC0", 7, 255, "\"theme\":\"studio\",\"accent\":\"sage\",", &parsed) &&
+          parsed.theme == BUDDY_THEME_STUDIO && parsed.accent == BUDDY_ACCENT_SAGE, "schema 7 settings carry the theme and accent");
+    check(!settings_look("Warsaw", "UTC0", 7, 255, "\"accent\":\"sage\",", NULL), "schema 7 requires a theme");
+    check(!settings_look("Warsaw", "UTC0", 7, 255, "\"theme\":\"studio\",", NULL), "schema 7 requires an accent");
+    check(!settings_look("Warsaw", "UTC0", 7, 255, "\"theme\":\"neon\",\"accent\":\"sage\",", NULL), "unknown themes are rejected");
+    check(!settings_look("Warsaw", "UTC0", 7, 255, "\"theme\":\"studio\",\"accent\":7,", NULL), "accents are named, not numbered");
+    settings_look("Warsaw", "UTC0", 7, 255, "\"theme\":\"studio\",\"accent\":\"ice\",", &parsed);
+    cJSON *saved = buddy_settings_json(&parsed); buddy_settings_t restored = {0};
+    check(saved && buddy_settings_parse(saved, &restored) && restored.theme == BUDDY_THEME_STUDIO && restored.accent == BUDDY_ACCENT_ICE,
+          "the saved look round-trips");
+    cJSON_Delete(saved);
+    check(settings_look("Warsaw", "UTC0", 7, 255, "\"theme\":\"studio\",\"accent\":\"teal\",", &parsed) && parsed.accent == BUDDY_ACCENT_TEAL,
+          "every accent in themes.json is accepted by name");
     check(settings("Warsaw", "UTC0", 2, 63, &parsed) && (parsed.enabled_apps & 64) && (parsed.enabled_apps & 128),
           "schema 2 settings gain the Weather and Claude apps");
     cJSON *root = cJSON_Parse("[1,2,3]");

@@ -8,6 +8,8 @@ const char *buddy_text(buddy_text_key_t key);
 #define BT(key) buddy_text(key)
 bool buddy_language_supported(const char *code);
 void buddy_language_set(const char *code);
+/* The Studio theme's calmer wording, falling back to the base text per key. */
+void buddy_language_set_studio(bool enabled);
 const char *buddy_language_code(void);
 const char *buddy_retranslate(const char *text);
 const char *buddy_retranslate_copy(const char *text);

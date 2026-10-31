@@ -51,6 +51,7 @@ static lv_obj_t *card(lv_obj_t *parent,int radius)
 {
     lv_obj_t *obj=box(parent,0,0,10,10);
     lv_obj_set_style_bg_color(obj,lv_color_hex(SURFACE),0);lv_obj_set_style_bg_opa(obj,LV_OPA_COVER,0);
+    if(buddy_theme.outlined_cards){lv_obj_set_style_bg_opa(obj,LV_OPA_TRANSP,0);lv_obj_set_style_border_width(obj,1,0);lv_obj_set_style_border_color(obj,lv_color_hex(RULE),0);}
     lv_obj_set_style_radius(obj,radius,0);return obj;
 }
 static void visible(lv_obj_t *obj,bool show)
@@ -86,6 +87,15 @@ static void draw_icon(lv_event_t *event)
     if(value<0)return;
     lv_area_t area;lv_obj_get_coords(icon,&area);
     buddy_weather_icon_draw(lv_event_get_draw_ctx(event),area.x1,area.y1,lv_obj_get_width(icon)>=78?3:2,(int)(value/2),value%2,SURFACE);
+}
+/* Without a mascot the current condition is the weather mark itself, drawn large. */
+static void draw_condition(lv_event_t *event)
+{
+    const buddy_weather_t *weather=&weather_ui.weather;
+    if(!weather->available)return;
+    lv_area_t area;lv_obj_get_coords(lv_event_get_target(event),&area);
+    int scale=SIZE>=192?7:3,inset=(SIZE-26*scale)/2;
+    buddy_weather_icon_draw(lv_event_get_draw_ctx(event),area.x1+inset,area.y1+inset,scale,weather->code,weather->is_day,BUDDY_COLOR_BG);
 }
 static void set_icon(lv_obj_t *icon,int code,bool is_day)
 {
@@ -198,7 +208,8 @@ lv_obj_t *buddy_weather_page_create(lv_obj_t *parent)
     weather_ui.range=label(weather_ui.now,"",0,134,500,&buddy_language_font_20,MUTED);
     weather_ui.crab=lv_img_create(weather_ui.now);lv_img_set_antialias(weather_ui.crab,false);lv_obj_clear_flag(weather_ui.crab,LV_OBJ_FLAG_CLICKABLE);
     lv_obj_set_pos(weather_ui.crab,744-SIZE-8,-6);
-    weather_ui.pixels=heap_caps_malloc(BYTES,MALLOC_CAP_SPIRAM|MALLOC_CAP_8BIT);
+    if(buddy_theme_has_mascot())weather_ui.pixels=heap_caps_malloc(BYTES,MALLOC_CAP_SPIRAM|MALLOC_CAP_8BIT);
+    else{lv_obj_set_size(weather_ui.crab,SIZE,SIZE);lv_obj_add_event_cb(weather_ui.crab,draw_condition,LV_EVENT_DRAW_MAIN,NULL);}
     weather_ui.frame=(lv_img_dsc_t){.header={.cf=LV_IMG_CF_INDEXED_4BIT,.w=SIZE,.h=SIZE},.data_size=BYTES,.data=weather_ui.pixels};
     const char *names[]={BT(BT_FEELS_LIKE),BT(BT_HUMIDITY),BT(BT_WIND),BT(BT_PRECIPITATION)};
     for(unsigned i=0;i<4;i++){
@@ -226,7 +237,7 @@ lv_obj_t *buddy_weather_page_create(lv_obj_t *parent)
     weather_ui.page_range=label(weather_ui.forecast,"",0,0,10,&buddy_language_font_14,MUTED);lv_obj_set_style_text_align(weather_ui.page_range,LV_TEXT_ALIGN_CENTER,0);
     weather_ui.empty=label(weather_ui.forecast,BT(BT_FORECAST_IS_LOADING),16,100,712,&buddy_language_font_20,MUTED);lv_obj_set_style_text_align(weather_ui.empty,LV_TEXT_ALIGN_CENTER,0);
     weather_ui.view=VIEW_NOW;weather_ui.state=BUDDY_MASCOT_WORKING;
-    compact_weather();layout();refresh();buddy_weather_page_tick();return page;
+    compact_weather();buddy_theme_numerals(weather_ui.temperature);layout();refresh();buddy_weather_page_tick();return page;
 }
 
 static void hour_label(char *value,size_t size,int64_t timestamp,bool use_24h)
@@ -318,6 +329,7 @@ static void refresh(void)
     const char *formats[]={NULL,"%.0f%%",BT(BT_0F_KM_H),BT(BT_1F_MM)};
     for(unsigned i=0;i<4;i++){if(weather->available&&isfinite(values[i])){if(i==0)buddy_weather_format_temperature(value,sizeof(value),values[i],settings.weather_fahrenheit);else snprintf(value,sizeof(value),formats[i],values[i]);}else snprintf(value,sizeof(value),"--");set_text(weather_ui.values[i],value);}
     if(weather_ui.view!=VIEW_NOW)refresh_forecast();
+    if(!buddy_theme_has_mascot())lv_obj_invalidate(weather_ui.crab);
 }
 void buddy_weather_page_update(const buddy_weather_t *weather)
 {
@@ -326,7 +338,7 @@ void buddy_weather_page_update(const buddy_weather_t *weather)
 }
 void buddy_weather_page_tick(void)
 {
-    if(!weather_ui.page)return;
+    if(!weather_ui.page||!buddy_theme_has_mascot())return;
     unsigned frame=(lv_tick_get()/BUDDY_MASCOT_FRAME_MS)%BUDDY_MASCOT_FRAME_COUNT;
     const lv_img_dsc_t *source=&buddy_mascot_frames[weather_ui.state][frame];
     if(!weather_ui.pixels){lv_img_set_src(weather_ui.crab,source);return;}

@@ -798,10 +798,14 @@ static esp_err_t settings_handler(httpd_req_t *request)
     const cJSON *schema = cJSON_GetObjectItemCaseSensitive(json,"schema");
     bool valid = cJSON_IsNumber(schema) && schema->valuedouble == BUDDY_SETTINGS_SCHEMA && buddy_settings_parse(json, &settings); cJSON_Delete(json);
     if (!valid) return httpd_resp_send_err(request, HTTPD_400_BAD_REQUEST, BT(BT_INVALID_DISPLAY_SETTINGS));
+    /* A new look is applied by the main loop's restart, a few seconds after this reply. */
+    bool restarting = buddy_settings_restart_needed(&settings);
     if (buddy_settings_save(&settings) != ESP_OK)
         return httpd_resp_send_err(request, HTTPD_500_INTERNAL_SERVER_ERROR, BT(BT_COULD_NOT_SAVE_SETTINGS));
+    char reply[64];
+    snprintf(reply, sizeof(reply), "{\"saved\":true,\"restarting\":%s,\"schema\":%d}", restarting ? "true" : "false", BUDDY_SETTINGS_SCHEMA);
     httpd_resp_set_type(request, "application/json");
-    return httpd_resp_sendstr(request, "{\"saved\":true,\"restarting\":false,\"schema\":6}");
+    return httpd_resp_sendstr(request, reply);
 }
 
 static bool release_version(const char *value)

@@ -7,6 +7,8 @@ namespace ClawPal.Companion;
 
 internal sealed class SettingsForm : ClawWindow
 {
+    /* Sidebar order; About opens from the version label instead of the list. */
+    private enum SettingsPage { Home, Appearance, Apps, Clock, Companion, Device, Updates, Screen, Language, About }
     private readonly Configuration config;
     private readonly Connection connection;
     private readonly DeviceSettingsClient wireless;
@@ -24,7 +26,7 @@ internal sealed class SettingsForm : ClawWindow
     private Label? updateStatus,releaseStatus,firmwareLabel;
     private ClawButton? installUpdate,prepareUpdate,checkUpdate;
     private Panel? activePage;
-    private int pageIndex;
+    private SettingsPage pageIndex;
     private HomePreview? homePreview;
     private HomeOrderList? orderList;
     private ChoiceBox? addChoice;
@@ -38,13 +40,14 @@ internal sealed class SettingsForm : ClawWindow
         var content=new Panel(){Dock=DockStyle.Fill};Controls.Add(content);Controls.Add(sidebar);
         var brand=ClawTheme.Label(L.Text("clawpal"),170,25,true,46);brand.Location=new(24,28);sidebar.Controls.Add(brand);
         link.Location=new(26,83);sidebar.Controls.Add(link);
-        var names=new[]{L.Text("your_home"),L.Text("apps"),L.Text("clock_weather"),L.Text("pc_companion"),L.Text("device"),L.Text("updates"),L.Text("screen"),L.Text("language")};
-        for(int i=0;i<names.Length;i++) {int index=i;var button=new ClawButton(){Text=names[i],Size=new(174,44),Location=new(18,146+i*44)};button.Click+=(_,_)=>ShowPage(index);navigation.Add(button);sidebar.Controls.Add(button);}
-        sidebar.Controls.Add(crab);sidebar.Resize+=(_,_)=>{int size=Math.Min(144,Math.Max(0,sidebar.Height-565)/48*48);crab.Visible=size>=48;if(size>=48)crab.SetBounds((sidebar.Width-size)/2,sidebar.Height-size-64,size,size);};
+        var names=new[]{L.Text("your_home"),L.Text("appearance"),L.Text("apps"),L.Text("clock_weather"),L.Text("pc_companion"),L.Text("device"),L.Text("updates"),L.Text("screen"),L.Text("language")};
+        for(int i=0;i<names.Length;i++) {var index=(SettingsPage)i;var button=new ClawButton(){Text=names[i],Size=new(174,44),Location=new(18,146+i*44)};button.Click+=(_,_)=>ShowPage(index);navigation.Add(button);sidebar.Controls.Add(button);}
+        sidebar.Controls.Add(crab);sidebar.Resize+=(_,_)=>PlaceCrab();
+        ClawTheme.Changed+=LookChanged;
         var version=ClawTheme.Label(L.Text("clawpal_94dbc7")+typeof(SettingsForm).Assembly.GetName().Version?.ToString(3),170,9,false,30);version.Location=new(25,sidebar.Height-48);version.Anchor=AnchorStyles.Left|AnchorStyles.Bottom;sidebar.Controls.Add(version);
         version.Cursor=Cursors.Hand;version.AccessibleName=L.Text("about_clawpal");
-        version.Click+=(_,_)=>ShowPage(8);version.TabStop=true;
-        version.KeyDown+=(_,e)=>{if(e.KeyCode is Keys.Enter or Keys.Space){ShowPage(8);e.Handled=true;}};
+        version.Click+=(_,_)=>ShowPage(SettingsPage.About);version.TabStop=true;
+        version.KeyDown+=(_,e)=>{if(e.KeyCode is Keys.Enter or Keys.Space){ShowPage(SettingsPage.About);e.Handled=true;}};
         var aboutHint=new ToolTip();aboutHint.SetToolTip(version,L.Text("about_clawpal"));Disposed+=(_,_)=>aboutHint.Dispose();
         var header=new Panel(){Dock=DockStyle.Top,Height=116,Padding=new Padding(30,27,28,0)};
         title.Dock=DockStyle.Top;subtitle.Dock=DockStyle.Fill;header.Controls.Add(subtitle);header.Controls.Add(title);
@@ -56,8 +59,15 @@ internal sealed class SettingsForm : ClawWindow
         refresh.Tick+=(_,_)=>RefreshState();refresh.Start();
         Shown+=async(_,_)=>{if(!preview){await LoadDisplay();await RefreshFirmware();}};
         FormClosing+=(_,e)=>{if(e.CloseReason==CloseReason.UserClosing && !preview){e.Cancel=true;Hide();}};
-        L.Changed+=LanguageChanged;ShowPage(0);RefreshState();
+        L.Changed+=LanguageChanged;ShowPage(SettingsPage.Home);RefreshState();
     }
+    /* The crab rests below the navigation when there is room and the look has one. */
+    private void PlaceCrab()
+    {
+        int size=Math.Min(144,Math.Max(0,sidebar.Height-609)/48*48);crab.Visible=size>=48&&ClawTheme.Mascot;
+        if(size>=48)crab.SetBounds((sidebar.Width-size)/2,sidebar.Height-size-64,size,size);
+    }
+    private void LookChanged(){if(IsDisposed)return;PlaceCrab();homePreview?.ApplyLook();Invalidate(true);}
     private void RefreshState()
     {
         bool online=preview||connection.IsConnected;
@@ -68,10 +78,10 @@ internal sealed class SettingsForm : ClawWindow
         if(installUpdate is not null){installUpdate.Visible=updates.Device?.OtaReady!=false;installUpdate.Enabled=!updates.Busy&&!updates.Checking&&updates.Device?.OtaReady==true&&!updates.CompanionRequired&&(updates.AvailableVersion is not null||updates.BundledNewer);installUpdate.Text=updates.AvailableVersion is { } v?L.Text("install_version", v):L.Text("install_bundled_update");}
         if(prepareUpdate is not null){prepareUpdate.Visible=updates.Device?.OtaReady==false;prepareUpdate.Enabled=!updates.Busy;}
         if(checkUpdate is not null)checkUpdate.Enabled=!updates.Busy&&!updates.Checking;
-        navigation[5].Text=updates.NotificationVersion is null?L.Text("updates"):L.Text("updates_1");
+        navigation[(int)SettingsPage.Updates].Text=updates.NotificationVersion is null?L.Text("updates"):L.Text("updates_1");
         if(updates.Busy)crab.State="working";
         pages.Enabled=!updates.Busy;
-        link.Text=updates.Busy?L.Text("updating_your_display"):config.Paused?L.Text("pc_monitoring_paused"):online?L.Text("connected_over_wi_fi"):L.Text("display_offline_settings_are_still_available");link.ForeColor=online?ClawTheme.Orange:ClawTheme.Muted;
+        link.Text=updates.Busy?L.Text("updating_your_display"):config.Paused?L.Text("pc_monitoring_paused"):online?L.Text("connected_over_wi_fi"):L.Text("display_offline_settings_are_still_available");link.ForeColor=online?ClawTheme.Accent:ClawTheme.Muted;
         save.Enabled=!saving&&!updates.Busy&&(deviceDirty||pcDirty);
         if(updates.Busy){status.Text=updates.Status;return;}
         if(!saving&&!deviceDirty&&!pcDirty)status.Text=preview?L.Text("preview_changes_shown_here_are_illustrative"):wireless.NeedsFirmwareUpdate?L.Text("open_updates_to_install_the_firmware_for_these_settings"):config.SettingsPending?wireless.Status:config.Paused?L.Text("pc_monitoring_is_paused_display_settings_can_still_sync"):online?L.Text("all_changes_saved_make_yourself_at_home"):L.Text("display_offline_saved_changes_will_sync_when_it_returns");
@@ -101,10 +111,14 @@ internal sealed class SettingsForm : ClawWindow
         var control=new ClawSwitch(){Text=text,Checked=value,Location=new(0,y),Width=panel.Width-12,Anchor=AnchorStyles.Left|AnchorStyles.Top|AnchorStyles.Right};
         control.CheckedChanged+=(_,_)=>change(control.Checked);panel.Controls.Add(control);return control;
     }
-    private void ShowPage(int index)
+    private void ShowPage(SettingsPage index)
     {
-        pageIndex=index;for(int i=0;i<navigation.Count;i++){navigation[i].Selected=i==index;navigation[i].Invalidate();}
-        if(index==0)HomePage();else if(index==1)AppsPage();else if(index==2)ClockPage();else if(index==3)CompanionPage();else if(index==4)DevicePage();else if(index==5)UpdatesPage();else if(index==6)ScreenPage();else if(index==7)LanguagePage();else AboutPage();
+        pageIndex=index;for(int i=0;i<navigation.Count;i++){navigation[i].Selected=i==(int)index;navigation[i].Invalidate();}
+        switch(index){
+            case SettingsPage.Home:HomePage();break;case SettingsPage.Appearance:AppearancePage();break;case SettingsPage.Apps:AppsPage();break;
+            case SettingsPage.Clock:ClockPage();break;case SettingsPage.Companion:CompanionPage();break;case SettingsPage.Device:DevicePage();break;
+            case SettingsPage.Updates:UpdatesPage();break;case SettingsPage.Screen:ScreenPage();break;case SettingsPage.Language:LanguagePage();break;default:AboutPage();break;
+        }
     }
 
     private void LanguageChanged(){if(IsDisposed)return;pcLanguage=L.Language;L.RefreshControls(this);ShowPage(pageIndex);RefreshState();}
@@ -137,6 +151,17 @@ internal sealed class SettingsForm : ClawWindow
         Picker(L.Text("pc_language"),0,pcLanguage,code=>{pcLanguage=code;Dirty(false);});
         Picker(L.Text("display_language"),133,draft.Language,code=>SetDraft(draft with{Language=code}));
         Put(p,L.Text("language_note"),0,272,p.Width,10,false,80);
+    }
+
+    /* The look applies to this app at once, so the choice can be judged before saving it to the display. */
+    private void AppearancePage()
+    {
+        title.Text=L.Text("appearance_title");subtitle.Text=L.Text("appearance_description");var p=Page(560);
+        var picker=new LookPicker(draft.Theme,draft.Accent){Location=new(0,0),Width=Math.Min(760,p.Width),Anchor=AnchorStyles.Left|AnchorStyles.Top};p.Controls.Add(picker);
+        var note=Put(p,L.Text("appearance_restart_note"),0,0,p.Width,9,false,48);
+        void Layout(){picker.Width=Math.Min(760,p.Width);note.SetBounds(0,picker.Bottom+10,picker.Width,48);p.Height=note.Bottom+20;}
+        picker.Changed+=(theme,accent)=>{SetDraft(draft with{Theme=theme,Accent=accent});ClawTheme.Use(theme,accent);};
+        picker.Resize+=(_,_)=>Layout();p.Resize+=(_,_)=>Layout();Layout();
     }
 
     private void HomePage()
@@ -366,7 +391,7 @@ internal sealed class SettingsForm : ClawWindow
         try {
             using var timeout=new CancellationTokenSource(TimeSpan.FromSeconds(12));var snapshot=await wireless.ReadAsync(timeout.Token);
             if(IsDisposed)return;
-            if(!deviceDirty&&!config.SettingsPending){draft=snapshot.Settings;config.RememberDisplaySettings(draft);ShowPage(pageIndex);}
+            if(!deviceDirty&&!config.SettingsPending){draft=snapshot.Settings;config.RememberDisplaySettings(draft);ClawTheme.Use(draft.Theme,draft.Accent);ShowPage(pageIndex);}
         }catch(NotSupportedException e){if(!IsDisposed){status.Text=e.Message;crab.State="error";}}
         catch(Exception){if(!IsDisposed)status.Text=L.Text("display_offline_you_can_save_changes_here_and_sync");}
     }
@@ -383,23 +408,23 @@ internal sealed class SettingsForm : ClawWindow
         }catch(Exception e){status.Text=config.SettingsPending?L.Text("saved_on_this_pc")+DeviceSettingsClient.FailureMessage(e):e.Message;crab.State=e is ArgumentException?"error":"idle";}
         finally{saving=false;save.Enabled=deviceDirty||pcDirty;}
     }
-    internal void ShowUpdates(){ShowPage(5);Show();Activate();}
+    internal void ShowUpdates(){ShowPage(SettingsPage.Updates);Show();Activate();}
     internal void ReportProblem(string message){status.Text=message;crab.State="error";Show();Activate();}
     internal void RenderPreviews(string directory)
     {
         Directory.CreateDirectory(directory);Show();Application.DoEvents();
-        for(int i=0;i<9;i++){ShowPage(i);Application.DoEvents();using var bitmap=new Bitmap(Width,Height);DrawToBitmap(bitmap,new Rectangle(Point.Empty,Size));bitmap.Save(Path.Combine(directory,$"settings-{i}.png"),ImageFormat.Png);}
+        for(int i=0;i<=(int)SettingsPage.About;i++){ShowPage((SettingsPage)i);Application.DoEvents();using var bitmap=new Bitmap(Width,Height);DrawToBitmap(bitmap,new Rectangle(Point.Empty,Size));bitmap.Save(Path.Combine(directory,$"settings-{i}.png"),ImageFormat.Png);}
         void Capture(string name){Application.DoEvents();using var bitmap=new Bitmap(Width,Height);DrawToBitmap(bitmap,new Rectangle(Point.Empty,Size));bitmap.Save(Path.Combine(directory,name+".png"),ImageFormat.Png);}
-        foreach(var size in new[]{new Size(960,680),new Size(1600,900)}){ClientSize=size;ShowPage(0);Capture($"home-{size.Width}");}
-        WindowState=FormWindowState.Maximized;ShowPage(0);Capture("home-maximized");WindowState=FormWindowState.Normal;ClientSize=new(1120,790);
-        foreach(var size in new[]{new Size(960,680),new Size(1120,790)}){ClientSize=size;ShowPage(3);Application.DoEvents();pages.ScrollTo(pages.MaximumOffset);Capture($"claude-{size.Width}");}
-        ShowPage(6);pages.ScrollTo(pages.MaximumOffset);Capture("screen-bottom");
-        ShowPage(2);pages.ScrollTo(pages.MaximumOffset);Capture("weather-units");
-        ShowPage(2);Application.DoEvents();var choices=activePage!.Controls.OfType<ChoiceBox>().Last();choices.PerformClick();Application.DoEvents();
+        foreach(var size in new[]{new Size(960,680),new Size(1600,900)}){ClientSize=size;ShowPage(SettingsPage.Home);Capture($"home-{size.Width}");}
+        WindowState=FormWindowState.Maximized;ShowPage(SettingsPage.Home);Capture("home-maximized");WindowState=FormWindowState.Normal;ClientSize=new(1120,790);
+        foreach(var size in new[]{new Size(960,680),new Size(1120,790)}){ClientSize=size;ShowPage(SettingsPage.Companion);Application.DoEvents();pages.ScrollTo(pages.MaximumOffset);Capture($"claude-{size.Width}");}
+        ShowPage(SettingsPage.Screen);pages.ScrollTo(pages.MaximumOffset);Capture("screen-bottom");
+        ShowPage(SettingsPage.Clock);pages.ScrollTo(pages.MaximumOffset);Capture("weather-units");
+        ShowPage(SettingsPage.Clock);Application.DoEvents();var choices=activePage!.Controls.OfType<ChoiceBox>().Last();choices.PerformClick();Application.DoEvents();
         using(var bitmap=new Bitmap(choices.SelectionMenu.Width,choices.SelectionMenu.Height)){choices.SelectionMenu.DrawToBitmap(bitmap,new Rectangle(Point.Empty,bitmap.Size));bitmap.Save(Path.Combine(directory,"choice-popup.png"),ImageFormat.Png);}choices.SelectionMenu.Close();
         Close();
     }
-    protected override void Dispose(bool disposing){if(disposing){L.Changed-=LanguageChanged;refresh.Dispose();}base.Dispose(disposing);}
+    protected override void Dispose(bool disposing){if(disposing){L.Changed-=LanguageChanged;ClawTheme.Changed-=LookChanged;refresh.Dispose();}base.Dispose(disposing);}
     private sealed class AppIcon(int id):Control {protected override void OnPaint(PaintEventArgs e){base.OnPaint(e);e.Graphics.SmoothingMode=System.Drawing.Drawing2D.SmoothingMode.AntiAlias;AppArtwork.Draw(e.Graphics,id,ClientRectangle);}}
 }
 

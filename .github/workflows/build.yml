@@ -27,6 +27,7 @@ jobs:
           git config --global --add safe.directory "$GITHUB_WORKSPACE"
           python scripts/check-publication.py
           python scripts/generate_languages.py --check
+          python scripts/generate_themes.py --check
           python scripts/generate_timezones.py --check
           # Parser checks use ESP-IDF's own cJSON; zig supplies a compiler if the image has none.
           command -v gcc >/dev/null || command -v cc >/dev/null || python -m pip install --require-hashes -r tests/simulator/requirements.txt

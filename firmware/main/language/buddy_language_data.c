@@ -25,6 +25,7 @@ static const char text_0_account_usage[] = "Account usage";
 static const char text_0_activity_time_unknown[] = "Activity time unknown";
 static const char text_0_activity_unavailable[] = "Activity unavailable";
 static const char text_0_am[] = "AM";
+static const char text_0_applying_your_new_look[] = "Applying your new look…";
 static const char text_0_apps[] = "Apps";
 static const char text_0_asked_label[] = "Asked";
 static const char text_0_authenticated_websocket_upgrade_required[] = "Authenticated WebSocket upgrade required";
@@ -89,6 +90,7 @@ static const char text_0_couldn_t_control_spotify_try_again[] = "Couldn't contro
 static const char text_0_couldn_t_send_try_again[] = "Couldn't send. Try again.";
 static const char text_0_cpu[] = "CPU";
 static const char text_0_cpu_0f_gpu_0f[] = "CPU %.0f%% / GPU %.0f%%";
+static const char text_0_cpu_0f_gpu_0f_lines[] = "CPU %.0f%%\nGPU %.0f%%";
 static const char text_0_cpu_load_60_seconds[] = "CPU load  /  60 seconds";
 static const char text_0_crabby_business[] = "Crabby business";
 static const char text_0_created_by_minimalpulse[] = "Created by MinimalPulse";
@@ -97,6 +99,7 @@ static const char text_0_currently_unavailable_vibing[] = "currently unavailable
 static const char text_0_daily_limit[] = "Daily limit";
 static const char text_0_date_format[] = "%s, %02d %s";
 static const char text_0_day[] = "Day";
+static const char text_0_day_month[] = "%d %s";
 static const char text_0_details[] = "Details";
 static const char text_0_display_busy[] = "Display busy";
 static const char text_0_do_not_disturb_the_groove[] = "do not disturb the groove";
@@ -197,8 +200,20 @@ static const char text_0_month_6[] = "Jul";
 static const char text_0_month_7[] = "Aug";
 static const char text_0_month_8[] = "Sep";
 static const char text_0_month_9[] = "Oct";
+static const char text_0_month_long_0[] = "January";
+static const char text_0_month_long_1[] = "February";
+static const char text_0_month_long_10[] = "November";
+static const char text_0_month_long_11[] = "December";
+static const char text_0_month_long_2[] = "March";
+static const char text_0_month_long_3[] = "April";
+static const char text_0_month_long_4[] = "May";
+static const char text_0_month_long_5[] = "June";
+static const char text_0_month_long_6[] = "July";
+static const char text_0_month_long_7[] = "August";
+static const char text_0_month_long_8[] = "September";
+static const char text_0_month_long_9[] = "October";
 static const char text_0_mostly_clear[] = "Mostly clear";
-static const char text_0_music[] = "Music";
+static const char text_0_music[] = "Media";
 static const char text_0_network[] = "Network";
 static const char text_0_network_label[] = "Network";
 static const char text_0_network_name[] = "Network name";
@@ -229,7 +244,7 @@ static const char text_0_open_claude_or_chatgpt_on_your_pc_your_available[] = "O
 static const char text_0_open_codex_on_your_pc[] = "Open Codex on your PC";
 static const char text_0_open_codex_or_chatgpt_on_your_pc_your_available[] = "Open Codex or ChatGPT on your PC.\nYour available account limits will appear here.";
 static const char text_0_open_settings[] = "Open settings";
-static const char text_0_open_spotify_on_your_pc[] = "Play music on your PC";
+static const char text_0_open_spotify_on_your_pc[] = "Play something on your PC";
 static const char text_0_outside_at_a_glance[] = "Outside, at a glance";
 static const char text_0_overview[] = "Overview";
 static const char text_0_paired_pc[] = "Paired PC";
@@ -315,12 +330,12 @@ static const char text_0_snow[] = "Snow";
 static const char text_0_snow_showers[] = "Snow showers";
 static const char text_0_spotify[] = "Spotify";
 static const char text_0_spotify_isn_t_ready_start_playback_on_your_pc[] = "The player isn't ready. Start playback on your PC.";
-static const char text_0_spotify_on_your_pc[] = "Music on your PC";
-static const char text_0_spotify_playback[] = "Music playback";
+static const char text_0_spotify_on_your_pc[] = "Media on your PC";
+static const char text_0_spotify_playback[] = "Media playback";
 static const char text_0_standing_by_professionally[] = "standing by, professionally";
 static const char text_0_start[] = "Start";
 static const char text_0_start_a_song_on_your_pc[] = "Start a song on your PC";
-static const char text_0_start_a_track_in_spotify[] = "Start a track on your PC.";
+static const char text_0_start_a_track_in_spotify[] = "Start playback on your PC.";
 static const char text_0_start_again[] = "Start again";
 static const char text_0_starting_wi_fi[] = "Starting Wi-Fi";
 static const char text_0_sunny[] = "Sunny";
@@ -352,7 +367,7 @@ static const char text_0_unavailable[] = "Unavailable";
 static const char text_0_unavailable_for_crab_reasons[] = "unavailable for crab reasons";
 static const char text_0_unknown[] = "Unknown";
 static const char text_0_untitled_task[] = "Untitled task";
-static const char text_0_untitled_track[] = "Untitled track";
+static const char text_0_untitled_track[] = "Untitled";
 static const char text_0_up[] = "Up";
 static const char text_0_update_failed_current_kept[] = "The update didn't finish. The current version is still installed.";
 static const char text_0_update_or_install_claude_on_your_pc_buddy_needs[] = "Update or install Claude Code on your PC.\nBuddy needs its local account connection.";
@@ -371,7 +386,7 @@ static const char text_0_waiting_for_pc[] = "Waiting for PC";
 static const char text_0_waiting_for_playback[] = "Waiting for playback";
 static const char text_0_waiting_for_readings[] = "Waiting for readings";
 static const char text_0_waiting_for_sensors[] = "Waiting for sensors";
-static const char text_0_waiting_for_spotify[] = "Waiting for music";
+static const char text_0_waiting_for_spotify[] = "Waiting for media";
 static const char text_0_waiting_for_task_activity[] = "Waiting for task activity";
 static const char text_0_waiting_for_the_first_sensor_reading[] = "Waiting for the first sensor reading.";
 static const char text_0_waiting_for_time[] = "Waiting for time";
@@ -407,7 +422,7 @@ static const char text_0_your_apps_and_your_crab[] = "Your apps and your crab";
 static const char text_0_your_apps_together_tap_one_to_open[] = "Your apps, together. Tap one to open.";
 static const char text_0_your_buddy_at_a_glance[] = "Your Buddy, at a glance";
 static const char text_0_your_little_desk_companion[] = "Your little desk companion";
-static const char text_0_your_music_will_appear_here_automatically[] = "Your music will appear here automatically.";
+static const char text_0_your_music_will_appear_here_automatically[] = "What's playing will appear here automatically.";
 static const char text_0_your_pc[] = "Your PC";
 static const char text_0_your_pc_apps_return_when_it_reconnects[] = "Your PC apps return when it reconnects";
 static const char text_0_your_pc_is_locked_or_asleep[] = "Your PC is locked or asleep";
@@ -435,6 +450,7 @@ static const char text_1_account_usage[] = "Wykorzystanie konta";
 static const char text_1_activity_time_unknown[] = "Czas aktywności nieznany";
 static const char text_1_activity_unavailable[] = "Aktywność niedostępna";
 static const char text_1_am[] = "AM";
+static const char text_1_applying_your_new_look[] = "Wprowadzam nowy wygląd…";
 static const char text_1_apps[] = "Apki";
 static const char text_1_asked_label[] = "Zapytano";
 static const char text_1_authenticated_websocket_upgrade_required[] = "Wymagane uwierzytelnione połączenie WebSocket";
@@ -499,6 +515,7 @@ static const char text_1_couldn_t_control_spotify_try_again[] = "Nie udało się
 static const char text_1_couldn_t_send_try_again[] = "Nie wysłano. Spróbuj ponownie.";
 static const char text_1_cpu[] = "CPU";
 static const char text_1_cpu_0f_gpu_0f[] = "CPU %.0f%% / GPU %.0f%%";
+static const char text_1_cpu_0f_gpu_0f_lines[] = "CPU %.0f%%\nGPU %.0f%%";
 static const char text_1_cpu_load_60_seconds[] = "Obciążenie CPU  /  60 sekund";
 static const char text_1_crabby_business[] = "krabie interesy";
 static const char text_1_created_by_minimalpulse[] = "Stworzone przez MinimalPulse";
@@ -507,6 +524,7 @@ static const char text_1_currently_unavailable_vibing[] = "chwilowo zajęty buja
 static const char text_1_daily_limit[] = "Limit dzienny";
 static const char text_1_date_format[] = "%s, %02d %s";
 static const char text_1_day[] = "Dzień";
+static const char text_1_day_month[] = "%d %s";
 static const char text_1_details[] = "Szczegóły";
 static const char text_1_display_busy[] = "Ekran zajęty";
 static const char text_1_do_not_disturb_the_groove[] = "nie przeszkadzać w bujaniu";
@@ -607,8 +625,20 @@ static const char text_1_month_6[] = "lip";
 static const char text_1_month_7[] = "sie";
 static const char text_1_month_8[] = "wrz";
 static const char text_1_month_9[] = "paź";
+static const char text_1_month_long_0[] = "stycznia";
+static const char text_1_month_long_1[] = "lutego";
+static const char text_1_month_long_10[] = "listopada";
+static const char text_1_month_long_11[] = "grudnia";
+static const char text_1_month_long_2[] = "marca";
+static const char text_1_month_long_3[] = "kwietnia";
+static const char text_1_month_long_4[] = "maja";
+static const char text_1_month_long_5[] = "czerwca";
+static const char text_1_month_long_6[] = "lipca";
+static const char text_1_month_long_7[] = "sierpnia";
+static const char text_1_month_long_8[] = "września";
+static const char text_1_month_long_9[] = "października";
 static const char text_1_mostly_clear[] = "Dość pogodnie";
-static const char text_1_music[] = "Muzyka";
+static const char text_1_music[] = "Multimedia";
 static const char text_1_network[] = "Sieć";
 static const char text_1_network_label[] = "Sieć";
 static const char text_1_network_name[] = "Nazwa sieci";
@@ -639,7 +669,7 @@ static const char text_1_open_claude_or_chatgpt_on_your_pc_your_available[] = "O
 static const char text_1_open_codex_on_your_pc[] = "Otwórz Codex na PC";
 static const char text_1_open_codex_or_chatgpt_on_your_pc_your_available[] = "Otwórz Codex lub ChatGPT na PC.\nDostępne limity konta pojawią się tutaj.";
 static const char text_1_open_settings[] = "Otwórz ustawienia";
-static const char text_1_open_spotify_on_your_pc[] = "Włącz muzykę na PC";
+static const char text_1_open_spotify_on_your_pc[] = "Włącz coś na PC";
 static const char text_1_outside_at_a_glance[] = "Co słychać za oknem";
 static const char text_1_overview[] = "Podgląd";
 static const char text_1_paired_pc[] = "Sparowany PC";
@@ -649,14 +679,14 @@ static const char text_1_pause[] = "Pauza";
 static const char text_1_paused[] = "Wstrzymano";
 static const char text_1_paused_on_your_pc[] = "Pauza na Twoim PC";
 static const char text_1_pc_away[] = "PC nieaktywny";
-static const char text_1_pc_disconnected_reconnect_to_control_spotify[] = "PC rozłączony. Połącz go, aby sterować muzyką.";
+static const char text_1_pc_disconnected_reconnect_to_control_spotify[] = "PC rozłączony. Połącz go, aby sterować odtwarzaniem.";
 static const char text_1_pc_monitor[] = "Monitor PC";
 static const char text_1_pc_offline[] = "PC offline";
 static const char text_1_pc_reconnecting[] = "Ponowne łączenie z PC...";
 static const char text_1_pc_uptime[] = "Czas pracy PC";
 static const char text_1_play[] = "Odtwórz";
 static const char text_1_playback_follows_spotify_on_your_pc[] = "Sterowanie odtwarzaczem na Twoim PC";
-static const char text_1_playback_returns_when_your_pc_reconnects[] = "Muzyka wróci, gdy PC się połączy.";
+static const char text_1_playback_returns_when_your_pc_reconnects[] = "Odtwarzanie wróci, gdy PC się połączy.";
 static const char text_1_playing[] = "Odtwarzanie";
 static const char text_1_playing_on_your_pc[] = "Gra na Twoim PC";
 static const char text_1_pm[] = "PM";
@@ -724,13 +754,13 @@ static const char text_1_snapshot_unavailable[] = "Zrzut niedostępny";
 static const char text_1_snow[] = "Śnieg";
 static const char text_1_snow_showers[] = "Przelotny śnieg";
 static const char text_1_spotify[] = "Spotify";
-static const char text_1_spotify_isn_t_ready_start_playback_on_your_pc[] = "Odtwarzacz nie jest gotowy. Włącz muzykę na PC.";
-static const char text_1_spotify_on_your_pc[] = "Muzyka na Twoim PC";
-static const char text_1_spotify_playback[] = "Odtwarzanie muzyki";
+static const char text_1_spotify_isn_t_ready_start_playback_on_your_pc[] = "Odtwarzacz nie jest gotowy. Włącz odtwarzanie na PC.";
+static const char text_1_spotify_on_your_pc[] = "Multimedia na Twoim PC";
+static const char text_1_spotify_playback[] = "Odtwarzanie multimediów";
 static const char text_1_standing_by_professionally[] = "profesjonalnie czekam";
 static const char text_1_start[] = "Start";
 static const char text_1_start_a_song_on_your_pc[] = "Włącz utwór na PC";
-static const char text_1_start_a_track_in_spotify[] = "Włącz utwór na PC.";
+static const char text_1_start_a_track_in_spotify[] = "Włącz odtwarzanie na PC.";
 static const char text_1_start_again[] = "Jeszcze raz";
 static const char text_1_starting_wi_fi[] = "Uruchamiam Wi-Fi";
 static const char text_1_sunny[] = "Słonecznie";
@@ -762,7 +792,7 @@ static const char text_1_unavailable[] = "Niedostępne";
 static const char text_1_unavailable_for_crab_reasons[] = "nieczynne z krabich powodów";
 static const char text_1_unknown[] = "Nieznane";
 static const char text_1_untitled_task[] = "Zadanie bez tytułu";
-static const char text_1_untitled_track[] = "Utwór bez tytułu";
+static const char text_1_untitled_track[] = "Bez tytułu";
 static const char text_1_up[] = "Wysyłanie";
 static const char text_1_update_failed_current_kept[] = "Aktualizacja się nie powiodła. Obecna wersja pozostaje zainstalowana.";
 static const char text_1_update_or_install_claude_on_your_pc_buddy_needs[] = "Zainstaluj lub zaktualizuj Claude Code na PC.\nBuddy potrzebuje lokalnego dostępu do konta.";
@@ -778,10 +808,10 @@ static const char text_1_use_this_device_s_setup_page[] = "Użyj strony konfigur
 static const char text_1_waiting[] = "Czekam";
 static const char text_1_waiting_for_limits[] = "Czekam na limity";
 static const char text_1_waiting_for_pc[] = "Czekam na PC";
-static const char text_1_waiting_for_playback[] = "Czekam na muzykę";
+static const char text_1_waiting_for_playback[] = "Czekam na odtwarzanie";
 static const char text_1_waiting_for_readings[] = "Czekam na odczyty";
 static const char text_1_waiting_for_sensors[] = "Czekam na czujniki";
-static const char text_1_waiting_for_spotify[] = "Czekam na muzykę";
+static const char text_1_waiting_for_spotify[] = "Czekam na multimedia";
 static const char text_1_waiting_for_task_activity[] = "Czekam na aktywność zadań";
 static const char text_1_waiting_for_the_first_sensor_reading[] = "Czekam na pierwszy odczyt czujników.";
 static const char text_1_waiting_for_time[] = "Czekam na czas";
@@ -817,7 +847,7 @@ static const char text_1_your_apps_and_your_crab[] = "Twoje apki i Twój krab";
 static const char text_1_your_apps_together_tap_one_to_open[] = "Twoje apki. Dotknij, aby otworzyć.";
 static const char text_1_your_buddy_at_a_glance[] = "Twój Buddy w skrócie";
 static const char text_1_your_little_desk_companion[] = "Twój mały towarzysz na biurku";
-static const char text_1_your_music_will_appear_here_automatically[] = "Twoja muzyka pojawi się tu automatycznie.";
+static const char text_1_your_music_will_appear_here_automatically[] = "To, co gra, pojawi się tu automatycznie.";
 static const char text_1_your_pc[] = "Twój PC";
 static const char text_1_your_pc_apps_return_when_it_reconnects[] = "Apki PC wrócą po ponownym połączeniu";
 static const char text_1_your_pc_is_locked_or_asleep[] = "PC jest zablokowany lub uśpiony";
@@ -847,6 +877,7 @@ const char *const buddy_language_texts[][BT_COUNT] = {
         text_0_activity_time_unknown,
         text_0_activity_unavailable,
         text_0_am,
+        text_0_applying_your_new_look,
         text_0_apps,
         text_0_asked_label,
         text_0_authenticated_websocket_upgrade_required,
@@ -911,6 +942,7 @@ const char *const buddy_language_texts[][BT_COUNT] = {
         text_0_couldn_t_send_try_again,
         text_0_cpu,
         text_0_cpu_0f_gpu_0f,
+        text_0_cpu_0f_gpu_0f_lines,
         text_0_cpu_load_60_seconds,
         text_0_crabby_business,
         text_0_created_by_minimalpulse,
@@ -919,6 +951,7 @@ const char *const buddy_language_texts[][BT_COUNT] = {
         text_0_daily_limit,
         text_0_date_format,
         text_0_day,
+        text_0_day_month,
         text_0_details,
         text_0_display_busy,
         text_0_do_not_disturb_the_groove,
@@ -1019,6 +1052,18 @@ const char *const buddy_language_texts[][BT_COUNT] = {
         text_0_month_7,
         text_0_month_8,
         text_0_month_9,
+        text_0_month_long_0,
+        text_0_month_long_1,
+        text_0_month_long_10,
+        text_0_month_long_11,
+        text_0_month_long_2,
+        text_0_month_long_3,
+        text_0_month_long_4,
+        text_0_month_long_5,
+        text_0_month_long_6,
+        text_0_month_long_7,
+        text_0_month_long_8,
+        text_0_month_long_9,
         text_0_mostly_clear,
         text_0_music,
         text_0_network,
@@ -1259,6 +1304,7 @@ const char *const buddy_language_texts[][BT_COUNT] = {
         text_1_activity_time_unknown,
         text_1_activity_unavailable,
         text_1_am,
+        text_1_applying_your_new_look,
         text_1_apps,
         text_1_asked_label,
         text_1_authenticated_websocket_upgrade_required,
@@ -1323,6 +1369,7 @@ const char *const buddy_language_texts[][BT_COUNT] = {
         text_1_couldn_t_send_try_again,
         text_1_cpu,
         text_1_cpu_0f_gpu_0f,
+        text_1_cpu_0f_gpu_0f_lines,
         text_1_cpu_load_60_seconds,
         text_1_crabby_business,
         text_1_created_by_minimalpulse,
@@ -1331,6 +1378,7 @@ const char *const buddy_language_texts[][BT_COUNT] = {
         text_1_daily_limit,
         text_1_date_format,
         text_1_day,
+        text_1_day_month,
         text_1_details,
         text_1_display_busy,
         text_1_do_not_disturb_the_groove,
@@ -1431,6 +1479,18 @@ const char *const buddy_language_texts[][BT_COUNT] = {
         text_1_month_7,
         text_1_month_8,
         text_1_month_9,
+        text_1_month_long_0,
+        text_1_month_long_1,
+        text_1_month_long_10,
+        text_1_month_long_11,
+        text_1_month_long_2,
+        text_1_month_long_3,
+        text_1_month_long_4,
+        text_1_month_long_5,
+        text_1_month_long_6,
+        text_1_month_long_7,
+        text_1_month_long_8,
+        text_1_month_long_9,
         text_1_mostly_clear,
         text_1_music,
         text_1_network,
@@ -1647,5 +1707,80 @@ const char *const buddy_language_texts[][BT_COUNT] = {
         text_1_your_pc_is_locked_or_asleep,
         text_1_your_pc_s_activity_at_a_glance,
         text_1_your_timer_keeps_running_between_apps,
+    },
+};
+
+static const char studio_0_buddy_is_reconnecting_to_your_saved_network_your_pc[] = "Reconnecting to your saved network.\nYour PC readings will appear automatically.";
+static const char studio_0_buddy_s_address[] = "Display address";
+static const char studio_0_buddy_will_show_recent_local_task_records_when_they[] = "Recent local task records appear here when they are available.";
+static const char studio_0_finish_wi_fi_setup_using_clawpal_on_your_pc[] = "Finish Wi-Fi setup using ClawPal on your PC.\nAfter setup, the display reconnects automatically.";
+static const char studio_0_let_s_connect_your_buddy[] = "Let's connect your display.";
+static const char studio_0_network_startup_failed_restart_buddy[] = "Network startup failed. Restart ClawPal.";
+static const char studio_0_sign_in_to_claude_on_your_pc_buddy_will[] = "Sign in to Claude Code on your PC.\nYour account limits will appear automatically.";
+static const char studio_0_sign_in_to_codex_on_your_pc_buddy_will[] = "Sign in to Codex on your PC.\nYour account limits will appear automatically.";
+static const char studio_0_the_pc_could_not_read_local_task_records_buddy[] = "The PC could not read local task records.\nRetrying automatically.";
+static const char studio_0_the_pc_could_not_refresh_your_account_limits_buddy[] = "The PC could not refresh your account limits.\nRetrying automatically.";
+static const char studio_0_update_or_install_claude_on_your_pc_buddy_needs[] = "Update or install Claude Code on your PC.\nIts local account connection is required.";
+static const char studio_0_update_or_install_codex_on_your_pc_buddy_needs[] = "Update or install Codex on your PC.\nIts local account connection is required.";
+static const char studio_0_your_account_did_not_report_a_usage_window_buddy[] = "Your account did not report a usage window.\nLimits will appear when they are available.";
+static const char studio_0_your_account_limits_are_not_available_yet_buddy_will[] = "Your account limits are not available yet.\nRetrying automatically.";
+static const char studio_0_your_apps_and_your_crab[] = "Your apps at a glance";
+static const char studio_0_your_buddy_at_a_glance[] = "Everything at a glance";
+static const char studio_0_your_little_desk_companion[] = "Your desk, at a glance";
+static const char studio_1_buddy_is_reconnecting_to_your_saved_network_your_pc[] = "Łączę z zapisaną siecią.\nOdczyty PC pojawią się automatycznie.";
+static const char studio_1_buddy_s_address[] = "Adres wyświetlacza";
+static const char studio_1_buddy_will_show_recent_local_task_records_when_they[] = "Dostępne lokalne zapisy zadań pojawią się tutaj.";
+static const char studio_1_finish_wi_fi_setup_using_clawpal_on_your_pc[] = "Skonfiguruj Wi-Fi w ClawPal na PC.\nWyświetlacz będzie łączyć się automatycznie.";
+static const char studio_1_let_s_connect_your_buddy[] = "Połączmy Twój wyświetlacz.";
+static const char studio_1_network_startup_failed_restart_buddy[] = "Nie udało się uruchomić sieci. Uruchom ClawPal ponownie.";
+static const char studio_1_sign_in_to_claude_on_your_pc_buddy_will[] = "Zaloguj się do Claude Code na PC.\nLimity konta pojawią się automatycznie.";
+static const char studio_1_sign_in_to_codex_on_your_pc_buddy_will[] = "Zaloguj się do Codex na PC.\nLimity konta pojawią się automatycznie.";
+static const char studio_1_the_pc_could_not_read_local_task_records_buddy[] = "PC nie odczytał zapisów zadań.\nPonowię próbę automatycznie.";
+static const char studio_1_the_pc_could_not_refresh_your_account_limits_buddy[] = "PC nie odświeżył limitów konta.\nPonowię próbę automatycznie.";
+static const char studio_1_update_or_install_claude_on_your_pc_buddy_needs[] = "Zainstaluj lub zaktualizuj Claude Code na PC.\nPotrzebny jest lokalny dostęp do konta.";
+static const char studio_1_update_or_install_codex_on_your_pc_buddy_needs[] = "Zainstaluj lub zaktualizuj Codex na PC.\nPotrzebny jest lokalny dostęp do konta.";
+static const char studio_1_your_account_did_not_report_a_usage_window_buddy[] = "Konto nie zgłosiło okresu rozliczenia.\nLimity pojawią się, gdy będą dostępne.";
+static const char studio_1_your_account_limits_are_not_available_yet_buddy_will[] = "Limity konta nie są jeszcze dostępne.\nPonowię próbę automatycznie.";
+static const char studio_1_your_apps_and_your_crab[] = "Twoje apki w skrócie";
+static const char studio_1_your_buddy_at_a_glance[] = "Wszystko w skrócie";
+static const char studio_1_your_little_desk_companion[] = "Twoje biurko w skrócie";
+const char *const buddy_language_studio_texts[][BT_COUNT] = {
+    { /* en */
+        [BT_BUDDY_IS_RECONNECTING_TO_YOUR_SAVED_NETWORK_YOUR_PC] = studio_0_buddy_is_reconnecting_to_your_saved_network_your_pc,
+        [BT_BUDDY_S_ADDRESS] = studio_0_buddy_s_address,
+        [BT_BUDDY_WILL_SHOW_RECENT_LOCAL_TASK_RECORDS_WHEN_THEY] = studio_0_buddy_will_show_recent_local_task_records_when_they,
+        [BT_FINISH_WI_FI_SETUP_USING_CLAWPAL_ON_YOUR_PC] = studio_0_finish_wi_fi_setup_using_clawpal_on_your_pc,
+        [BT_LET_S_CONNECT_YOUR_BUDDY] = studio_0_let_s_connect_your_buddy,
+        [BT_NETWORK_STARTUP_FAILED_RESTART_BUDDY] = studio_0_network_startup_failed_restart_buddy,
+        [BT_SIGN_IN_TO_CLAUDE_ON_YOUR_PC_BUDDY_WILL] = studio_0_sign_in_to_claude_on_your_pc_buddy_will,
+        [BT_SIGN_IN_TO_CODEX_ON_YOUR_PC_BUDDY_WILL] = studio_0_sign_in_to_codex_on_your_pc_buddy_will,
+        [BT_THE_PC_COULD_NOT_READ_LOCAL_TASK_RECORDS_BUDDY] = studio_0_the_pc_could_not_read_local_task_records_buddy,
+        [BT_THE_PC_COULD_NOT_REFRESH_YOUR_ACCOUNT_LIMITS_BUDDY] = studio_0_the_pc_could_not_refresh_your_account_limits_buddy,
+        [BT_UPDATE_OR_INSTALL_CLAUDE_ON_YOUR_PC_BUDDY_NEEDS] = studio_0_update_or_install_claude_on_your_pc_buddy_needs,
+        [BT_UPDATE_OR_INSTALL_CODEX_ON_YOUR_PC_BUDDY_NEEDS] = studio_0_update_or_install_codex_on_your_pc_buddy_needs,
+        [BT_YOUR_ACCOUNT_DID_NOT_REPORT_A_USAGE_WINDOW_BUDDY] = studio_0_your_account_did_not_report_a_usage_window_buddy,
+        [BT_YOUR_ACCOUNT_LIMITS_ARE_NOT_AVAILABLE_YET_BUDDY_WILL] = studio_0_your_account_limits_are_not_available_yet_buddy_will,
+        [BT_YOUR_APPS_AND_YOUR_CRAB] = studio_0_your_apps_and_your_crab,
+        [BT_YOUR_BUDDY_AT_A_GLANCE] = studio_0_your_buddy_at_a_glance,
+        [BT_YOUR_LITTLE_DESK_COMPANION] = studio_0_your_little_desk_companion,
+    },
+    { /* pl */
+        [BT_BUDDY_IS_RECONNECTING_TO_YOUR_SAVED_NETWORK_YOUR_PC] = studio_1_buddy_is_reconnecting_to_your_saved_network_your_pc,
+        [BT_BUDDY_S_ADDRESS] = studio_1_buddy_s_address,
+        [BT_BUDDY_WILL_SHOW_RECENT_LOCAL_TASK_RECORDS_WHEN_THEY] = studio_1_buddy_will_show_recent_local_task_records_when_they,
+        [BT_FINISH_WI_FI_SETUP_USING_CLAWPAL_ON_YOUR_PC] = studio_1_finish_wi_fi_setup_using_clawpal_on_your_pc,
+        [BT_LET_S_CONNECT_YOUR_BUDDY] = studio_1_let_s_connect_your_buddy,
+        [BT_NETWORK_STARTUP_FAILED_RESTART_BUDDY] = studio_1_network_startup_failed_restart_buddy,
+        [BT_SIGN_IN_TO_CLAUDE_ON_YOUR_PC_BUDDY_WILL] = studio_1_sign_in_to_claude_on_your_pc_buddy_will,
+        [BT_SIGN_IN_TO_CODEX_ON_YOUR_PC_BUDDY_WILL] = studio_1_sign_in_to_codex_on_your_pc_buddy_will,
+        [BT_THE_PC_COULD_NOT_READ_LOCAL_TASK_RECORDS_BUDDY] = studio_1_the_pc_could_not_read_local_task_records_buddy,
+        [BT_THE_PC_COULD_NOT_REFRESH_YOUR_ACCOUNT_LIMITS_BUDDY] = studio_1_the_pc_could_not_refresh_your_account_limits_buddy,
+        [BT_UPDATE_OR_INSTALL_CLAUDE_ON_YOUR_PC_BUDDY_NEEDS] = studio_1_update_or_install_claude_on_your_pc_buddy_needs,
+        [BT_UPDATE_OR_INSTALL_CODEX_ON_YOUR_PC_BUDDY_NEEDS] = studio_1_update_or_install_codex_on_your_pc_buddy_needs,
+        [BT_YOUR_ACCOUNT_DID_NOT_REPORT_A_USAGE_WINDOW_BUDDY] = studio_1_your_account_did_not_report_a_usage_window_buddy,
+        [BT_YOUR_ACCOUNT_LIMITS_ARE_NOT_AVAILABLE_YET_BUDDY_WILL] = studio_1_your_account_limits_are_not_available_yet_buddy_will,
+        [BT_YOUR_APPS_AND_YOUR_CRAB] = studio_1_your_apps_and_your_crab,
+        [BT_YOUR_BUDDY_AT_A_GLANCE] = studio_1_your_buddy_at_a_glance,
+        [BT_YOUR_LITTLE_DESK_COMPANION] = studio_1_your_little_desk_companion,
     },
 };

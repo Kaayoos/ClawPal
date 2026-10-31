@@ -49,7 +49,7 @@ internal static class ClaudeChecks
         Check(Encoding.UTF8.GetByteCount(longRow.Title)<=63&&Encoding.UTF8.GetByteCount(longRow.Project)<=31,"UTF-8 title and project fit device buffers");
         var settings=new DeviceSettings {Schema=5,EnabledApps=47,Language="pl",HomeOrder=[2,0,1],Use24h=false,WeatherFahrenheit=true,NightStart=23,NightEnd=7};
         var upgraded=settings.Upgrade();upgraded.Validate();
-        Check(upgraded.Schema==6&&upgraded.Enabled(7)&&upgraded.HomeOrder.SequenceEqual(settings.HomeOrder)&&upgraded.Language=="pl"&&upgraded.WeatherFahrenheit&&upgraded.NightStart==23,"schema migration adds Claude while retaining all preferences");
+        Check(upgraded.Schema==DeviceSettings.CurrentSchema&&upgraded.Theme==Themes.Default&&upgraded.Enabled(7)&&upgraded.HomeOrder.SequenceEqual(settings.HomeOrder)&&upgraded.Language=="pl"&&upgraded.WeatherFahrenheit&&upgraded.NightStart==23,"schema migration adds Claude while retaining all preferences");
         (upgraded with{HomeOrder=[7],OfflineApp=7}).Validate();Check(DisplayApps.Get(7).Name=="Claude Code","Claude is independently selectable and pinnable");
         string root=Path.Combine(directory,"claude-bridge");string native=Path.Combine(root,"native"),bridge=Path.Combine(root,"bridge");Directory.CreateDirectory(native);
         string path=Path.Combine(native,"settings.json");

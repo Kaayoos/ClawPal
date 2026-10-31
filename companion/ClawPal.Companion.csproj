@@ -22,6 +22,7 @@
 <ItemGroup><EmbeddedResource Include="../assets/mascot/*.png" /><EmbeddedResource Include="../assets/logos/*.png" /><EmbeddedResource Include="Payload.zip" Condition="Exists('Payload.zip')" LogicalName="ClawPal.Payload" /></ItemGroup>
   <ItemGroup><EmbeddedResource Include="../languages/*.json" LogicalName="ClawPal.Languages.%(Filename).json" /></ItemGroup>
   <ItemGroup><EmbeddedResource Include="../boards/catalog.json" LogicalName="ClawPal.Boards" /></ItemGroup>
+  <ItemGroup><EmbeddedResource Include="../themes/themes.json" LogicalName="ClawPal.Themes" /></ItemGroup>
   <ItemGroup><EmbeddedResource Include="Assets/timezones.json" LogicalName="ClawPal.TimeZones" /></ItemGroup>
 </Project>
 

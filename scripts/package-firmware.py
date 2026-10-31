@@ -12,6 +12,9 @@ config=json.loads((build/'config/sdkconfig.json').read_text(encoding='utf-8'))
 if config['ESPTOOLPY_FLASHSIZE']!=str(model['FlashBytes']//1048576)+'MB':raise SystemExit('Wrong build flash size')
 image=(build/'clawpal.bin').read_bytes()
 if len(image)>model['MaxBytes'] or (model['Id']+'\0').encode() not in image:raise SystemExit('Wrong board identity or oversized OTA image')
+# Keep a tenth of the smaller OTA slot free so the next release still fits the 8 MB board.
+if len(image)>model['MaxBytes']*9//10:raise SystemExit(f'{len(image)} bytes leaves under 10% of the {model["MaxBytes"]}-byte OTA slot')
+print(f'{model["Id"]}: {len(image)} bytes, {100-len(image)*100//model["MaxBytes"]}% of the OTA slot free')
 sub='firmware' if args.board==catalog['Default'] else 'firmware/'+args.board
 target=root/'payload'/sub;target.mkdir(parents=True,exist_ok=True)
 offsets={'bootloader.bin':'0x0','partition-table.bin':'0x8000','clawpal.bin':'0x10000' if model['FlashBytes']==16777216 else '0x20000','ota-data-initial.bin':'0x800000' if model['FlashBytes']==16777216 else '0xf000'}

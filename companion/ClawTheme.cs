@@ -5,7 +5,37 @@ namespace ClawPal.Companion;
 
 internal static class ClawTheme
 {
-    internal static readonly Color Background=Color.FromArgb(16,16,16), Surface=Color.FromArgb(25,25,25), Hover=Color.FromArgb(40,37,34), Border=Color.FromArgb(57,52,47), Ink=Color.FromArgb(245,241,235), Muted=Color.FromArgb(177,169,160), Orange=Color.FromArgb(255,139,79);
+    /* The companion follows the display's look: the crab's warm black and orange, or Studio's graphite and accent. */
+    internal static ThemeLook Look { get; private set; } = Themes.Get(Themes.Default,Themes.DefaultAccent);
+    internal static event Action? Changed;
+    internal static Color Background=>Look.Background;
+    internal static Color Surface=>Look.Surface;
+    internal static Color Hover=>Look.Hover;
+    internal static Color Border=>Look.Border;
+    internal static Color Ink=>Look.Ink;
+    internal static Color Muted=>Look.Muted;
+    internal static Color Accent=>Look.Accent;
+    internal static Color WeatherApp=>Look.WeatherApp;
+    internal static Color AccentHover=>Mix(Accent,Color.White,.15f);
+    internal static Color AccentPressed=>Mix(Accent,Color.Black,.13f);
+    internal static Color Track=>Mix(Border,Ink,.02f);
+    internal static Color TrackHover=>Mix(Border,Ink,.1f);
+    internal static Color Thumb=>Mix(Border,Ink,.25f);
+    internal static bool Mascot=>Look.Mascot;
+    internal static Color Mix(Color a,Color b,float amount)=>Color.FromArgb((int)(a.R+(b.R-a.R)*amount),(int)(a.G+(b.G-a.G)*amount),(int)(a.B+(b.B-a.B)*amount));
+    /* Switches every open window at once; colours assigned from the old look move to the matching role. */
+    internal static void Use(string? theme,string? accent)
+    {
+        var next=Themes.Get(theme,accent);if(next==Look)return;var old=Look;Look=next;
+        var roles=new[]{(old.Background,next.Background),(old.Surface,next.Surface),(old.Hover,next.Hover),(old.Border,next.Border),(old.Ink,next.Ink),(old.Muted,next.Muted),(old.Accent,next.Accent)};
+        void Recolor(Control control){
+            foreach(var (from,to) in roles){if(control.BackColor.ToArgb()==from.ToArgb()&&control.BackColor!=Color.Transparent){control.BackColor=to;break;}}
+            foreach(var (from,to) in roles){if(control.ForeColor.ToArgb()==from.ToArgb()){control.ForeColor=to;break;}}
+            foreach(Control child in control.Controls)Recolor(child);
+        }
+        foreach(Form form in Application.OpenForms.Cast<Form>().ToArray()){Recolor(form);form.Invalidate(true);}
+        L.SetVariant(next.Mascot?null:next.Id);Changed?.Invoke();
+    }
     internal static Font Font(float size=10, bool bold=false) => new("Segoe UI",size,bold?FontStyle.Bold:FontStyle.Regular);
     internal static GraphicsPath Round(RectangleF r,float radius=10)
     {
@@ -36,7 +66,7 @@ internal sealed class ClawMenuColors : ProfessionalColorTable
     public override Color ImageMarginGradientMiddle=>ClawTheme.Surface;
     public override Color ImageMarginGradientEnd=>ClawTheme.Surface;
     public override Color MenuItemSelected=>ClawTheme.Hover;
-    public override Color MenuItemBorder=>ClawTheme.Orange;
+    public override Color MenuItemBorder=>ClawTheme.Accent;
     public override Color MenuBorder=>ClawTheme.Border;
     public override Color SeparatorDark=>ClawTheme.Border;
     public override Color SeparatorLight=>ClawTheme.Border;
@@ -55,11 +85,11 @@ internal class ClawButton : Button
     protected override void OnPaint(PaintEventArgs e)
     {
         e.Graphics.SmoothingMode=SmoothingMode.AntiAlias;e.Graphics.Clear(Parent?.BackColor??ClawTheme.Background);
-        var fill=!Enabled?ClawTheme.Surface:Primary?(pressed?Color.FromArgb(223,111,57):hovered?Color.FromArgb(255,158,107):ClawTheme.Orange):Selected||hovered?ClawTheme.Hover:ClawTheme.Surface;
+        var fill=!Enabled?ClawTheme.Surface:Primary?(pressed?ClawTheme.AccentPressed:hovered?ClawTheme.AccentHover:ClawTheme.Accent):Selected||hovered?ClawTheme.Hover:ClawTheme.Surface;
         ClawTheme.Fill(e.Graphics,fill,new RectangleF(0,0,Width-1,Height-1),9);
-        var ink=!Enabled?ClawTheme.Muted:Primary?ClawTheme.Background:Selected?ClawTheme.Orange:ClawTheme.Ink;
+        var ink=!Enabled?ClawTheme.Muted:Primary?ClawTheme.Background:Selected?ClawTheme.Accent:ClawTheme.Ink;
         ClawTheme.Text(e.Graphics,Text,Font,ink,ClientRectangle,TextFormatFlags.HorizontalCenter|TextFormatFlags.VerticalCenter|TextFormatFlags.EndEllipsis);
-        if(Focused&&ShowFocusCues){using var p=ClawTheme.Round(new RectangleF(2,2,Width-5,Height-5),8);using var pen=new Pen(ClawTheme.Orange);e.Graphics.DrawPath(pen,p);}
+        if(Focused&&ShowFocusCues){using var p=ClawTheme.Round(new RectangleF(2,2,Width-5,Height-5),8);using var pen=new Pen(ClawTheme.Accent);e.Graphics.DrawPath(pen,p);}
     }
 }
 
@@ -83,10 +113,10 @@ internal sealed class ClawSwitch : CheckBox
         e.Graphics.SmoothingMode=SmoothingMode.AntiAlias;e.Graphics.Clear(Parent?.BackColor??ClawTheme.Background);
         ClawTheme.Text(e.Graphics,Text,Font,Enabled?ClawTheme.Ink:ClawTheme.Muted,new Rectangle(0,0,Width-68,Height));
         int left=Width-48,top=(Height-26)/2;
-        ClawTheme.Fill(e.Graphics,Enabled&&Checked?ClawTheme.Orange:hover?Color.FromArgb(77,68,61):Color.FromArgb(58,54,50),new RectangleF(left,top,46,26),13);
+        ClawTheme.Fill(e.Graphics,Enabled&&Checked?ClawTheme.Accent:hover?ClawTheme.TrackHover:ClawTheme.Track,new RectangleF(left,top,46,26),13);
         using var brush=new SolidBrush(Enabled&&Checked?ClawTheme.Background:ClawTheme.Ink);
         e.Graphics.FillEllipse(brush,left+3+20*amount,top+3,20,20);
-        if(Focused&&ShowFocusCues){using var pen=new Pen(ClawTheme.Orange);e.Graphics.DrawRectangle(pen,1,1,Width-3,Height-3);}
+        if(Focused&&ShowFocusCues){using var pen=new Pen(ClawTheme.Accent);e.Graphics.DrawRectangle(pen,1,1,Width-3,Height-3);}
     }
     protected override void Dispose(bool disposing){if(disposing)animation.Dispose();base.Dispose(disposing);}
 }

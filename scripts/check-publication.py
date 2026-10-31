@@ -6,7 +6,7 @@ raw=subprocess.check_output(['git','ls-files','--cached','--others','--exclude-s
 files=sorted(set(p.decode('utf-8') for p in raw.split(b'\0') if p));fail=[]
 # Deliberate publication boundary: local side projects must never pass merely
 # because they contain no recognizable secret. Review additions to this list.
-publish_dirs={'.github','assets','boards','companion','docs','firmware','languages','LICENSES','payload','scripts','tests','vendor'}
+publish_dirs={'.github','assets','boards','companion','docs','firmware','languages','LICENSES','payload','scripts','tests','themes','vendor'}
 publish_files={'.gitattributes','.gitignore','AUTHORS.md','CONTRIBUTING.md','LICENSE','NOTICE','README.md','THIRD_PARTY_NOTICES.md','TRADEMARKS.md','global.json'}
 
 # Upstream LVGL bundles demo fonts whose licenses forbid redistribution. ClawPal

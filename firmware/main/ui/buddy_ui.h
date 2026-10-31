@@ -85,6 +85,12 @@ void buddy_ui_set_install(buddy_install_stage_t stage, uint32_t received, uint32
  * page shows it while telemetry's music art_id equals `id`. */
 void buddy_ui_set_album_art(uint32_t id, uint16_t size, uint8_t *pixels);
 
+/* A new look is applied by restarting: true when no approval or install is on screen. */
+bool buddy_ui_restart_safe(void);
+/* Fades every surface out under a short note before the caller restarts. */
+#define BUDDY_UI_RESTART_FADE_MS 400
+void buddy_ui_begin_restart(void);
+
 /* Explicit/manual selection. Only Monitor is available while provisioning. */
 bool buddy_ui_select_app(buddy_app_t app);
 buddy_ui_state_t buddy_ui_get_state(void);

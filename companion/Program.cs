@@ -13,12 +13,14 @@ internal static class Program
         try
         {
             if (Value(args,"--render-settings") is { } settingsPreview) {
-                L.SetLanguage(Value(args,"--language")); ApplicationConfiguration.Initialize(); var previewConfig=new Configuration { CompanionLanguage=L.Language,DisplaySettings=new DeviceSettings { Language=L.Language,City="Warsaw",Latitude=52.2297,Longitude=21.0122,Timezone="CET-1CEST,M3.5.0,M10.5.0/3" } };
+                L.SetLanguage(Value(args,"--language")); ApplicationConfiguration.Initialize(); var previewConfig=new Configuration { CompanionLanguage=L.Language,DisplaySettings=new DeviceSettings { Language=L.Language,City="Warsaw",Latitude=52.2297,Longitude=21.0122,Timezone="CET-1CEST,M3.5.0,M10.5.0/3",Theme=Value(args,"--theme")??Themes.Default,Accent=Value(args,"--accent")??Themes.DefaultAccent } };
+                ClawTheme.Use(previewConfig.DisplaySettings.Theme,previewConfig.DisplaySettings.Accent);
                 using var previewConnection=new Connection(previewConfig);using var form=new SettingsForm(previewConfig,previewConnection,true);form.RenderPreviews(settingsPreview);return 0;
             }
             if (Value(args, "--render-preview") is { } previewPath) {
                 L.SetLanguage(Value(args,"--language")); ApplicationConfiguration.Initialize();
-                var previewConfig = new Configuration{CompanionLanguage=L.Language,DisplaySettings=new DeviceSettings{Language=L.Language}};
+                var previewConfig = new Configuration{CompanionLanguage=L.Language,DisplaySettings=new DeviceSettings{Language=L.Language,Theme=Value(args,"--theme")??Themes.Default,Accent=Value(args,"--accent")??Themes.DefaultAccent}};
+                ClawTheme.Use(previewConfig.DisplaySettings.Theme,previewConfig.DisplaySettings.Accent);
                 using var previewConnection = new Connection(previewConfig);
                 using var form = new SetupForm(previewConfig, previewConnection, true);
                 form.RenderPreviews(previewPath); return 0;
@@ -64,6 +66,7 @@ internal static class Program
             }
             var config = Configuration.Load();
             L.SetLanguage(config.CompanionLanguage);
+            ClawTheme.Use(config.DisplaySettings?.Theme,config.DisplaySettings?.Accent);
             if (Value(args,"--sync-settings") is { } syncPath) {
                 using var timeout=new CancellationTokenSource(TimeSpan.FromSeconds(20));
                 new DeviceSettingsClient(config).SyncAsync(timeout.Token).GetAwaiter().GetResult();
