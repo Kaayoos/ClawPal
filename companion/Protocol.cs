@@ -14,6 +14,10 @@ public static class Protocol
     public const int MonitorPort = 42171;
     // Display app IDs that a "focus" control may name.
     public const int CodexApp = 4, ClaudeApp = 7;
+    // A "shortcut" control names a Shortcuts tile as (deck revision << 5) | slot.
+    public const int ShortcutSlots = 16, ShortcutMaxRev = 0xFFFF;
+    public static (int Rev, int Slot) ShortcutTarget(int value) => (value >> 5, value & 31);
+    public static int ShortcutValue(int rev, int slot) => (rev << 5) | slot;
     // This JSON is carried as WebSocket data, never embedded in HTML. Keep Unicode
     // as UTF-8 so bounded media strings remain compact for the 4096-byte device limit.
     public static readonly JsonSerializerOptions Json = new() { PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower, Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping };
@@ -76,12 +80,14 @@ public static class Protocol
             if (fields.Count != (valued ? 5 : 4) || root.GetProperty("type").GetString() != "buddy.control" ||
                 root.GetProperty("v").GetInt32() != 1 || !root.GetProperty("id").TryGetInt32(out var id) || id <= 0) return null;
             var action = root.GetProperty("action").GetString();
-            // Seek (seconds), volume (percent) and focus (app ID) carry a value; toggles never do.
-            if (valued != (action is "seek" or "volume" or "focus")) return null;
+            // Seek (seconds), volume (percent), focus (app ID) and shortcut (deck and tile) carry a value; toggles never do.
+            if (valued != (action is "seek" or "volume" or "focus" or "shortcut")) return null;
             int value = 0;
-            if (valued && (!root.GetProperty("value").TryGetInt32(out value) || value < 0 || value > (action == "volume" ? 100 : 604800))) return null;
+            if (valued && (!root.GetProperty("value").TryGetInt32(out value) || value < 0 ||
+                value > (action == "volume" ? 100 : action == "shortcut" ? ShortcutValue(ShortcutMaxRev, ShortcutSlots - 1) : 604800))) return null;
             if (action == "focus" && value is not (CodexApp or ClaudeApp)) return null;
-            return action is "play_pause" or "next" or "previous" or "shuffle" or "repeat" or "mute" or "seek" or "volume" or "focus" ? new DeviceControl(id, action, value) : null;
+            if (action == "shortcut" && (ShortcutTarget(value).Rev < 1 || ShortcutTarget(value).Slot >= ShortcutSlots)) return null;
+            return action is "play_pause" or "next" or "previous" or "shuffle" or "repeat" or "mute" or "seek" or "volume" or "focus" or "shortcut" ? new DeviceControl(id, action, value) : null;
         }
         catch (Exception error) when (error is JsonException or InvalidOperationException or KeyNotFoundException or FormatException or OverflowException) { return null; }
     }
@@ -141,7 +147,10 @@ public sealed record PcStats(string Type, int V, long Seq, string Hostname, long
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] GameStats? Game = null,
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] bool? AutoOpenApps = null,
     // Locked or about to sleep; omitted otherwise. The display then naps instead of reporting offline.
-    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] bool? Away = null);
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] bool? Away = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] ShortcutStats? Shortcuts = null);
+// The Shortcuts deck the display should hold (POST /shortcuts) and which toggle tiles are lit, one bit per slot.
+public sealed record ShortcutStats(int Rev, int On);
 // Repeat follows MediaPlaybackAutoRepeatMode: 0 off, 1 track, 2 list. ArtColor is
 // 0xRRGGBB picked from the album cover, or 0 when the display should keep its accent.
 // Source names the player; ArtId names the cover uploaded to POST /art, 0 when none.

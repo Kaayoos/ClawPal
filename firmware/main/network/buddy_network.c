@@ -8,6 +8,8 @@
 #include "board.h"
 #include "buddy_ui.h"
 #include "buddy_weather.h"
+#include "buddy_shortcuts.h"
+#include "buddy_shortcuts_page.h"
 
 #include <ctype.h>
 #include <errno.h>
@@ -65,6 +67,8 @@ typedef enum {
     MUSIC_MUTE = 128,
     /* Not media: asks the PC to bring a waiting Codex or Claude window forward. */
     MUSIC_FOCUS = 256,
+    /* Not media: runs a Shortcuts tile; the value names the deck revision and slot. */
+    MUSIC_SHORTCUT = 512,
 } music_action_t;
 
 typedef struct {
@@ -281,14 +285,15 @@ static const char *music_action_name(music_action_t action)
     case MUSIC_VOLUME: return "volume";
     case MUSIC_MUTE: return "mute";
     case MUSIC_FOCUS: return "focus";
+    case MUSIC_SHORTCUT: return "shortcut";
     default: return NULL;
     }
 }
 
-/* Seek carries seconds, volume a percentage and focus an app ID; the rest are toggles. */
+/* Seek carries seconds, volume a percentage, focus an app ID and shortcut a tile; the rest are toggles. */
 static bool music_action_valued(music_action_t action)
 {
-    return action == MUSIC_SEEK || action == MUSIC_VOLUME || action == MUSIC_FOCUS;
+    return action == MUSIC_SEEK || action == MUSIC_VOLUME || action == MUSIC_FOCUS || action == MUSIC_SHORTCUT;
 }
 
 static bool activity_waiting(const buddy_codex_activity_t *activity)
@@ -377,9 +382,11 @@ bool buddy_network_music_control(const char *action, uint32_t value)
     else if (strcmp(action, "volume") == 0) selected = MUSIC_VOLUME;
     else if (strcmp(action, "mute") == 0) selected = MUSIC_MUTE;
     else if (strcmp(action, "focus") == 0) selected = MUSIC_FOCUS;
+    else if (strcmp(action, "shortcut") == 0) selected = MUSIC_SHORTCUT;
     else return false;
     if ((selected == MUSIC_SEEK && value > BUDDY_MUSIC_MAX_SECONDS) || (selected == MUSIC_VOLUME && value > 100) ||
-        (selected == MUSIC_FOCUS && value != BUDDY_APP_CODEX && value != BUDDY_APP_CLAUDE)) return false;
+        (selected == MUSIC_FOCUS && value != BUDDY_APP_CODEX && value != BUDDY_APP_CLAUDE) ||
+        (selected == MUSIC_SHORTCUT && ((value & 31U) >= BUDDY_SHORTCUT_SLOTS || (value >> 5) < 1 || (value >> 5) > BUDDY_SHORTCUT_MAX_REV))) return false;
     if (!music_action_valued(selected)) value = 0;
     if (!(xEventGroupGetBits(events) & CONNECTED_BIT) || xSemaphoreTake(state_lock, 0) != pdTRUE) return false;
     int64_t now = esp_timer_get_time();
@@ -488,6 +495,7 @@ static esp_err_t websocket_handler(httpd_req_t *request)
         if (stats.music.can_volume) music_capabilities |= MUSIC_VOLUME | MUSIC_MUTE;
     }
     if (activity_waiting(&stats.codex.activity) || activity_waiting(&stats.claude.activity)) music_capabilities |= MUSIC_FOCUS;
+    if (stats.shortcuts.present) music_capabilities |= MUSIC_SHORTCUT;
     xSemaphoreGive(state_lock);
     if (callbacks.on_stats) callbacks.on_stats(&stats);
     char acknowledgement[96];
@@ -580,6 +588,7 @@ static esp_err_t health_handler(httpd_req_t *request)
     case BUDDY_APP_CLAUDE: app_name = "claude"; break;
     case BUDDY_APP_HOME: app_name = "home"; break;
     case BUDDY_APP_WEATHER: app_name = "weather"; break;
+    case BUDDY_APP_SHORTCUTS: app_name = "shortcuts"; break;
     default: app_name = "unknown"; break;
     }
     buddy_weather_t weather = buddy_weather_get();
@@ -726,6 +735,76 @@ static esp_err_t art_handler(httpd_req_t *request)
     board_lvgl_unlock();
     httpd_resp_set_type(request, "application/json");
     return httpd_resp_sendstr(request, "{\"saved\":true}");
+}
+
+/* Reads a signed body whose length the caller has already bounded. */
+static uint8_t *read_signed_body(httpd_req_t *request, size_t extra)
+{
+    uint8_t *body = heap_caps_malloc(request->content_len + extra, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+    if (!body) return NULL;
+    size_t received = 0;
+    while (received < request->content_len) {
+        int n = httpd_req_recv(request, (char *)body + received, request->content_len - received);
+        if (n <= 0) { free(body); return NULL; }
+        received += (size_t)n;
+    }
+    char declared[65], actual[65];
+    if (!declared_body_hash(request, declared) || !buddy_auth_body_hash(body, received, actual) || strcmp(declared, actual) != 0) {
+        free(body);
+        return NULL;
+    }
+    return body;
+}
+
+/* POST /shortcuts: the deck's look (labels, icons, colours). What each tile does stays on the PC. */
+static esp_err_t shortcuts_handler(httpd_req_t *request)
+{
+    if (require_auth(request) != ESP_OK) return ESP_FAIL;
+    if (request->content_len <= 0 || request->content_len > BUDDY_SHORTCUT_BODY_MAX)
+        return httpd_resp_send_err(request, HTTPD_400_BAD_REQUEST, "Invalid shortcuts");
+    uint8_t *body = read_signed_body(request, 1);
+    if (!body) return httpd_resp_send_err(request, HTTPD_400_BAD_REQUEST, "Shortcuts do not match their signature");
+    body[request->content_len] = 0;
+    cJSON *json = cJSON_ParseWithLength((const char *)body, request->content_len + 1);
+    free(body);
+    buddy_shortcut_deck_t *deck = heap_caps_malloc(sizeof(*deck), MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+    bool valid = deck && buddy_shortcuts_parse(json, deck);
+    cJSON_Delete(json);
+    if (!valid) {
+        free(deck);
+        return httpd_resp_send_err(request, HTTPD_400_BAD_REQUEST, "Invalid shortcuts");
+    }
+    if (!board_lvgl_lock(1000)) {
+        free(deck);
+        return httpd_resp_send_err(request, HTTPD_500_INTERNAL_SERVER_ERROR, BT(BT_DISPLAY_BUSY));
+    }
+    buddy_shortcuts_page_set_deck(deck);
+    board_lvgl_unlock();
+    free(deck);
+    httpd_resp_set_type(request, "application/json");
+    return httpd_resp_sendstr(request, "{\"saved\":true}");
+}
+
+/* POST /shortcut-icon: one tile's own app icon, for the deck revision it was made for. */
+static esp_err_t shortcut_icon_handler(httpd_req_t *request)
+{
+    if (require_auth(request) != ESP_OK) return ESP_FAIL;
+    unsigned long rev, slot;
+    if (!header_number(request, "X-ClawPal-Shortcut-Rev", 1, BUDDY_SHORTCUT_MAX_REV, &rev) ||
+        !header_number(request, "X-ClawPal-Shortcut-Slot", 0, BUDDY_SHORTCUT_SLOTS - 1, &slot) ||
+        request->content_len != BUDDY_SHORTCUT_ICON_BYTES)
+        return httpd_resp_send_err(request, HTTPD_400_BAD_REQUEST, "Invalid icon");
+    uint8_t *pixels = read_signed_body(request, 0);
+    if (!pixels) return httpd_resp_send_err(request, HTTPD_400_BAD_REQUEST, "Icon does not match its signature");
+    if (!board_lvgl_lock(1000)) {
+        free(pixels);
+        return httpd_resp_send_err(request, HTTPD_500_INTERNAL_SERVER_ERROR, BT(BT_DISPLAY_BUSY));
+    }
+    /* The page owns the pixels from here, or frees them when the deck has moved on. */
+    bool kept = buddy_shortcuts_page_set_icon((uint32_t)rev, (unsigned)slot, pixels);
+    board_lvgl_unlock();
+    httpd_resp_set_type(request, "application/json");
+    return httpd_resp_sendstr(request, kept ? "{\"saved\":true}" : "{\"saved\":false}");
 }
 
 static esp_err_t snapshot_handler(httpd_req_t *request)
@@ -915,7 +994,7 @@ static esp_err_t start_monitor_server(void)
     config.ctrl_port = MONITOR_PORT + 1;
     config.stack_size = 8192;
     config.max_open_sockets = 4;
-    config.max_uri_handlers = 12;
+    config.max_uri_handlers = 14;
     config.lru_purge_enable = true;
     config.close_fn = close_session;
     config.recv_wait_timeout = 3;
@@ -946,6 +1025,10 @@ static esp_err_t start_monitor_server(void)
     ESP_RETURN_ON_ERROR(httpd_register_uri_handler(monitor_server, &health), TAG, "Health URI");
     ESP_RETURN_ON_ERROR(httpd_register_uri_handler(monitor_server, &core_dump), TAG, "Core dump URI");
     ESP_RETURN_ON_ERROR(httpd_register_uri_handler(monitor_server, &art), TAG, "Cover URI");
+    const httpd_uri_t shortcuts = {.uri = "/shortcuts", .method = HTTP_POST, .handler = shortcuts_handler};
+    const httpd_uri_t shortcut_icon = {.uri = "/shortcut-icon", .method = HTTP_POST, .handler = shortcut_icon_handler};
+    ESP_RETURN_ON_ERROR(httpd_register_uri_handler(monitor_server, &shortcuts), TAG, "Shortcuts URI");
+    ESP_RETURN_ON_ERROR(httpd_register_uri_handler(monitor_server, &shortcut_icon), TAG, "Shortcut icon URI");
     return httpd_register_uri_handler(monitor_server, &snapshot);
 }
 

@@ -42,6 +42,7 @@ The crab lives on the Home screen next to a clock and shortcuts to your apps:
 - A full-screen alert on any app when Claude Code or Codex is waiting for your answer; **Show on PC** brings that window to the front
 - Weather now, for the next 24 hours and for five days
 - A clock and a timer with quick presets and an end time
+- Shortcuts: a grid of tiles that run things on your PC. Mute your mic or sound, change the volume, control media, lock the PC, turn the screens off, take a screenshot, open an app, website or folder, or press a key combination. Mute tiles light up while muted, and app tiles show the app's own icon
 
 Media, Codex and Claude Code can open their apps on the display automatically, or you can keep Home on screen. When you lock the PC or it goes to sleep, the crab naps instead of reporting the PC offline. Tap your crab for a hello.
 
@@ -94,6 +95,7 @@ In the companion you can:
 - Switch between 12- and 24-hour time and Celsius or Fahrenheit, and set your location and weather preferences
 - Set idle dimming, brightness, night hours and the app shown while the PC is offline
 - Turn on FPS tracking or Windows startup, or pause PC monitoring
+- Build your Shortcuts deck: choose a 6, 8, 12 or 16-tile grid, drag tiles around, and set each tile's action, label, icon and colour
 
 CPU temperature appears when [LibreHardwareMonitor](https://github.com/LibreHardwareMonitor/LibreHardwareMonitor) is running, or HWiNFO with **Shared Memory Support** turned on. Windows has no standard CPU temperature sensor, and ClawPal doesn't install a driver to read one.
 
@@ -117,7 +119,7 @@ With live limits enabled, the existing access token is decoded in memory and sen
 
 The PC and the display talk over your local network using plain HTTP. Every request is signed with your pairing key, which itself never crosses the network, so another device on the LAN can't send commands or replay old ones. The traffic isn't encrypted, though, so keep the display on a network you trust. Wi-Fi firmware updates must be signed by the ClawPal release key; your own builds still install over USB.
 
-Your location coordinates go to Open-Meteo for forecasts (location search uses its geocoding API too), and update checks contact GitHub. If you enable Live Claude limits, ClawPal sends an authenticated usage request to Anthropic. Codex data comes from your local Codex installation and may stop working if Codex changes. Music controls use Windows' local media session and the player's own entry in the Windows volume mixer, so system volume is never changed. The album cover is shrunk to 160 × 160 pixels on the PC and sent only to your paired display, which keeps the current one in memory.
+Your location coordinates go to Open-Meteo for forecasts (location search uses its geocoding API too), and update checks contact GitHub. If you enable Live Claude limits, ClawPal sends an authenticated usage request to Anthropic. Codex data comes from your local Codex installation and may stop working if Codex changes. Music controls use Windows' local media session and the player's own entry in the Windows volume mixer, so the Media app never changes system volume. Shortcuts tiles do change system volume, mute and the microphone, but only the ones you add. What a tile runs stays on your PC; the display only receives its label, icon and colour, and a tap sends back only which tile it was. While the PC is locked, only sound, media, lock and screens-off tiles run. The album cover is shrunk to 160 × 160 pixels on the PC and sent only to your paired display, which keeps the current one in memory.
 
 FPS tracking is optional. It uses the bundled Intel PresentMon console helper and Windows ETW events, and it doesn't modify games or inject an overlay. Results and overhead depend on the game and your Windows permissions; when FPS isn't available, the field stays blank. There's no promise about how any game's anti-cheat treats it.
 

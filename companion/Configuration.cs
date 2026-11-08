@@ -28,6 +28,9 @@ public sealed class Configuration
     public string CompanionLanguage { get; set; } = "en";
     public bool SetupComplete { get; set; }
     public DeviceSettings? DisplaySettings { get; set; }
+    // The Shortcuts deck lives on this PC; the display receives only how its tiles look.
+    public ShortcutDeck? Shortcuts { get; set; }
+    public void SetShortcuts(ShortcutDeck deck) { deck.Validate(); lock(gate) { Shortcuts=deck;Save(); } }
     public bool SettingsPending { get; set; }
     public void SetDisplaySettings(DeviceSettings settings) {
         settings.Validate(); lock(gate) { DisplaySettings=settings;SettingsPending=true;CopyLocation(settings);Save(); }
@@ -76,6 +79,10 @@ public sealed class Configuration
         config.DisplaySettings = (config.DisplaySettings ?? DeviceSettings.FromConfiguration(config)).Upgrade();
         config.CompanionLanguage=L.Normalize(config.CompanionLanguage);
         config.DisplaySettings=config.DisplaySettings with {Language=L.Normalize(config.DisplaySettings.Language)};
+        // Everyone starts with the starter deck; one that no longer validates is replaced rather than sent.
+        try { config.Shortcuts?.Validate(); }
+        catch (Exception error) when (error is ArgumentException or NullReferenceException) { Log.Write("Shortcuts were invalid and were reset: " + error.GetType().Name); config.Shortcuts=null; }
+        config.Shortcuts ??= ShortcutDeck.Starter(config.DisplaySettings.Language);
         return config;
     }
 

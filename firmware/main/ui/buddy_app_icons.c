@@ -26,6 +26,7 @@ static void draw_icon(lv_event_t *event)
     else if(app==BUDDY_APP_WEATHER){BOX(13,12,38,38,LV_RADIUS_CIRCLE);rect.bg_opa=LV_OPA_COVER;rect.bg_color=lv_color_hex(BUDDY_COLOR_BG);BOX(20,47,64,34,16);BOX(34,33,36,42,18);rect.border_width=0;BOX(27,57,47,20,0);}
     /* A play mark in a rounded frame, nudged right so the triangle looks centred. */
     else if(app==BUDDY_APP_MUSIC){BOX(13,17,74,66,size/6);LINE(43,36,43,64);LINE(43,36,64,50);LINE(43,64,64,50);}
+    else if(app==BUDDY_APP_SHORTCUTS){int r=size/12;BOX(14,14,32,32,r);BOX(54,14,32,32,r);BOX(14,54,32,32,r);BOX(54,54,32,32,r);}
     else {BOX(17,19,66,66,LV_RADIUS_CIRCLE);LINE(50,52,50,32);LINE(50,52,67,60);if(app==BUDDY_APP_TIMER){LINE(40,8,60,8);LINE(50,8,50,16);LINE(79,17,87,25);}}
 #undef BOX
 #undef LINE

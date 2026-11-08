@@ -29,8 +29,11 @@ internal static class DesktopLayoutChecks
                     Check(preview.Right<=scroll.Content.Width&&list.Right<=scroll.Content.Width,"Home content fits the viewport at every supported width");
                     NoNativeBars();
                 }
-                form.ClientSize=new(960,680);
-                foreach(string name in new[]{"Appearance","Apps","Clock & weather","PC companion","Device","Updates","Screen"}){
+                form.ClientSize=new(960,680);Application.DoEvents();
+                var side=Descendants(form).OfType<ClawButton>().Where(b=>b.Parent is Panel{Dock:DockStyle.Left}).ToArray();
+                Check(side.Length==11&&side.All(a=>side.All(b=>a==b||!a.Bounds.IntersectsWith(b.Bounds)))&&side.All(b=>b.Bottom<=b.Parent!.ClientSize.Height),
+                    "Every sidebar page and the Discord button fit without overlapping in the smallest window");
+                foreach(string name in new[]{"Appearance","Apps","Shortcuts","Clock & weather","PC companion","Device","Updates","Screen"}){
                     Page(name);int left=scroll.Content.Left,width=scroll.Content.Width;NoNativeBars();Application.DoEvents();
                     scroll.ScrollTo(scroll.MaximumOffset);Application.DoEvents();
                     Check(scroll.Content.Left==left&&scroll.Content.Width==width,"Scrolling preserves page width and horizontal position");

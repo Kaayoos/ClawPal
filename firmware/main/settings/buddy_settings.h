@@ -4,11 +4,12 @@
 #include "esp_err.h"
 #include "cJSON.h"
 
-#define BUDDY_SETTINGS_SCHEMA 7
+#define BUDDY_SETTINGS_SCHEMA 8
 #define BUDDY_HOME_SLOTS 5
 typedef struct {
     uint32_t revision;
-    uint8_t enabled_apps, home_count, home_order[BUDDY_HOME_SLOTS];
+    uint16_t enabled_apps; /* one bit per buddy_app_t */
+    uint8_t home_count, home_order[BUDDY_HOME_SLOTS];
     bool use_24h, weather_enabled, weather_fahrenheit;
     uint8_t dim_behavior, dim_brightness, night_start, night_end, offline_app;
     uint8_t theme, accent; /* buddy_theme_id_t and buddy_accent_id_t */

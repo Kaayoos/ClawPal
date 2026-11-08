@@ -15,6 +15,7 @@ The station reconnects automatically. With no saved SSID, or after 60 seconds wi
 - Every valid telemetry frame receives `{"type":"buddy.ack","v":1,"seq":<same sequence>}` on its WebSocket. The companion uses this acknowledgement to detect a stalled connection.
 - WebSocket Ping/Pong/Close frames are handled explicitly, including empty unsolicited Pong keepalives from .NET. Ping receives a matching Pong; Close receives its close response. Control frames must be final and <=125 bytes, and do not extend the valid-telemetry timeout.
 - Firmware 0.3 sends only three allowlisted Spotify controls to its authenticated companion: `play_pause`, `next`, and `previous`. Commands are bound to the current session, expire after three seconds while queued, and are never replayed after reconnection. No remote shell or arbitrary command execution is provided.
+- Shortcuts taps send `shortcut` with the deck revision and slot only. The companion runs the action the user set up for that slot on the PC itself; the display never holds or sends a path, address, key combination or command. `POST /shortcuts` and `POST /shortcut-icon` carry only how tiles look.
 - Optional `music` telemetry carries bounded metadata, playback capabilities and the most recent control result. Older companions that omit it remain supported with music unavailable.
 
 Optional `game` telemetry carries an active flag, a bounded window title, nullable measured FPS and status. Missing data remains inactive/unavailable. The total JSON frame limit remains 6144 bytes.

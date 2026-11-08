@@ -16,7 +16,7 @@ First installation creates the ESP-IDF v2 NVS image in C#, using byte-based vali
 
 The companion protects its pairing token with Windows DPAPI. Discovery uses a random nonce and HMAC proof. Since protocol 2 (discovery hello `v:2`) the reply also carries a fresh challenge, covered by the proof, and every HTTP and WebSocket request is signed instead of sending the token: `Authorization: ClawPal-HMAC c=<challenge>,n=<counter>,s=<HMAC-SHA256(token, "clawpal-auth-v2\n" method \n path \n challenge \n counter \n body-SHA-256)>` with the body hash in `X-ClawPal-Body-SHA256`. The display accepts each counter once per challenge (it must increase), keeps 16 challenges for ten minutes and forgets them on restart, so captured requests cannot be replayed. Handlers that read a body check it against the signed hash; a firmware upload is signed with its declared image SHA-256, which the update path already verifies. Protocol 2 firmware refuses the bearer token; the companion still sends it to protocol 1 firmware, whose hello cannot be forged without the token. `buddy_auth.c` and `DeviceAuth.cs` implement the two sides and share test vectors. Weather is fetched by the ESP over verified HTTPS independently of the PC. Credentials never go to the weather service. PC preferences are saved locally and take effect without a firmware write.
 
-Firmware 0.7.0 exposes authenticated `GET /settings` and `POST /settings` using schema 6 (schemas 2–5 NVS records migrate on boot). Settings include dim behavior/delay/brightness, night enabled/start/end, offline app, and: `enabled_apps`, `home_order`, `use_24h`, `weather_enabled`, city, latitude, longitude, and POSIX timezone. IDs are Monitor 0, Clock 1, Spotify 2, Timer 3, Codex 4, Home 5, Weather 6, Claude Code 7. Home's bit is mandatory. Home order contains zero to five distinct enabled app IDs, excluding Home itself. The complete validated record is committed to one NVS string, `buddy/display_cfg`, before publishing the in-memory revision. Boot migrates the original location keys when no saved record exists. The UI applies revisions under its LVGL lock; weather invalidates its cache after a location change. No restart is required.
+Firmware 0.7.0 exposes authenticated `GET /settings` and `POST /settings` using schema 6 (schemas 2–5 NVS records migrate on boot). Settings include dim behavior/delay/brightness, night enabled/start/end, offline app, and: `enabled_apps`, `home_order`, `use_24h`, `weather_enabled`, city, latitude, longitude, and POSIX timezone. IDs are Monitor 0, Clock 1, Spotify 2, Timer 3, Codex 4, Home 5, Weather 6, Claude Code 7, Shortcuts 8. Home's bit is mandatory. Schema 8 widens `enabled_apps` to nine bits; older records gain the Shortcuts bit when they migrate, and Shortcuts can never be the offline app. Home order contains zero to five distinct enabled app IDs, excluding Home itself. The complete validated record is committed to one NVS string, `buddy/display_cfg`, before publishing the in-memory revision. Boot migrates the original location keys when no saved record exists. The UI applies revisions under its LVGL lock; weather invalidates its cache after a location change. No restart is required.
 
 The PC persists unsent display preferences and retries them after reconnecting. JSON writes use buffered UTF-8 content with an explicit Content-Length: the ESP-IDF server does not decode chunked request bodies. Request rejection and pairing errors are reported separately from offline retries. It checks the device's schema before writing, requires a save acknowledgment, then reads the settings back. A reference check prevents an older completed request from clearing a newer pending edit. Display configuration also syncs while PC monitoring is paused. Disabled Spotify/Codex/Claude integrations stop discovery/collection; disabling Monitor stops optional FPS collection.
 
@@ -87,6 +87,31 @@ of the newest waiting Claude session, walking up from the session's process to t
 terminal, editor or Claude Desktop that owns a visible window, or the Codex app's window.
 If Windows refuses the foreground change, the taskbar button flashes instead. A Claude
 permission prompt stays `waiting` for up to 30 minutes, since no hook runs until it is answered.
+
+Shortcuts (app 8) is a grid of 6, 8, 12 or 16 tiles that run things on the PC. The PC owns
+the deck: `config.json` keeps each tile's action and target (an app path, a web address, a
+folder or a key combination), and the display only ever learns how a tile looks. After every
+connection, and whenever the deck changes, the companion sends authenticated
+`POST /shortcuts` with `{rev, size, tiles:[{slot, label, label_on, icon, color, toggle,
+locked_ok, app_icon, repeat}]}` (at most 4096 bytes). Icons and colours are ids from
+`shortcuts/shortcuts.json`, which both sides compile from; labels are at most 48 UTF-8
+bytes that the display fonts cover. Tiles with `app_icon` then get the app's own 48 × 48
+icon from authenticated `POST /shortcut-icon` (RGB565 little-endian plus an alpha byte per
+pixel, `X-ClawPal-Shortcut-Rev` and `X-ClawPal-Shortcut-Slot` headers). The display keeps
+the deck and icons in RAM and drops icons whose revision is no longer current. `rev`
+(1–65535) is a hash of everything the display shows and every target, so any edit is a new
+deck. Firmware without `/shortcuts` answers 404 and that connection stops sending it.
+
+Each telemetry frame carries `shortcuts: {rev, on}`: the deck the PC means and a bitmask of
+the toggle tiles that are lit (microphone or sound muted, read from Windows each second).
+The display enables its tiles only while that revision matches the deck it holds. A tap
+sends `buddy.control` `shortcut` with `value` = `rev << 5 | slot`, through the same single
+in-flight slot, three-second expiry and `control_id` reply as Media. The companion answers
+`changed` when the revision or slot no longer matches, `locked` when the PC is locked and
+the tile is not safe to run then (only sound, media, lock and screens-off tiles are), and
+`failed` when Windows refused. The display shows the reply in its header and flashes the
+tile. Older companions never advertise `shortcuts`, so older firmware and companions never
+see an action they do not know.
 
 Authenticated `GET /health` includes a `system` object: reset reason, uptime, free and
 minimum-free internal and PSRAM heap, the largest internal block, stack low-water marks for

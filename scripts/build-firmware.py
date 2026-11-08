@@ -13,6 +13,7 @@ idf=Path(os.environ['IDF_PATH'])/'tools/idf.py';os.environ['IDF_COMPONENT_MANAGE
 subprocess.run([sys.executable,str(root/'scripts/generate-boards.py'),'--check'],check=True)
 subprocess.run([sys.executable,str(root/'scripts/generate_languages.py'),'--check'],check=True)
 subprocess.run([sys.executable,str(root/'scripts/generate_themes.py'),'--check'],check=True)
+subprocess.run([sys.executable,str(root/'scripts/generate_shortcuts.py'),'--check'],check=True)
 for board in selected:
  build=root/'firmware'/('build-'+board)
  subprocess.run([sys.executable,str(idf),'-C',str(root/'firmware'),'-B',str(build),'-DCLAWPAL_BOARD='+board,'-DSDKCONFIG='+str(build/'sdkconfig'),'build'],check=True)

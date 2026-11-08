@@ -17,6 +17,7 @@ internal static class AppArtwork
     internal static void Draw(Graphics g,int id,Rectangle r)
     {
         if(logos.TryGetValue(id,out var image)){g.DrawImage(image,r);return;}
+        if(id==8){ShortcutArt.Draw(g,"grid",r,ClawTheme.Accent);return;}
         using var pen=new Pen(id==6?ClawTheme.WeatherApp:ClawTheme.Accent,Math.Max(1.5f,r.Width/18f)){StartCap=LineCap.Round,EndCap=LineCap.Round,LineJoin=LineJoin.Round};
         float x=r.X,y=r.Y,w=r.Width,h=r.Height;
         if(id==0){g.DrawRectangle(pen,x+w*.12f,y+h*.16f,w*.76f,h*.52f);g.DrawLine(pen,x+w*.5f,y+h*.68f,x+w*.5f,y+h*.84f);g.DrawLine(pen,x+w*.3f,y+h*.86f,x+w*.7f,y+h*.86f);}
@@ -131,8 +132,8 @@ internal sealed class HomePreview : Panel
         int rowHeight=Math.Min(98,412/Math.Max(1,settings.HomeOrder.Length));
         for(int i=0;i<settings.HomeOrder.Length;i++){
             int id=settings.HomeOrder[i],y=34+i*rowHeight;AppArtwork.Draw(e.Graphics,id,R(466,y+15,46,46));
-            ClawTheme.Text(e.Graphics,L.DisplayText(settings.Language,id switch{0=>"pc_monitor",1=>"clock",2=>"music",3=>"timer",4=>"codex",7=>"claude",_=>"weather"}),rowFont,ClawTheme.Ink,R(528,y+8,254,34));
-            string note=id switch{0=>L.DisplayText(settings.Language,"live_pc_readings"),1=>L.DisplayText(settings.Language,"local_time"),6=>settings.City,2=>L.DisplayText(settings.Language,"spotify_playback"),3=>L.DisplayText(settings.Language,"a_countdown_for_anything"),_=>L.DisplayText(settings.Language,"account_limits")};
+            ClawTheme.Text(e.Graphics,L.DisplayText(settings.Language,id switch{0=>"pc_monitor",1=>"clock",2=>"music",3=>"timer",4=>"codex",7=>"claude",8=>"shortcuts",_=>"weather"}),rowFont,ClawTheme.Ink,R(528,y+8,254,34));
+            string note=id switch{0=>L.DisplayText(settings.Language,"live_pc_readings"),1=>L.DisplayText(settings.Language,"local_time"),6=>settings.City,2=>L.DisplayText(settings.Language,"spotify_playback"),3=>L.DisplayText(settings.Language,"a_countdown_for_anything"),8=>L.DisplayText(settings.Language,"your_pc_at_a_tap"),_=>L.DisplayText(settings.Language,"account_limits")};
             ClawTheme.Text(e.Graphics,note,small,ClawTheme.Muted,R(528,y+43,254,30));
         }
     }

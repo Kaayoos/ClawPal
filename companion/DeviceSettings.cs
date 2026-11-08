@@ -18,16 +18,19 @@ public static class DisplayApps
         new(3,L.Text("timer"),L.Text("an_adjustable_countdown_for_anything"),"thinking"),
         new(4,L.Text("codex"),L.Text("account_limits_and_recorded_task_activity"),"typing"),
         new(7,L.Text("claude_code"),L.Text("claude_description"),"typing"),
-        new(6,L.Text("weather"),L.Text("current_conditions_and_a_crab_dressed_for_the_weather"),"sunny") ];
+        new(6,L.Text("weather"),L.Text("current_conditions_and_a_crab_dressed_for_the_weather"),"sunny"),
+        new(8,L.Text("shortcuts"),L.Text("shortcuts_app_description"),"happy") ];
     public static DisplayApp Get(int id) => All.Single(a => a.Id == id);
 }
 
 public sealed record DeviceSettings
 {
-    public const int CurrentSchema=7;
+    public const int CurrentSchema=8;
+    // One bit per display app; 5 is Home, which always stays on.
+    public const int AllApps=511, LastApp=8;
     public int Schema { get; init; } = CurrentSchema;
     public string Language { get; init; } = "en";
-    public int EnabledApps { get; init; } = 255;
+    public int EnabledApps { get; init; } = AllApps;
     public int[] HomeOrder { get; init; } = [0,4,7,2,1];
     [JsonPropertyName("use_24h")] public bool Use24h { get; init; } = true;
     public bool WeatherEnabled { get; init; } = true;
@@ -49,12 +52,14 @@ public sealed record DeviceSettings
         var value=Schema==2 ? this with {EnabledApps=EnabledApps|64,Language="en",WeatherFahrenheit=false} : Schema==3 ? this with {Language="en",WeatherFahrenheit=false} : Schema==4 ? this with {WeatherFahrenheit=false} : this;
         if(Schema is >=2 and <6)value=value with {EnabledApps=value.EnabledApps|128};
         // Displays from before themes keep the crab.
-        return Schema is >=2 and <7 ? value with {Schema=CurrentSchema,Theme=Themes.Default,Accent=Themes.DefaultAccent} : value;
+        if(Schema is >=2 and <7)value=value with {Theme=Themes.Default,Accent=Themes.DefaultAccent};
+        // Shortcuts arrive switched on, with the starter deck; Home stays as it was.
+        return Schema is >=2 and <8 ? value with {Schema=CurrentSchema,EnabledApps=value.EnabledApps|256} : value;
     }
-    public bool Enabled(int app) => app is >= 0 and <= 7 && (EnabledApps & (1 << app)) != 0;
+    public bool Enabled(int app) => app is >= 0 and <= LastApp && (EnabledApps & (1 << app)) != 0;
     public DeviceSettings SetEnabled(int app, bool enabled)
     {
-        if (app is < 0 or > 7 or 5) throw new ArgumentOutOfRangeException(nameof(app));
+        if (app is < 0 or > LastApp or 5) throw new ArgumentOutOfRangeException(nameof(app));
         int mask = enabled ? EnabledApps | (1 << app) : EnabledApps & ~(1 << app);
         return this with { EnabledApps = mask, OfflineApp = (mask & (1 << OfflineApp))!=0 ? OfflineApp : (mask & 2)!=0 ? 1 : 5, HomeOrder = HomeOrder.Where(id => (mask & (1 << id)) != 0).ToArray() };
     }
@@ -67,13 +72,14 @@ public sealed record DeviceSettings
     public void Validate()
     {
         if(!L.Supports(Language))throw new ArgumentException(L.Text("unsupported_language"));
-        if (Schema != CurrentSchema || (EnabledApps & 32)==0 || (EnabledApps & ~255)!=0) throw new ArgumentException(L.Text("home_must_stay_enabled"));
-        if (HomeOrder is null || HomeOrder.Length > 5 || HomeOrder.Distinct().Count() != HomeOrder.Length || HomeOrder.Any(id => id is < 0 or > 7 or 5 || !Enabled(id)))
+        if (Schema != CurrentSchema || (EnabledApps & 32)==0 || (EnabledApps & ~AllApps)!=0) throw new ArgumentException(L.Text("home_must_stay_enabled"));
+        if (HomeOrder is null || HomeOrder.Length > 5 || HomeOrder.Distinct().Count() != HomeOrder.Length || HomeOrder.Any(id => id is < 0 or > LastApp or 5 || !Enabled(id)))
             throw new ArgumentException(L.Text("home_shortcuts_must_be_unique_enabled_apps"));
         if (DimBehavior is < 0 or > 2 || DimAfterSeconds is < 15 or > 3600 || DimBrightness is < 5 or > 90)
             throw new ArgumentException(L.Text("choose_a_dimming_delay_from_15_seconds_to_60"));
         if (NightStart is < 0 or > 23 || NightEnd is < 0 or > 23 || NightStart==NightEnd)
             throw new ArgumentException(L.Text("night_hours_must_have_different_start_and_end_times"));
+        // Shortcuts need the PC, so they can never be the app shown while it is away.
         if (OfflineApp is < 0 or > 7) throw new ArgumentException(L.Text("choose_an_available_offline_app"));
         if (string.IsNullOrWhiteSpace(City) || Encoding.UTF8.GetByteCount(City) > 63 || City.Contains('\0')) throw new ArgumentException(L.Text("choose_a_location_with_a_name_shorter_than_64"));
         if (!double.IsFinite(Latitude) || !double.IsFinite(Longitude) || Math.Abs(Latitude)>90 || Math.Abs(Longitude)>180) throw new ArgumentException(L.Text("choose_a_valid_weather_location"));
@@ -151,7 +157,7 @@ public sealed class DeviceSettingsClient(Configuration config)
     {
         using var json=JsonDocument.Parse(response);
         var settings=JsonSerializer.Deserialize<DeviceSettings>(response,Json) ?? throw new IOException(L.Text("the_display_returned_empty_settings"));
-        if (!json.RootElement.TryGetProperty("schema",out var schema) || schema.GetInt32() is not (2 or 3 or 4 or 5 or 6 or 7)) throw new NotSupportedException(L.Text("update_the_display_firmware_to_use_wireless_configuration"));
+        if (!json.RootElement.TryGetProperty("schema",out var schema) || schema.GetInt32() is not (2 or 3 or 4 or 5 or 6 or 7 or 8)) throw new NotSupportedException(L.Text("update_the_display_firmware_to_use_wireless_configuration"));
         foreach(string key in new[]{"enabled_apps","home_order","use_24h","weather_enabled","city","latitude","longitude","timezone"})
             if(!json.RootElement.TryGetProperty(key,out _))throw new IOException(L.Text("the_display_returned_incomplete_settings"));
         if(schema.GetInt32()>=3)

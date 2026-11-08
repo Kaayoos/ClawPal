@@ -35,8 +35,8 @@ bool buddy_settings_parse(const cJSON *json, buddy_settings_t *out)
     const cJSON *lat = cJSON_GetObjectItemCaseSensitive(json, "latitude");
     const cJSON *lon = cJSON_GetObjectItemCaseSensitive(json, "longitude");
     const cJSON *tz = cJSON_GetObjectItemCaseSensitive(json, "timezone");
-    if (!cJSON_IsObject(json) || !cJSON_IsNumber(schema) || (schema->valuedouble != 2 && schema->valuedouble != 3 && schema->valuedouble != 4 && schema->valuedouble != 5 && schema->valuedouble != 6 && schema->valuedouble != BUDDY_SETTINGS_SCHEMA) ||
-        !cJSON_IsNumber(apps) || apps->valuedouble != apps->valueint || !(apps->valueint & 32) || apps->valueint < 0 || apps->valueint > (schema->valueint == 2 ? 63 : schema->valueint < 6 ? 127 : 255) ||
+    if (!cJSON_IsObject(json) || !cJSON_IsNumber(schema) || (schema->valuedouble != 2 && schema->valuedouble != 3 && schema->valuedouble != 4 && schema->valuedouble != 5 && schema->valuedouble != 6 && schema->valuedouble != 7 && schema->valuedouble != BUDDY_SETTINGS_SCHEMA) ||
+        !cJSON_IsNumber(apps) || apps->valuedouble != apps->valueint || !(apps->valueint & 32) || apps->valueint < 0 || apps->valueint > (schema->valueint == 2 ? 63 : schema->valueint < 6 ? 127 : schema->valueint < 8 ? 255 : 511) ||
         !cJSON_IsArray(order) || cJSON_GetArraySize(order) > BUDDY_HOME_SLOTS ||
         !cJSON_IsBool(hours) || !cJSON_IsBool(weather) ||
         !cJSON_IsString(city) || strlen(city->valuestring) < 1 || strlen(city->valuestring) >= sizeof(out->city) ||
@@ -45,7 +45,7 @@ bool buddy_settings_parse(const cJSON *json, buddy_settings_t *out)
         !cJSON_IsNumber(lon) || !isfinite(lon->valuedouble) || fabs(lon->valuedouble) > 180) return false;
     for (const char *p = tz->valuestring; *p; ++p)
         if (!strchr("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+,.:/<>-", *p)) return false;
-    buddy_settings_t value = {.enabled_apps = (uint8_t)(apps->valueint | (schema->valueint == 2 ? 64 : 0) | (schema->valueint < 6 ? 128 : 0)), .use_24h = cJSON_IsTrue(hours),
+    buddy_settings_t value = {.enabled_apps = (uint16_t)(apps->valueint | (schema->valueint == 2 ? 64 : 0) | (schema->valueint < 6 ? 128 : 0) | (schema->valueint < 8 ? 256 : 0)), .use_24h = cJSON_IsTrue(hours),
         .weather_enabled = cJSON_IsTrue(weather), .latitude = lat->valuedouble, .longitude = lon->valuedouble,
         .dim_behavior = 1, .dim_after_seconds = 60, .dim_brightness = 40,
         .night_enabled = true, .night_start = 1, .night_end = 10, .offline_app = 1};
@@ -75,7 +75,7 @@ bool buddy_settings_parse(const cJSON *json, buddy_settings_t *out)
     unsigned used = 0;
     const cJSON *item;
     cJSON_ArrayForEach(item, order) {
-        if (!cJSON_IsNumber(item) || item->valuedouble != item->valueint || item->valueint < 0 || item->valueint > (schema->valueint<6?6:7) || item->valueint == 5) return false;
+        if (!cJSON_IsNumber(item) || item->valuedouble != item->valueint || item->valueint < 0 || item->valueint > (schema->valueint<6?6:schema->valueint<8?7:8) || item->valueint == 5) return false;
         unsigned bit = 1U << item->valueint;
         if ((used & bit) || !(value.enabled_apps & bit)) return false;
         used |= bit;
@@ -161,7 +161,7 @@ esp_err_t buddy_settings_init(void)
 
 static esp_err_t load_settings(void)
 {
-    current = (buddy_settings_t){.revision = 1, .enabled_apps = 255, .home_count = 5,
+    current = (buddy_settings_t){.revision = 1, .enabled_apps = 511, .home_count = 5,
         .home_order = {0,4,7,2,1}, .use_24h = true, .weather_enabled = true,
         .language = "en", .city = "Weather", .timezone = "UTC0", .dim_behavior = 1, .dim_after_seconds = 60,
         .dim_brightness = 40, .night_enabled = true, .night_start = 1, .night_end = 10, .offline_app = 1};

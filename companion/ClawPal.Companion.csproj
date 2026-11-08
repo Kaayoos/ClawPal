@@ -23,6 +23,7 @@
   <ItemGroup><EmbeddedResource Include="../languages/*.json" LogicalName="ClawPal.Languages.%(Filename).json" /></ItemGroup>
   <ItemGroup><EmbeddedResource Include="../boards/catalog.json" LogicalName="ClawPal.Boards" /></ItemGroup>
   <ItemGroup><EmbeddedResource Include="../themes/themes.json" LogicalName="ClawPal.Themes" /></ItemGroup>
+  <ItemGroup><EmbeddedResource Include="../shortcuts/shortcuts.json" LogicalName="ClawPal.Shortcuts" /><EmbeddedResource Include="../firmware/main/language/font_coverage.json" LogicalName="ClawPal.FontCoverage" /></ItemGroup>
   <ItemGroup><EmbeddedResource Include="Assets/timezones.json" LogicalName="ClawPal.TimeZones" /></ItemGroup>
 </Project>
 

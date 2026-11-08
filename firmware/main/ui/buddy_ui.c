@@ -23,6 +23,7 @@
 #include "buddy_app_icons.h"
 #include "buddy_home_logos.h"
 #include "buddy_weather_page.h"
+#include "buddy_shortcuts_page.h"
 #include "buddy_weather_icon.h"
 
 /* Broadcast meter bridge: real channels, shared time, restrained state ink. */
@@ -98,7 +99,7 @@ typedef struct {
 static struct {
     lv_obj_t *screen, *overview, *details, *empty;
     lv_obj_t *dim_overlay, *about_page, *about_version;
-    lv_obj_t *monitor_header, *monitor_title, *clock_page, *chooser, *weather_page;
+    lv_obj_t *monitor_header, *monitor_title, *clock_page, *chooser, *weather_page, *shortcuts_page;
     lv_obj_t *home_page, *game_panel, *game_title, *game_fps, *game_status;
     lv_obj_t *clock_large, *clock_date, *clock_mascot;
     lv_obj_t *weather_row, *weather_icon, *weather_text, *weather_note;
@@ -238,7 +239,7 @@ static void dismiss_startup(void)
     lv_img_cache_invalidate_src(&ui.startup_frame);
 }
 
-static buddy_settings_t view_settings = {.enabled_apps = 255, .weather_enabled = true, .dim_behavior = 1, .dim_after_seconds = 60, .dim_brightness = 40, .night_enabled = true, .night_start = 1, .night_end = 10, .offline_app = 1};
+static buddy_settings_t view_settings = {.enabled_apps = 511, .weather_enabled = true, .dim_behavior = 1, .dim_after_seconds = 60, .dim_brightness = 40, .night_enabled = true, .night_start = 1, .night_end = 10, .offline_app = 1};
 static bool app_enabled(buddy_app_t app) { return (unsigned)app < BUDDY_APP_COUNT && (view_settings.enabled_apps & (1U << app)); }
 
 /* App identities and menu content live together; add future apps here. */
@@ -256,6 +257,7 @@ static const struct {
     { BUDDY_APP_HOME, BT_HOME, BT_YOUR_BUDDY_AT_A_GLANCE, BUDDY_MASCOT_HAPPY },
     { BUDDY_APP_WEATHER, BT_WEATHER, BT_OUTSIDE_AT_A_GLANCE, BUDDY_MASCOT_CLOUDY },
     { BUDDY_APP_CLAUDE, BT_CLAUDE, BT_YOUR_ACCOUNT_LIMITS, BUDDY_MASCOT_TYPING },
+    { BUDDY_APP_SHORTCUTS, BT_SHORTCUTS, BT_YOUR_PC_AT_A_TAP, BUDDY_MASCOT_HAPPY },
 };
 
 static lv_color_t color(uint32_t value) { return lv_color_hex(value); }
@@ -540,6 +542,7 @@ static void refresh_app_cards(void)
     }
     else snprintf(value,sizeof(value),"%s",ui.weather.failed ? BT(BT_WEATHER_UNAVAILABLE) : BT(BT_WEATHER_LOADING));
     set_label_if_changed(ui.app_description[BUDDY_APP_WEATHER],value);
+    set_label_if_changed(ui.app_description[BUDDY_APP_SHORTCUTS], buddy_shortcuts_page_status());
     const buddy_music_t *music = &ui.stats.music;
     set_label_if_changed(ui.app_description[BUDDY_APP_MUSIC], music_connected() && music->available ?
         (music->title[0] ? music->title : BT(BT_PLAYING)) : music_connected() && music->running ? BT(BT_NOT_PLAYING) : BT(BT_WAITING_FOR_SPOTIFY));
@@ -710,6 +713,7 @@ static void mascot_tick(lv_timer_t *timer)
 {
     (void)timer;
     advance_timer();
+    buddy_shortcuts_page_tick();
     if (ui.timer_celebrating && lv_tick_elaps(ui.timer_celebration_tick) >= 2400U)
         ui.timer_celebrating = false;
     if (ui.music_command_pending && lv_tick_elaps(ui.music_command_tick) >= MUSIC_COMMAND_TIMEOUT_MS) {
@@ -838,6 +842,7 @@ static void refresh_visibility(void)
     visible(ui.empty, monitor && !ui.details_visible && (!ui.have_stats || need_setup));
     visible(ui.details, monitor && ui.details_visible);
     visible(ui.weather_page, ui.active_app == BUDDY_APP_WEATHER && !ui.menu_open);
+    visible(ui.shortcuts_page, ui.active_app == BUDDY_APP_SHORTCUTS && !ui.menu_open);
     visible(ui.clock_page, ui.active_app == BUDDY_APP_CLOCK && !ui.menu_open);
     if (ui.active_app != BUDDY_APP_CLOCK || ui.menu_open) {
         buddy_ui_motion_cancel(ui.clock_large);
@@ -872,12 +877,12 @@ static void refresh_visibility(void)
     refresh_display_power();
 }
 
-/* The Apps menu is a launcher grid: four tiles across on the wide screen, three on the others.
- * The smallest screen shows all eight at once in a 3 x 3 grid, without a heading. */
+/* The Apps menu is a launcher grid: five tiles across on the wide screen, three on the others,
+ * so all nine fit without scrolling. The smallest screen drops the heading. */
 typedef struct { int columns, margin, gap, top, width, height, icon, pad; } chooser_grid_t;
 static chooser_grid_t chooser_grid(void)
 {
-    chooser_grid_t grid = BOARD_DISPLAY_WIDTH >= 800 ? (chooser_grid_t){ 4, 28, 16, 76, 0, 166, 48, 18 } :
+    chooser_grid_t grid = BOARD_DISPLAY_WIDTH >= 800 ? (chooser_grid_t){ 5, 28, 8, 76, 0, 166, 48, 11 } :
         BOARD_DISPLAY_HEIGHT < 400 ? (chooser_grid_t){ 3, 12, 6, 6, 0, 58, 28, 6 } : (chooser_grid_t){ 3, 12, 8, 52, 0, 120, 32, 10 };
     grid.width = (BOARD_DISPLAY_WIDTH - 2 * grid.margin - (grid.columns - 1) * grid.gap) / grid.columns;
     return grid;
@@ -887,7 +892,7 @@ static chooser_grid_t chooser_grid(void)
 static void chooser_layout(void)
 {
     static const buddy_app_t order[] = { BUDDY_APP_HOME, BUDDY_APP_MONITOR, BUDDY_APP_CLOCK, BUDDY_APP_MUSIC,
-        BUDDY_APP_TIMER, BUDDY_APP_CODEX, BUDDY_APP_WEATHER, BUDDY_APP_CLAUDE };
+        BUDDY_APP_TIMER, BUDDY_APP_CODEX, BUDDY_APP_WEATHER, BUDDY_APP_CLAUDE, BUDDY_APP_SHORTCUTS };
     const chooser_grid_t grid = chooser_grid();
     unsigned position = 0;
     for (unsigned i = 0; i < sizeof(order) / sizeof(order[0]); ++i) {
@@ -942,6 +947,7 @@ static void refresh_footer(void)
             ui.active_app == BUDDY_APP_CLOCK ? BT(BT_CLOCK) :
             ui.active_app == BUDDY_APP_CODEX ? BT(BT_CODEX_ACCOUNT_LIMITS) :
             ui.active_app == BUDDY_APP_CLAUDE ? BT(BT_CLAUDE_ACCOUNT_LIMITS) :
+            ui.active_app == BUDDY_APP_SHORTCUTS ? BT(BT_SHORTCUTS) :
             music_connected() ? BT(BT_PC_MONITOR) : BT(BT_PC_RECONNECTING));
     } else if (ui.active_app == BUDDY_APP_TIMER) {
         lv_label_set_text(ui.footer, ui.timer_running ? BT(BT_YOUR_TIMER_KEEPS_RUNNING_BETWEEN_APPS) :
@@ -957,6 +963,8 @@ static void refresh_footer(void)
             claude_stale() ? BT(BT_SAVED_LIMITS_WAITING_FOR_AN_UPDATE) : BT(BT_LIMITS_FROM_YOUR_CLAUDE_ACCOUNT));
     } else if (ui.active_app == BUDDY_APP_WEATHER) {
         lv_label_set_text(ui.footer, BT(BT_WEATHER_BY_OPEN_METEO));
+    } else if (ui.active_app == BUDDY_APP_SHORTCUTS) {
+        lv_label_set_text(ui.footer, BT(BT_TAP_A_TILE_TO_RUN_IT_ON_YOUR_PC));
     } else if (ui.active_app == BUDDY_APP_CLOCK) {
         lv_label_set_text(ui.footer, ui.clock_automatic ?
             BT(BT_YOUR_PC_APPS_RETURN_WHEN_IT_RECONNECTS) : BT(BT_CHOOSE_ANOTHER_APP_FROM_APPS));
@@ -988,7 +996,7 @@ static void mascot_set_y(void *obj, int32_t value)
 
 static void animate_destination(void)
 {
-    lv_obj_t *objects[] = { ui.overview, ui.details, ui.empty, ui.music_page, ui.timer_page, ui.codex.page, ui.claude.page, ui.home_page, ui.weather_page,
+    lv_obj_t *objects[] = { ui.overview, ui.details, ui.empty, ui.music_page, ui.timer_page, ui.codex.page, ui.claude.page, ui.home_page, ui.weather_page, ui.shortcuts_page,
         ui.codex.usage_body, ui.codex.tasks_body, ui.claude.usage_body, ui.claude.tasks_body,
         ui.clock_large, ui.clock_date };
     for (unsigned i = 0; i < sizeof(objects) / sizeof(objects[0]); ++i)
@@ -1001,7 +1009,7 @@ static void animate_destination(void)
         buddy_ui_motion_enter(ui.clock_large, 8, 200, 0);
         buddy_ui_motion_enter(ui.clock_date, 6, 180, 20);
     } else {
-        lv_obj_t *destination = ui.active_app == BUDDY_APP_WEATHER ? ui.weather_page : ui.active_app == BUDDY_APP_HOME ? ui.home_page : ui.active_app == BUDDY_APP_MUSIC ? ui.music_page :
+        lv_obj_t *destination = ui.active_app == BUDDY_APP_WEATHER ? ui.weather_page : ui.active_app == BUDDY_APP_SHORTCUTS ? ui.shortcuts_page : ui.active_app == BUDDY_APP_HOME ? ui.home_page : ui.active_app == BUDDY_APP_MUSIC ? ui.music_page :
             ui.active_app == BUDDY_APP_CODEX ? ui.codex.page :
             ui.active_app == BUDDY_APP_CLAUDE ? ui.claude.page :
             ui.active_app == BUDDY_APP_TIMER ? ui.timer_page : ui.details_visible ? ui.details :
@@ -1013,7 +1021,7 @@ static void animate_destination(void)
 static void begin_app_transition(void)
 {
     if (!buddy_theme.app_flourish) { ui.transition_active = false; return; }
-    if (ui.active_app == BUDDY_APP_HOME || ui.active_app == BUDDY_APP_WEATHER) { ui.transition_active = false; return; }
+    if (ui.active_app == BUDDY_APP_HOME || ui.active_app == BUDDY_APP_WEATHER || ui.active_app == BUDDY_APP_SHORTCUTS) { ui.transition_active = false; return; }
     if (ui.active_app == BUDDY_APP_MUSIC || ui.active_app == BUDDY_APP_TIMER || ui.active_app == BUDDY_APP_CODEX || ui.active_app == BUDDY_APP_CLAUDE) {
         ui.transition_active = false;
         if (!ui.startup) update_large_frame(&buddy_mascot_frames[mascot_state()][0]);
@@ -2635,6 +2643,7 @@ static void create_app_surfaces(void)
     lv_obj_clear_flag(ui.clock_mascot, LV_OBJ_FLAG_CLICKABLE);
 
     ui.weather_page = buddy_weather_page_create(ui.screen);
+    ui.shortcuts_page = buddy_shortcuts_page_create(ui.screen);
     create_music_page();
     create_timer_page();
     create_codex_page();
@@ -2660,9 +2669,11 @@ static void create_app_surfaces(void)
         lv_obj_set_style_bg_opa(tile, LV_OPA_COVER, LV_STATE_PRESSED);
         lv_obj_add_event_cb(tile, app_clicked, LV_EVENT_CLICKED, (void *)(uintptr_t)app_catalog[i].id);
         buddy_app_icon_create(tile, (buddy_app_t)i, tiny ? (grid.width - grid.icon) / 2 : grid.pad, grid.pad, grid.icon);
-        ui.app_names[i] = text(tile, BT(app_catalog[i].title), tiny ? 4 : grid.pad, name_y, tiny ? grid.width - 8 : inner,
+        ui.app_names[i] = text(tile, BT(app_catalog[i].title), tiny ? 4 : grid.pad, name_y, tiny ? grid.width - 8 : wide ? grid.width - grid.pad - 4 : inner,
                                wide ? &buddy_language_font_20 : tiny ? &buddy_language_font_14 : &buddy_language_font_16, C_TEXT);
         if (tiny) lv_obj_set_style_text_align(ui.app_names[i], LV_TEXT_ALIGN_CENTER, 0);
+        /* One line: a name too long for the tile ends in dots rather than running into its status. */
+        lv_obj_set_height(ui.app_names[i], lv_font_get_line_height(lv_obj_get_style_text_font(ui.app_names[i], 0)));
         ui.app_description[i] = text(tile, "", grid.pad, name_y + (wide ? 28 : 22), inner,
                                      wide ? &buddy_language_font_16 : &buddy_language_font_14, C_MUTED);
         lv_obj_set_style_text_line_space(ui.app_description[i], 2, 0);
@@ -2936,6 +2947,7 @@ void buddy_ui_set_connection(buddy_connection_state_t state, const char *ssid,
         ui.music_deferred = 0;
         set_music_feedback(BT(BT_PC_DISCONNECTED_RECONNECT_TO_CONTROL_SPOTIFY), true);
     }
+    buddy_shortcuts_page_set_connected(state == BUDDY_PC_CONNECTED);
     refresh_connection();
 }
 
@@ -3024,6 +3036,7 @@ void buddy_ui_update_stats(const buddy_stats_t *stats)
     if (stats->away && !ui.pc_away) ui.away_tick = lv_tick_get();
     if (away_changed) ui.offline_handled = false;
     ui.pc_away = stats->away;
+    buddy_shortcuts_page_update(stats);
     ui.stats = *stats;
     ui.have_stats = true;
     ui.fresh_sample = true;
@@ -3590,6 +3603,7 @@ void buddy_ui_set_install(buddy_install_stage_t stage, uint32_t received, uint32
 void buddy_ui_set_music_control_callback(buddy_music_control_callback_t callback)
 {
     ui.music_control_callback = callback;
+    buddy_shortcuts_page_set_sender(callback);
     refresh_music();
 }
 

@@ -93,6 +93,15 @@ Check(Protocol.ParseControl(Valued("focus", Protocol.ClaudeApp)) == new DeviceCo
     "needs-you focus names the Claude or Codex app");
 Check(Protocol.ParseControl(Control(1, "focus")) is null && Protocol.ParseControl(Valued("focus", 2)) is null && Protocol.ParseControl(Valued("focus", 0)) is null,
     "focus without an agent app is rejected");
+Check(Protocol.ParseControl(Valued("shortcut", Protocol.ShortcutValue(42, 3))) == new DeviceControl(4, "shortcut", 42 << 5 | 3) &&
+    Protocol.ShortcutTarget(42 << 5 | 3) == (42, 3) && Protocol.ParseControl(Valued("shortcut", Protocol.ShortcutValue(Protocol.ShortcutMaxRev, 15))) is not null,
+    "a Shortcuts tap names its deck revision and slot");
+Check(Protocol.ParseControl(Control(1, "shortcut")) is null && Protocol.ParseControl(Valued("shortcut", 3)) is null &&
+    Protocol.ParseControl(Valued("shortcut", Protocol.ShortcutValue(1, 16))) is null && Protocol.ParseControl(Valued("shortcut", Protocol.ShortcutValue(Protocol.ShortcutMaxRev + 1, 0))) is null &&
+    Protocol.ParseControl(Valued("shortcut", "1")) is null, "a Shortcuts tap without a revision, past the last slot or past the revision range is rejected");
+using (var shortcutsJson = JsonDocument.Parse(JsonSerializer.Serialize(sample with { Shortcuts = new ShortcutStats(9, 5) }, Protocol.Json)))
+    Check(shortcutsJson.RootElement.GetProperty("shortcuts").GetProperty("rev").GetInt32() == 9 && shortcutsJson.RootElement.GetProperty("shortcuts").GetProperty("on").GetInt32() == 5 &&
+          !serialized.RootElement.TryGetProperty("shortcuts", out _), "Shortcuts telemetry carries only the deck revision and lit tiles");
 using (var awayJson = JsonDocument.Parse(JsonSerializer.Serialize(sample with { Away = true }, Protocol.Json)))
     Check(awayJson.RootElement.GetProperty("away").GetBoolean() && !serialized.RootElement.TryGetProperty("away", out _), "away is sent only while locked or going to sleep");
 using (var playerJson = JsonDocument.Parse(JsonSerializer.Serialize(new MusicStats(true, true, "T", "A", "B", true, 1, 2, true, true, true, Source: "Apple Music", ArtId: 12345), Protocol.Json)))

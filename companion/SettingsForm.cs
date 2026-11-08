@@ -8,13 +8,14 @@ namespace ClawPal.Companion;
 internal sealed class SettingsForm : ClawWindow
 {
     /* Sidebar order; About opens from the version label instead of the list. */
-    private enum SettingsPage { Home, Appearance, Apps, Clock, Companion, Device, Updates, Screen, Language, About }
+    private enum SettingsPage { Home, Appearance, Apps, Shortcuts, Clock, Companion, Device, Updates, Screen, Language, About }
     private readonly Configuration config;
     private readonly Connection connection;
     private readonly DeviceSettingsClient wireless;
     private DeviceSettings draft;
     private string pcLanguage;
-    private bool fps,auto,startup,paused,claudeLive,deviceDirty,pcDirty,saving;
+    private bool fps,auto,startup,paused,claudeLive,deviceDirty,pcDirty,saving,shortcutsDirty;
+    private ShortcutDeck shortcutDeck;
     private readonly bool preview;
     private readonly Panel sidebar=new(){Dock=DockStyle.Left,Width=210,BackColor=ClawTheme.Surface};
     private readonly ClawScrollPanel pages=new(){Dock=DockStyle.Fill,Padding=new Padding(30,12,28,20)};
@@ -34,14 +35,15 @@ internal sealed class SettingsForm : ClawWindow
     internal SettingsForm(Configuration config,Connection connection,bool preview=false)
     {
         this.config=config;this.connection=connection;pcLanguage=L.Normalize(config.CompanionLanguage);this.preview=preview;wireless=connection.Settings;
-        draft=config.DisplaySettings??DeviceSettings.FromConfiguration(config);fps=config.TrackFps;auto=config.AutoOpenApps;paused=config.Paused;claudeLive=config.ClaudeLiveUsage;startup=!preview&&Startup.Enabled;
+        draft=config.DisplaySettings??DeviceSettings.FromConfiguration(config);shortcutDeck=config.Shortcuts??ShortcutDeck.Starter(draft.Language);fps=config.TrackFps;auto=config.AutoOpenApps;paused=config.Paused;claudeLive=config.ClaudeLiveUsage;startup=!preview&&Startup.Enabled;
         Text=L.Text("clawpal_your_desk_companion");ClientSize=new(1120,790);AutoScaleMode=AutoScaleMode.Dpi;
         using(var stream=typeof(SettingsForm).Assembly.GetManifestResourceStream("ClawPal.Companion.CrabIcon"))if(stream is not null)Icon=new Icon(stream);
         var content=new Panel(){Dock=DockStyle.Fill};Controls.Add(content);Controls.Add(sidebar);
         var brand=ClawTheme.Label(L.Text("clawpal"),170,25,true,46);brand.Location=new(24,28);sidebar.Controls.Add(brand);
         link.Location=new(26,83);sidebar.Controls.Add(link);
-        var names=new[]{L.Text("your_home"),L.Text("appearance"),L.Text("apps"),L.Text("clock_weather"),L.Text("pc_companion"),L.Text("device"),L.Text("updates"),L.Text("screen"),L.Text("language")};
-        for(int i=0;i<names.Length;i++) {var index=(SettingsPage)i;var button=new ClawButton(){Text=names[i],Size=new(174,44),Location=new(18,146+i*44)};button.Click+=(_,_)=>ShowPage(index);navigation.Add(button);sidebar.Controls.Add(button);}
+        var names=new[]{L.Text("your_home"),L.Text("appearance"),L.Text("apps"),L.Text("shortcuts"),L.Text("clock_weather"),L.Text("pc_companion"),L.Text("device"),L.Text("updates"),L.Text("screen"),L.Text("language")};
+        // Ten rows of 40 px leave room for the Discord button even in the smallest window.
+        for(int i=0;i<names.Length;i++) {var index=(SettingsPage)i;var button=new ClawButton(){Text=names[i],Size=new(174,NavRow),Location=new(18,NavTop+i*NavRow)};button.Click+=(_,_)=>ShowPage(index);navigation.Add(button);sidebar.Controls.Add(button);}
         sidebar.Controls.Add(crab);sidebar.Resize+=(_,_)=>PlaceCrab();
         ClawTheme.Changed+=LookChanged;
         var version=ClawTheme.Label(L.Text("clawpal_94dbc7")+typeof(SettingsForm).Assembly.GetName().Version?.ToString(3),170,9,false,30);version.Location=new(25,sidebar.Height-48);version.Anchor=AnchorStyles.Left|AnchorStyles.Bottom;sidebar.Controls.Add(version);
@@ -49,6 +51,9 @@ internal sealed class SettingsForm : ClawWindow
         version.Click+=(_,_)=>ShowPage(SettingsPage.About);version.TabStop=true;
         version.KeyDown+=(_,e)=>{if(e.KeyCode is Keys.Enter or Keys.Space){ShowPage(SettingsPage.About);e.Handled=true;}};
         var aboutHint=new ToolTip();aboutHint.SetToolTip(version,L.Text("about_clawpal"));Disposed+=(_,_)=>aboutHint.Dispose();
+        // The community link stays in view on every page, just above the version.
+        var discord=new ClawButton(){Text=L.Text("join_discord"),Brand=Color.FromArgb(0x58,0x65,0xF2),Size=new(174,40),Location=new(18,sidebar.Height-DiscordInset),Anchor=AnchorStyles.Left|AnchorStyles.Bottom};
+        discord.Click+=(_,_)=>{if(!preview)Process.Start(new ProcessStartInfo(DiscordInvite){UseShellExecute=true});};sidebar.Controls.Add(discord);
         var header=new Panel(){Dock=DockStyle.Top,Height=116,Padding=new Padding(30,27,28,0)};
         title.Dock=DockStyle.Top;subtitle.Dock=DockStyle.Fill;header.Controls.Add(subtitle);header.Controls.Add(title);
         var footer=new Panel(){Dock=DockStyle.Bottom,Height=96,Padding=new Padding(30,12,28,20)};
@@ -61,11 +66,14 @@ internal sealed class SettingsForm : ClawWindow
         FormClosing+=(_,e)=>{if(e.CloseReason==CloseReason.UserClosing && !preview){e.Cancel=true;Hide();}};
         L.Changed+=LanguageChanged;ShowPage(SettingsPage.Home);RefreshState();
     }
-    /* The crab rests below the navigation when there is room and the look has one. */
+    private const string DiscordInvite="https://discord.com/invite/gR5DqCdGre";
+    internal const int NavTop=130,NavRow=40,DiscordInset=96;
+    /* The crab rests between the navigation and the Discord button when there is room and the look has one. */
     private void PlaceCrab()
     {
-        int size=Math.Min(144,Math.Max(0,sidebar.Height-609)/48*48);crab.Visible=size>=48&&ClawTheme.Mascot;
-        if(size>=48)crab.SetBounds((sidebar.Width-size)/2,sidebar.Height-size-64,size,size);
+        int top=NavTop+navigation.Count*NavRow+8,bottom=sidebar.Height-DiscordInset-8;
+        int size=Math.Min(144,Math.Max(0,bottom-top)/48*48);crab.Visible=size>=48&&ClawTheme.Mascot;
+        if(size>=48)crab.SetBounds((sidebar.Width-size)/2,bottom-size,size,size);
     }
     private void LookChanged(){if(IsDisposed)return;PlaceCrab();homePreview?.ApplyLook();Invalidate(true);}
     private void RefreshState()
@@ -116,6 +124,7 @@ internal sealed class SettingsForm : ClawWindow
         pageIndex=index;for(int i=0;i<navigation.Count;i++){navigation[i].Selected=i==(int)index;navigation[i].Invalidate();}
         switch(index){
             case SettingsPage.Home:HomePage();break;case SettingsPage.Appearance:AppearancePage();break;case SettingsPage.Apps:AppsPage();break;
+            case SettingsPage.Shortcuts:ShortcutsPage();break;
             case SettingsPage.Clock:ClockPage();break;case SettingsPage.Companion:CompanionPage();break;case SettingsPage.Device:DevicePage();break;
             case SettingsPage.Updates:UpdatesPage();break;case SettingsPage.Screen:ScreenPage();break;case SettingsPage.Language:LanguagePage();break;default:AboutPage();break;
         }
@@ -204,6 +213,48 @@ internal sealed class SettingsForm : ClawWindow
             toggle.CheckedChanged+=(_,_)=>SetDraft(draft.SetEnabled(app.Id,toggle.Checked));p.Controls.Add(toggle);Put(p,app.Description,53,y+42,p.Width-65,9);
         }
         Put(p,L.Text("turning_an_app_off_also_removes_its_home_shortcut"),0,DisplayApps.All.Length*91+8,p.Width,9,false,42);
+    }
+    private sealed record DeckSize(int Tiles){public override string ToString()=>L.Text("n_tiles",Tiles);}
+    /* The deck as the display shows it, beside everything about the chosen tile. */
+    private void ShortcutsPage()
+    {
+        title.Text=L.Text("your_pc_at_a_tap");subtitle.Text=L.Text("tiles_on_your_display_that_run_things_on_this_pc");
+        var p=Page(640);
+        var sizeCaption=Put(p,L.Text("grid"),0,0,90,10,true,44);
+        var size=new ChoiceBox(){Width=170,Height=44};foreach(int n in ShortcutDeck.Sizes)size.Items.Add(new DeckSize(n));
+        size.SelectedIndex=Array.IndexOf(ShortcutDeck.Sizes,shortcutDeck.Size);
+        var restore=new ClawButton(){Text=L.Text("restore_starter_shortcuts"),Size=new(220,44)};
+        var deckPreview=new DeckPreview(shortcutDeck,config.BoardId,()=>draft.Language);
+        var hint=Put(p,L.Text("click_a_tile_to_edit_it_drag_to_move_it"),0,0,400,9,false,44);
+        var state=Put(p,"",0,0,400,9,false,44);
+        ShortcutInspector? inspector=null;
+        void Change(ShortcutDeck deck){shortcutDeck=deck;shortcutsDirty=true;Dirty(false);deckPreview.SetDeck(deck);ShowState();}
+        // Says whether the deck can be saved, and if not, why.
+        void ShowState(){try{shortcutDeck.Validate();state.Text=draft.Enabled(8)?"":L.Text("shortcuts_are_off_in_apps");state.ForeColor=ClawTheme.Muted;}catch(ArgumentException e){state.Text=e.Message;state.ForeColor=ClawTheme.Warning;}}
+        inspector=new ShortcutInspector(()=>shortcutDeck,()=>draft.Language,Change);
+        deckPreview.Changed+=deck=>{Change(deck);inspector.Bind(deckPreview.Selected);};
+        deckPreview.SelectedChanged+=slot=>inspector.Bind(slot);
+        size.SelectedIndexChanged+=(_,_)=>{
+            if(size.SelectedItem is not DeckSize choice||choice.Tiles==shortcutDeck.Size)return;
+            try{Change(shortcutDeck.Resize(choice.Tiles));deckPreview.Select(Math.Min(deckPreview.Selected,choice.Tiles-1));Layout();}
+            catch(ArgumentException e){state.Text=e.Message;state.ForeColor=ClawTheme.Warning;BeginInvoke(()=>size.SelectedIndex=Array.IndexOf(ShortcutDeck.Sizes,shortcutDeck.Size));}
+        };
+        restore.Click+=(_,_)=>{Change(ShortcutDeck.Starter(draft.Language));size.SelectedIndex=Array.IndexOf(ShortcutDeck.Sizes,shortcutDeck.Size);deckPreview.Select(0);};
+        p.Controls.AddRange([size,restore,deckPreview,inspector]);
+        void Layout(){
+            bool sideBySide=p.Width>=790;
+            int left=sideBySide?Math.Min(560,(int)(p.Width*.58)):Math.Min(560,p.Width);
+            var model=BoardCatalog.Get(config.BoardId);bool tiny=model.Height<400;
+            int rows=(shortcutDeck.Size+(shortcutDeck.Size==6||(tiny&&shortcutDeck.Size==12)?3:4)-1)/(shortcutDeck.Size==6||(tiny&&shortcutDeck.Size==12)?3:4);
+            int previewHeight=tiny?Math.Min(left,left*((model.Height-44)*((rows+1)/2)+44)/model.Width):left*model.Height/model.Width;
+            sizeCaption.SetBounds(0,11,70,30);size.SetBounds(74,0,170,44);restore.SetBounds(left-220,0,220,44);
+            deckPreview.SetBounds(0,58,left,previewHeight);hint.SetBounds(0,deckPreview.Bottom+12,left,40);state.SetBounds(0,hint.Bottom,left,44);
+            int x=sideBySide?left+32:0,y=sideBySide?0:state.Bottom+16;
+            inspector.SetBounds(x,y,sideBySide?p.Width-x:left,inspector.Height);
+            p.Height=Math.Max(state.Bottom,inspector.Bottom)+24;
+        }
+        inspector.Resize+=(_,_)=>Layout();p.Resize+=(_,_)=>Layout();Layout();
+        deckPreview.Select(Math.Clamp(deckPreview.Selected,0,shortcutDeck.Size-1));ShowState();
     }
     private void ClockPage()
     {
@@ -399,9 +450,10 @@ internal sealed class SettingsForm : ClawWindow
     {
         if(saving||connection.Updates.Busy)return;saving=true;save.Enabled=false;crab.State="working";
         try {
-            draft.Validate();
-            if(preview){deviceDirty=pcDirty=false;status.Text=L.Text("preview_only_no_settings_changed");return;}
+            draft.Validate();shortcutDeck.Validate();
+            if(preview){deviceDirty=pcDirty=shortcutsDirty=false;status.Text=L.Text("preview_only_no_settings_changed");return;}
             if(pcDirty){Startup.Set(startup);config.TrackFps=fps;config.AutoOpenApps=auto;config.Paused=paused;config.ClaudeLiveUsage=claudeLive;config.CompanionLanguage=pcLanguage;config.Save();L.SetLanguage(pcLanguage);connection.SetAutoOpenApps(auto);connection.SetPaused(paused);pcDirty=false;}
+            if(shortcutsDirty){config.SetShortcuts(shortcutDeck);connection.ShortcutsChanged();shortcutsDirty=false;}
             if(deviceDirty){config.SetDisplaySettings(draft);deviceDirty=false;}
             if(config.SettingsPending){using var timeout=new CancellationTokenSource(TimeSpan.FromSeconds(16));await wireless.SyncAsync(timeout.Token);}
             status.Text=L.Text("saved_your_desk_your_way");crab.State="happy";
@@ -418,6 +470,7 @@ internal sealed class SettingsForm : ClawWindow
         foreach(var size in new[]{new Size(960,680),new Size(1600,900)}){ClientSize=size;ShowPage(SettingsPage.Home);Capture($"home-{size.Width}");}
         WindowState=FormWindowState.Maximized;ShowPage(SettingsPage.Home);Capture("home-maximized");WindowState=FormWindowState.Normal;ClientSize=new(1120,790);
         foreach(var size in new[]{new Size(960,680),new Size(1120,790)}){ClientSize=size;ShowPage(SettingsPage.Companion);Application.DoEvents();pages.ScrollTo(pages.MaximumOffset);Capture($"claude-{size.Width}");}
+        ClientSize=new(960,680);ShowPage(SettingsPage.Shortcuts);Capture("shortcuts-960");ClientSize=new(1120,790);
         ShowPage(SettingsPage.Screen);pages.ScrollTo(pages.MaximumOffset);Capture("screen-bottom");
         ShowPage(SettingsPage.Clock);pages.ScrollTo(pages.MaximumOffset);Capture("weather-units");
         ShowPage(SettingsPage.Clock);Application.DoEvents();var choices=activePage!.Controls.OfType<ChoiceBox>().Last();choices.PerformClick();Application.DoEvents();

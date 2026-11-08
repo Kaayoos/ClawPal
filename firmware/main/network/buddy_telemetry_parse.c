@@ -284,6 +284,17 @@ static bool parse_game(const cJSON *root, buddy_game_t *game)
         (!game->active || game->name[0]);
 }
 
+static bool parse_shortcuts(const cJSON *root, buddy_shortcuts_state_t *shortcuts)
+{
+    memset(shortcuts, 0, sizeof(*shortcuts));
+    const cJSON *value = cJSON_GetObjectItemCaseSensitive(root, "shortcuts");
+    if (!value || cJSON_IsNull(value)) return true;
+    shortcuts->present = true;
+    return cJSON_IsObject(value) && cJSON_IsNumber(cJSON_GetObjectItemCaseSensitive(value, "rev")) &&
+        get_optional_uint32(value, "rev", BUDDY_SHORTCUT_MAX_REV, &shortcuts->rev) && shortcuts->rev > 0 &&
+        get_optional_uint32(value, "on", (1U << BUDDY_SHORTCUT_SLOTS) - 1, &shortcuts->on);
+}
+
 bool buddy_telemetry_parse(const char *payload, size_t length, buddy_stats_t *stats)
 {
     if (!bounded_json(payload, length)) return false;
@@ -325,7 +336,8 @@ bool buddy_telemetry_parse(const char *payload, size_t length, buddy_stats_t *st
                  get_metric(network, "rx_bps", 0, 1e15, &stats->network_rx_bps) &&
                  get_metric(network, "tx_bps", 0, 1e15, &stats->network_tx_bps) &&
                  parse_music(root, &stats->music) &&
-                 parse_codex(root, "codex", &stats->codex) && parse_codex(root, "claude", &stats->claude) && parse_game(root, &stats->game);
+                 parse_codex(root, "codex", &stats->codex) && parse_codex(root, "claude", &stats->claude) && parse_game(root, &stats->game) &&
+                 parse_shortcuts(root, &stats->shortcuts);
     if (valid) stats->timestamp_ms = (int64_t)timestamp;
     cJSON_Delete(root);
     return valid;

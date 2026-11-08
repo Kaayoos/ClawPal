@@ -18,7 +18,7 @@ internal static class SettingsChecks
         Check(settings.SetEnabled(2,false).HomeOrder.SequenceEqual(new[]{0,4,7,1}),"disabling an app removes its Home shortcut");
         Check(settings.SetEnabled(2,false).SetEnabled(2,true).Enabled(2),"app can be enabled again");
         (settings with{EnabledApps=32,HomeOrder=[]}).Validate();Check(true,"Home alone remains a valid device configuration");
-        Reject(settings with{EnabledApps=31},"Home cannot be disabled");Reject(settings with{EnabledApps=288},"unknown app bits rejected");
+        Reject(settings with{EnabledApps=31},"Home cannot be disabled");Reject(settings with{EnabledApps=544},"unknown app bits rejected");
         Reject(settings with{HomeOrder=[0,0]},"duplicate shortcuts rejected");Reject(settings with{HomeOrder=[5]},"Home cannot link recursively to itself");
         Reject(settings with{EnabledApps=32,HomeOrder=[0]},"disabled shortcut rejected");Reject(settings with{Latitude=double.NaN},"invalid settings coordinate rejected");
         Reject(settings with{City="City\0suffix"},"embedded null in location rejected");
@@ -72,7 +72,7 @@ internal static class SettingsChecks
         (settings with{NightStart=22,NightEnd=7,DimBehavior=2,DimAfterSeconds=15,DimBrightness=5}).Validate();Check(true,"overnight ranges and always-idle dimming are supported");
         string legacy="{\"schema\":2,\"enabled_apps\":47,\"home_order\":[2,0,1],\"use_24h\":false,\"weather_enabled\":false,\"city\":\"Warsaw\",\"latitude\":52.2297,\"longitude\":21.0122,\"timezone\":\"CET-1CEST,M3.5.0,M10.5.0/3\"}";
         var migrated=DeviceSettingsClient.Parse(legacy);
-        Check(migrated.ProtocolSchema==2 && migrated.Settings.Schema==DeviceSettings.CurrentSchema && migrated.Settings.EnabledApps==239 && migrated.Settings.HomeOrder.SequenceEqual(new[]{2,0,1}) && !migrated.Settings.Use24h && !migrated.Settings.WeatherEnabled,"migration preserves disabled apps, ordering, time format and forecast visibility");
+        Check(migrated.ProtocolSchema==2 && migrated.Settings.Schema==DeviceSettings.CurrentSchema && migrated.Settings.EnabledApps==495 && migrated.Settings.HomeOrder.SequenceEqual(new[]{2,0,1}) && !migrated.Settings.Use24h && !migrated.Settings.WeatherEnabled,"migration preserves disabled apps, ordering, time format and forecast visibility");
         Check(migrated.Settings.DimBehavior==1 && migrated.Settings.DimBrightness==40 && migrated.Settings.NightEnabled && migrated.Settings.NightStart==1 && migrated.Settings.NightEnd==10 && migrated.Settings.OfflineApp==1,"legacy preferences inherit the previous screen behavior");
         var custom=settings with{DimBehavior=2,DimAfterSeconds=120,DimBrightness=20,NightEnabled=false,NightStart=23,NightEnd=8,OfflineApp=6};
         Check(DeviceSettingsClient.Equivalent(custom,DeviceSettingsClient.Parse(JsonSerializer.Serialize(custom,DeviceSettingsClient.Json)).Settings),"every new screen preference survives wireless JSON roundtrip");

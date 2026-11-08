@@ -46,6 +46,7 @@ foreach(string scenario in new[]{"wrong-flash","no-mac","read-failure","truncate
 }
 passed += await InstallerUpdateChecks.Run(directory, good, profile);
 passed += SettingsChecks.Run();
+passed += ShortcutChecks.Run();
 passed += ClaudeChecks.Run(directory);
 passed += LocalizationChecks.Run();
 passed += TimeZoneChecks.Run();

@@ -9,6 +9,8 @@
 #include "buddy_settings.h"
 #include "buddy_theme_data.h"
 #include "buddy_weather_parse.h"
+#include "buddy_shortcuts.h"
+#include "buddy_shortcut_data.h"
 
 /* The parsers only need text lookups to exist; display text is not under test. */
 const char *buddy_text(buddy_text_key_t key) { (void)key; return "text"; }
@@ -59,7 +61,12 @@ static void settings_checks(void)
     check(!settings("Warsaw", "UTC0;rm", 6, 255, NULL), "time zone outside the POSIX character set is rejected");
     check(!settings("", "UTC0", 6, 255, NULL), "empty city is rejected");
     check(!settings("Warsaw", "UTC0", 6, 255 & ~32, NULL), "Home app cannot be disabled");
-    check(!settings("Warsaw", "UTC0", 8, 255, NULL), "unknown settings schema is rejected");
+    check(!settings("Warsaw", "UTC0", 9, 511, NULL), "unknown settings schema is rejected");
+    check(settings("Warsaw", "UTC0", 8, 511, &parsed) && (parsed.enabled_apps & 256), "schema 8 settings carry the Shortcuts app");
+    check(settings("Warsaw", "UTC0", 8, 255, &parsed) && !(parsed.enabled_apps & 256), "schema 8 settings can turn Shortcuts off");
+    check(!settings("Warsaw", "UTC0", 7, 511, NULL), "schema 7 settings cannot name a ninth app");
+    check(settings("Warsaw", "UTC0", 7, 255, &parsed) && (parsed.enabled_apps & 256), "older settings gain the Shortcuts app");
+    check(!settings("Warsaw", "UTC0", 8, 1023, NULL), "apps beyond Shortcuts are rejected");
     check(settings("Warsaw", "UTC0", 6, 255, &parsed) && parsed.theme == BUDDY_THEME_CRAB && parsed.accent == BUDDY_ACCENT_CHAMPAGNE,
           "schema 6 settings keep the crab theme");
     check(settings_look("Warsaw", "UTC0", 7, 255, "\"theme\":\"studio\",\"accent\":\"sage\",", &parsed) &&
@@ -80,6 +87,43 @@ static void settings_checks(void)
     cJSON *root = cJSON_Parse("[1,2,3]");
     check(!buddy_settings_parse(root, &parsed), "non-object settings are rejected");
     cJSON_Delete(root);
+}
+
+static bool deck(const char *json, buddy_shortcut_deck_t *out)
+{
+    cJSON *root = cJSON_Parse(json);
+    buddy_shortcut_deck_t value;
+    bool valid = root && buddy_shortcuts_parse(root, out ? out : &value);
+    cJSON_Delete(root);
+    return valid;
+}
+
+static void shortcut_checks(void)
+{
+    buddy_shortcut_deck_t parsed;
+    check(deck("{\"rev\":42,\"size\":12,\"tiles\":[{\"slot\":0,\"label\":\"Mute mic\",\"label_on\":\"Mic muted\",\"icon\":\"mic\",\"color\":\"red\","
+               "\"toggle\":true,\"locked_ok\":true},{\"slot\":11,\"label\":\"Notes\",\"icon\":\"app\",\"color\":\"accent\",\"app_icon\":true,\"repeat\":false}]}", &parsed) &&
+          parsed.rev == 42 && parsed.size == 12 && parsed.tiles[0].used && parsed.tiles[0].toggle && parsed.tiles[0].locked_ok &&
+          parsed.tiles[0].icon == BUDDY_SHORTCUT_ICON_MIC && !strcmp(parsed.tiles[0].label_on, "Mic muted") &&
+          !parsed.tiles[1].used && parsed.tiles[11].app_icon && parsed.tiles[11].color == 0, "a deck parses with gaps between its tiles");
+    check(deck("{\"rev\":1,\"size\":6,\"tiles\":[]}", &parsed) && parsed.size == 6, "an empty deck is valid");
+    check(!deck("{\"rev\":1,\"size\":10,\"tiles\":[]}", NULL), "decks come in 6, 8, 12 or 16 slots");
+    check(!deck("{\"rev\":0,\"size\":6,\"tiles\":[]}", NULL) && !deck("{\"rev\":65536,\"size\":6,\"tiles\":[]}", NULL),
+          "the revision fits the tap's 16 bits and is never zero");
+    check(!deck("{\"rev\":1,\"size\":6,\"tiles\":[{\"slot\":6,\"label\":\"x\",\"icon\":\"mic\",\"color\":\"red\"}]}", NULL), "a tile outside the deck is rejected");
+    check(!deck("{\"rev\":1,\"size\":6,\"tiles\":[{\"slot\":1,\"icon\":\"mic\",\"color\":\"red\"},{\"slot\":1,\"icon\":\"lock\",\"color\":\"red\"}]}", NULL),
+          "two tiles cannot share a slot");
+    check(!deck("{\"rev\":1,\"size\":6,\"tiles\":[{\"slot\":0,\"icon\":\"rocket\",\"color\":\"red\"}]}", NULL), "unknown icons are rejected");
+    check(!deck("{\"rev\":1,\"size\":6,\"tiles\":[{\"slot\":0,\"icon\":\"mic\",\"color\":\"#ff0000\"}]}", NULL), "colours are named, not free-form");
+    check(!deck("{\"rev\":1,\"size\":6,\"tiles\":[{\"slot\":0,\"icon\":\"mic\",\"color\":\"red\",\"label\":\"bad\\u0007\"}]}", NULL), "control characters in labels are rejected");
+    char json[512], label[60];
+    memset(label, 'a', 48); label[48] = 0;
+    snprintf(json, sizeof(json), "{\"rev\":1,\"size\":6,\"tiles\":[{\"slot\":0,\"icon\":\"mic\",\"color\":\"red\",\"label\":\"%s\"}]}", label);
+    check(deck(json, NULL), "a 48-byte label fits");
+    memset(label, 'a', 49); label[49] = 0;
+    snprintf(json, sizeof(json), "{\"rev\":1,\"size\":6,\"tiles\":[{\"slot\":0,\"icon\":\"mic\",\"color\":\"red\",\"label\":\"%s\"}]}", label);
+    check(!deck(json, NULL), "a 49-byte label is rejected");
+    check(buddy_shortcut_control_value(65535, 15) == (65535U << 5 | 15U), "a tap packs the revision above the slot");
 }
 
 static bool weather(const char *body, time_t now, buddy_weather_t *out)
@@ -122,6 +166,7 @@ int main(int argc, char **argv)
 {
     settings_checks();
     weather_checks();
+    shortcut_checks();
     telemetry_checks();
     auth_checks();
     telemetry_fuzz(argc > 1 ? (unsigned)strtoul(argv[1], NULL, 10) : 200000);

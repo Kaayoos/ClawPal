@@ -16,6 +16,7 @@ internal static class ClawTheme
     internal static Color Muted=>Look.Muted;
     internal static Color Accent=>Look.Accent;
     internal static Color WeatherApp=>Look.WeatherApp;
+    internal static Color Warning=>Look.Warning;
     internal static Color AccentHover=>Mix(Accent,Color.White,.15f);
     internal static Color AccentPressed=>Mix(Accent,Color.Black,.13f);
     internal static Color Track=>Mix(Border,Ink,.02f);
@@ -76,6 +77,8 @@ internal class ClawButton : Button
 {
     internal bool Primary { get; set; }
     internal bool Selected { get; set; }
+    /* A link to an outside service wears that service's colour, with white text, in either look. */
+    internal Color? Brand { get; set; }
     private bool hovered, pressed;
     public ClawButton() { FlatStyle=FlatStyle.Flat;FlatAppearance.BorderSize=0;UseVisualStyleBackColor=false;UseMnemonic=false;Cursor=Cursors.Hand;Font=ClawTheme.Font(10,true);Size=new(155,42);SetStyle(ControlStyles.UserPaint|ControlStyles.OptimizedDoubleBuffer,true); }
     protected override void OnMouseEnter(EventArgs e){hovered=true;Invalidate();base.OnMouseEnter(e);}
@@ -85,9 +88,10 @@ internal class ClawButton : Button
     protected override void OnPaint(PaintEventArgs e)
     {
         e.Graphics.SmoothingMode=SmoothingMode.AntiAlias;e.Graphics.Clear(Parent?.BackColor??ClawTheme.Background);
-        var fill=!Enabled?ClawTheme.Surface:Primary?(pressed?ClawTheme.AccentPressed:hovered?ClawTheme.AccentHover:ClawTheme.Accent):Selected||hovered?ClawTheme.Hover:ClawTheme.Surface;
+        var fill=!Enabled?ClawTheme.Surface:Brand is { } brand?(pressed?ControlPaint.Dark(brand,.1f):hovered?ControlPaint.Light(brand,.15f):brand):
+            Primary?(pressed?ClawTheme.AccentPressed:hovered?ClawTheme.AccentHover:ClawTheme.Accent):Selected||hovered?ClawTheme.Hover:ClawTheme.Surface;
         ClawTheme.Fill(e.Graphics,fill,new RectangleF(0,0,Width-1,Height-1),9);
-        var ink=!Enabled?ClawTheme.Muted:Primary?ClawTheme.Background:Selected?ClawTheme.Accent:ClawTheme.Ink;
+        var ink=!Enabled?ClawTheme.Muted:Brand is not null?Color.White:Primary?ClawTheme.Background:Selected?ClawTheme.Accent:ClawTheme.Ink;
         ClawTheme.Text(e.Graphics,Text,Font,ink,ClientRectangle,TextFormatFlags.HorizontalCenter|TextFormatFlags.VerticalCenter|TextFormatFlags.EndEllipsis);
         if(Focused&&ShowFocusCues){using var p=ClawTheme.Round(new RectangleF(2,2,Width-5,Height-5),8);using var pen=new Pen(ClawTheme.Accent);e.Graphics.DrawPath(pen,p);}
     }

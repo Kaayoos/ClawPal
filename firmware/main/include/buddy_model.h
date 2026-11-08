@@ -108,6 +108,15 @@ typedef struct {
     char status[16];
 } buddy_game_t;
 
+/* The PC owns the Shortcuts deck; telemetry carries only its revision and which toggle tiles are lit. */
+#define BUDDY_SHORTCUT_SLOTS 16
+#define BUDDY_SHORTCUT_MAX_REV 0xFFFF
+typedef struct {
+    bool present;
+    uint32_t rev;
+    uint32_t on;
+} buddy_shortcuts_state_t;
+
 typedef struct {
     char hostname[64];
     char cpu_name[96];
@@ -136,4 +145,6 @@ typedef struct {
     buddy_codex_t codex;
     buddy_codex_t claude;
     buddy_game_t game;
+    /* present is false when an older companion has no Shortcuts. */
+    buddy_shortcuts_state_t shortcuts;
 } buddy_stats_t;

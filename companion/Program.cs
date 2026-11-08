@@ -48,6 +48,7 @@ internal static class Program
                 return 0;
             }
             if (Value(args, "--diagnostics") is { } diagnosticPath) { Diagnostics(diagnosticPath).GetAwaiter().GetResult(); return 0; }
+            if (Value(args, "--shortcut-diagnostics") is { } shortcutPath) { ShortcutDiagnostics(shortcutPath, Value(args, "--shortcut-run")).GetAwaiter().GetResult(); return 0; }
             if (Value(args, "--music-diagnostics") is { } musicPath) { MusicDiagnostics(musicPath, Value(args, "--music-command")).GetAwaiter().GetResult(); return 0; }
             if (Value(args, "--claude-diagnostics") is { } claudePath) {
                 var usageConfig=Configuration.Load();
@@ -115,6 +116,23 @@ internal static class Program
         var sample = metrics.Sample(1);
         Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(path))!);
         await File.WriteAllTextAsync(path, JsonSerializer.Serialize(new { stats = sample, gpu_provider = metrics.GpuProviderName, cpu_temperature_status = metrics.CpuTemperatureStatus }, new JsonSerializerOptions(Protocol.Json) { WriteIndented = true }));
+    }
+    // Writes the saved deck, what the display would receive and the lit toggles; --shortcut-run SLOT also runs that tile.
+    private static async Task ShortcutDiagnostics(string path, string? slot)
+    {
+        var config = Configuration.Load(recover: false);
+        var deck = config.Shortcuts!;
+        string language = config.DisplaySettings?.Language ?? "en";
+        object? run = null;
+        if (slot is not null)
+        {
+            if (!int.TryParse(slot, out int index) || deck.At(index) is not { } tile) throw new ArgumentException(L.Text("shortcuts_need_a_free_slot_each"));
+            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+            run = new { tile.Slot, tile.Action, ok = await ShortcutRunner.RunAsync(tile, null, timeout.Token) };
+        }
+        Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(path))!);
+        await File.WriteAllTextAsync(path, JsonSerializer.Serialize(new { rev = deck.Revision(language), display = JsonDocument.Parse(deck.DisplayJson(language)).RootElement,
+            lit = ShortcutRunner.OnMask(deck), run }, new JsonSerializerOptions(Protocol.Json) { WriteIndented = true }));
     }
     private static async Task MusicDiagnostics(string path, string? action)
     {

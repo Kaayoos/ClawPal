@@ -38,6 +38,8 @@ public sealed class Connection : IDisposable
         away = value;
         try { if (nudge.CurrentCount == 0) nudge.Release(); } catch (SemaphoreFullException) { }
     }
+    // A saved deck reaches the display with the next frame rather than within a second.
+    public void ShortcutsChanged() { try { if (nudge.CurrentCount == 0) nudge.Release(); } catch (SemaphoreFullException) { } }
     // Lets a suspend handler wait briefly until the display has heard before the network goes down.
     public bool WaitAwaySent(TimeSpan timeout) => !IsConnected || awaySent.Wait(timeout);
 
@@ -86,7 +88,15 @@ public sealed class Connection : IDisposable
                 long lastResponse = Stopwatch.GetTimestamp();
                 var acknowledgements = new Acknowledgements();
                 var controls = new MusicControlQueue();
-                var controlWorker = controls.RunAsync(media, WindowFocus.Execute, attempt.Token);
+                string DisplayLanguage() => config.DisplaySettings?.Language ?? "en";
+                ShortcutDeck Deck() => config.Shortcuts ?? ShortcutDeck.Starter(DisplayLanguage());
+                var shortcuts = new ShortcutRunner(Deck, DisplayLanguage, () => away, media);
+                var controlWorker = controls.RunAsync(media, WindowFocus.Execute, attempt.Token, shortcuts.ExecuteAsync);
+                // Like the cover, the deck lives in the display's memory, so a reconnect sends it again.
+                int uploadedDeck = 0;
+                bool deckSupported = true;
+                long deckRetryAt = 0;
+                Task<bool?>? deckTask = null;
                 // The display keeps one cover; a reconnect may follow its restart, so send it again.
                 int uploadedArt = 0;
                 bool artSupported = true;
@@ -98,13 +108,18 @@ public sealed class Connection : IDisposable
                     while (!attempt.IsCancellationRequested)
                     {
                         var controlResult = controls.Result;
+                        var deck = Deck();
+                        int deckRev = deck.Revision(DisplayLanguage()), lit = 0;
+                        try { lit = ShortcutRunner.OnMask(deck); }
+                        catch (Exception error) when (error is System.Runtime.InteropServices.COMException or InvalidCastException) { Log.Write("Shortcut state unavailable: " + error.GetType().Name); }
                         var sample = metrics.Sample(Interlocked.Increment(ref sequence)) with
                         {
                             Music = media.Snapshot with { ControlId = controlResult.Id, ControlOk = controlResult.Ok, ControlError = controlResult.Error },
                             Codex = codex.Snapshot with { Activity = activity.Snapshot },
                             Claude = config.DisplaySettings?.Enabled(7)!=false && Settings.FirmwareVersion.Length>0 && Version.TryParse(Settings.FirmwareVersion,out var firmwareVersion) && firmwareVersion>=new Version(0,7,0) ? claude.Snapshot : null,
                             AutoOpenApps = autoOpenApps,
-                            Away = away ? true : null
+                            Away = away ? true : null,
+                            Shortcuts = deckSupported ? new ShortcutStats(deckRev, lit) : null
                         };
                         gaming.SetGpuUsage(sample.Gpu.Usage);
                         sample = sample with { Game = gaming.Snapshot };
@@ -128,6 +143,18 @@ public sealed class Connection : IDisposable
                             uploadedArt = cover.Id;
                             artTask = UploadArtAsync(cover, attempt.Token);
                         }
+                        if (deckTask is { IsCompleted: true })
+                        {
+                            var uploaded = await deckTask;
+                            if (uploaded is null) deckSupported = false;
+                            else if (uploaded == false) { uploadedDeck = 0; deckRetryAt = Environment.TickCount64 + 30000; }
+                            deckTask = null;
+                        }
+                        if (deckTask is null && deckSupported && deckRev != uploadedDeck && Environment.TickCount64 >= deckRetryAt)
+                        {
+                            uploadedDeck = deckRev;
+                            deckTask = UploadShortcutsAsync(deck, DisplayLanguage(), attempt.Token);
+                        }
                         var delay = nudge.WaitAsync(1000, attempt.Token);
                         if (await Task.WhenAny(receiver, delay) == receiver) { await receiver; throw new IOException(L.Text("buddy_closed_its_connection")); }
                         await delay;
@@ -141,6 +168,7 @@ public sealed class Connection : IDisposable
                     try { await receiver; } catch (Exception error) when (error is OperationCanceledException or WebSocketException or IOException) { }
                     try { await controlWorker; } catch (OperationCanceledException) { }
                     if (artTask is not null) try { await artTask; } catch (OperationCanceledException) { }
+                    if (deckTask is not null) try { await deckTask; } catch (OperationCanceledException) { }
                 }
             }
             catch (OperationCanceledException) when (shutdown.IsCancellationRequested) { break; }
@@ -187,6 +215,42 @@ public sealed class Connection : IDisposable
         catch (Exception error) when (error is IOException or HttpRequestException or SocketException || (error is TaskCanceledException && !cancellationToken.IsCancellationRequested))
         {
             Log.Write("Album cover upload failed: " + error.GetType().Name);
+            return false;
+        }
+    }
+    // The deck's looks, then each app tile's own icon. Returns null when the firmware has no
+    // Shortcuts, so this connection stops trying, and false when it should try again later.
+    private async Task<bool?> UploadShortcutsAsync(ShortcutDeck deck, string displayLanguage, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var endpoint = await DiscoverAsync(config, cancellationToken);
+            if (endpoint is null) return false;
+            using var http = DeviceAuth.For(endpoint, config.Token).CreateClient(TimeSpan.FromSeconds(10));
+            using (var content = new ByteArrayContent(deck.DisplayJson(displayLanguage)))
+            {
+                content.Headers.ContentType = new MediaTypeHeaderValue("application/json");
+                using var response = await http.PostAsync($"http://{endpoint.Address}:{Protocol.MonitorPort}/shortcuts", content, cancellationToken);
+                if (response.StatusCode is HttpStatusCode.NotFound or HttpStatusCode.MethodNotAllowed) return null;
+                if (!response.IsSuccessStatusCode) return false;
+            }
+            int rev = deck.Revision(displayLanguage);
+            foreach (var tile in deck.Tiles.Where(t => t.UsesAppIcon))
+            {
+                if (AppIcons.DisplayPixels(tile.Target) is not { } pixels) continue;
+                using var content = new ByteArrayContent(pixels);
+                content.Headers.ContentType = new MediaTypeHeaderValue("application/octet-stream");
+                using var request = new HttpRequestMessage(HttpMethod.Post, $"http://{endpoint.Address}:{Protocol.MonitorPort}/shortcut-icon") { Content = content };
+                request.Headers.Add("X-ClawPal-Shortcut-Rev", rev.ToString(CultureInfo.InvariantCulture));
+                request.Headers.Add("X-ClawPal-Shortcut-Slot", tile.Slot.ToString(CultureInfo.InvariantCulture));
+                using var response = await http.SendAsync(request, cancellationToken);
+                if (!response.IsSuccessStatusCode) return false;
+            }
+            return true;
+        }
+        catch (Exception error) when (error is IOException or HttpRequestException or SocketException || (error is TaskCanceledException && !cancellationToken.IsCancellationRequested))
+        {
+            Log.Write("Shortcuts upload failed: " + error.GetType().Name);
             return false;
         }
     }

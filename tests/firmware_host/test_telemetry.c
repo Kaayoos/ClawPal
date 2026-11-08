@@ -106,6 +106,13 @@ static void telemetry_checks(void)
     check(telemetry_with("\"auto_open_apps\":false", "\"auto_open_apps\":false,\"away\":true") &&
           !telemetry_with("\"auto_open_apps\":false", "\"auto_open_apps\":false,\"away\":1"),
           "telemetry: away must be a boolean");
+    check(telemetry(telemetry_full, &s) && !s.shortcuts.present, "telemetry: an older companion has no Shortcuts");
+    check(telemetry_with("\"auto_open_apps\":false", "\"auto_open_apps\":false,\"shortcuts\":{\"rev\":9,\"on\":5}") &&
+          !telemetry_with("\"auto_open_apps\":false", "\"auto_open_apps\":false,\"shortcuts\":{\"on\":5}") &&
+          !telemetry_with("\"auto_open_apps\":false", "\"auto_open_apps\":false,\"shortcuts\":{\"rev\":0}") &&
+          !telemetry_with("\"auto_open_apps\":false", "\"auto_open_apps\":false,\"shortcuts\":{\"rev\":65536}") &&
+          !telemetry_with("\"auto_open_apps\":false", "\"auto_open_apps\":false,\"shortcuts\":{\"rev\":9,\"on\":65536}"),
+          "telemetry: Shortcuts carry a revision and a 16-tile mask");
     check(telemetry_with("\"control_error\":null}", "\"control_error\":null,\"source\":\"Apple Music\",\"art_id\":77}") &&
           !telemetry_with("\"control_error\":null}", "\"control_error\":null,\"art_id\":-1}") &&
           !telemetry_with("\"control_error\":null}", "\"control_error\":null,\"source\":\"0123456789012345678901234567890123\"}"),

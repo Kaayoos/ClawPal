@@ -19,6 +19,8 @@
 #include "buddy_theme.h"
 #include "buddy_settings.h"
 #include "buddy_weather.h"
+#include "buddy_shortcuts_page.h"
+#include "buddy_shortcut_data.h"
 #define BUDDY_LANGUAGE_LVGL
 #include "buddy_language.h"
 
@@ -190,7 +192,7 @@ static void base_settings(const uint8_t *order, unsigned count)
 {
     memset(&settings, 0, sizeof(settings));
     settings.revision = 1;
-    settings.enabled_apps = 255;
+    settings.enabled_apps = 511;
     settings.home_count = (uint8_t)count;
     memcpy(settings.home_order, order, count);
     settings.use_24h = true;
@@ -334,11 +336,12 @@ static void update_clock(void)
     buddy_ui_set_clock(clock_text, date_text, false);
 }
 
-static int music_command_pending;
+static int music_command_pending, music_sends;
 static char music_last_action[16];
 static uint32_t music_last_value;
 static bool music_control(const char *action, uint32_t value)
 {
+    ++music_sends;
     if (events) fprintf(events, "music %.4f %s %lu\n", rec_time(), action, (unsigned long)value);
     music_command_pending = strcmp(action, "next") == 0 ? 2 : strcmp(action, "previous") == 0 ? 3 : 1;
     snprintf(music_last_action, sizeof(music_last_action), "%s", action);
@@ -351,6 +354,55 @@ static void music_reply(void)
     ++stats.music.control_id;
     stats.music.control_ok = true;
     music_command_pending = 0;
+}
+
+/* Shortcuts: the PC sends the deck's look; telemetry names its revision and lit toggles. */
+static buddy_shortcut_deck_t sim_deck;
+static unsigned color_id(const char *name)
+{
+    for (unsigned i = 0; i < BUDDY_SHORTCUT_COLOR_COUNT; ++i) if (!strcmp(buddy_shortcut_color_ids[i], name)) return i;
+    return 0;
+}
+static void deck_tile(unsigned slot, unsigned icon, const char *color, const char *label, const char *label_on, bool toggle, bool locked, bool repeat)
+{
+    buddy_shortcut_tile_t *tile = &sim_deck.tiles[slot];
+    *tile = (buddy_shortcut_tile_t){ .used = true, .toggle = toggle, .locked_ok = locked, .repeat = repeat, .icon = (uint8_t)icon, .color = (uint8_t)color_id(color) };
+    snprintf(tile->label, sizeof(tile->label), "%s", label);
+    snprintf(tile->label_on, sizeof(tile->label_on), "%s", label_on);
+}
+static void send_deck(uint32_t rev, uint8_t size)
+{
+    sim_deck.rev = rev; sim_deck.size = size;
+    stats.shortcuts = (buddy_shortcuts_state_t){ .present = true, .rev = rev };
+    buddy_shortcuts_page_set_deck(&sim_deck);
+}
+/* The starter deck the companion installs, with its labels in the display's language. */
+static void starter_deck(uint32_t rev, uint8_t size)
+{
+    memset(&sim_deck, 0, sizeof(sim_deck));
+    deck_tile(0, BUDDY_SHORTCUT_ICON_MIC, "red", BT(BT_MUTE_MIC), BT(BT_MIC_MUTED), true, true, false);
+    deck_tile(1, BUDDY_SHORTCUT_ICON_SPEAKER, "amber", BT(BT_MUTE_SOUND), BT(BT_SOUND_MUTED), true, true, false);
+    deck_tile(2, BUDDY_SHORTCUT_ICON_VOLUME_DOWN, "accent", BT(BT_VOLUME_DOWN), "", false, true, true);
+    deck_tile(3, BUDDY_SHORTCUT_ICON_VOLUME_UP, "accent", BT(BT_VOLUME_UP), "", false, true, true);
+    deck_tile(4, BUDDY_SHORTCUT_ICON_PLAY_PAUSE, "green", BT(BT_PLAY_PAUSE), "", false, true, false);
+    deck_tile(5, BUDDY_SHORTCUT_ICON_NEXT, "green", BT(BT_NEXT), "", false, true, false);
+    deck_tile(6, BUDDY_SHORTCUT_ICON_LOCK, "blue", BT(BT_LOCK_PC), "", false, true, false);
+    deck_tile(7, BUDDY_SHORTCUT_ICON_SCREENSHOT, "violet", BT(BT_SCREENSHOT), "", false, false, false);
+    send_deck(rev, size);
+}
+/* A rounded, two-tone square standing in for an app's own icon. */
+static uint8_t *sample_icon(void)
+{
+    uint8_t *pixels = malloc(BUDDY_SHORTCUT_ICON_BYTES);
+    for (int y = 0; y < BUDDY_SHORTCUT_ICON_SIZE; ++y) for (int x = 0; x < BUDDY_SHORTCUT_ICON_SIZE; ++x) {
+        int dx = x < 10 ? 10 - x : x > 37 ? x - 37 : 0, dy = y < 10 ? 10 - y : y > 37 ? y - 37 : 0;
+        bool inside = x >= 2 && x < 46 && y >= 2 && y < 46 && dx * dx + dy * dy <= 64;
+        uint16_t c = y < 26 ? 0x2D7F : 0x1C5A;
+        if (x > 15 && x < 33 && y > 13 && y < 35) c = 0xFFFF;
+        uint8_t *p = pixels + (y * BUDDY_SHORTCUT_ICON_SIZE + x) * 3;
+        p[0] = (uint8_t)c; p[1] = (uint8_t)(c >> 8); p[2] = inside ? 255 : 0;
+    }
+    return pixels;
 }
 
 /* Feed telemetry and the clock like main.c while time passes. */
@@ -468,7 +520,9 @@ int main(int argc,char **argv){
     live(400);if(!buddy_ui_get_state().needs_you||!find_label(lv_scr_act(),BT(BT_CLAUDE_CODE_NEEDS_YOU)))return 40;save_frame("needs-you");
     tap_overlay_label(BT(BT_SHOW_ON_PC));if(strcmp(music_last_action,"focus")||music_last_value!=BUDDY_APP_CLAUDE||buddy_ui_get_state().needs_you)return 41;
     music_reply();live(1000);if(buddy_ui_get_state().needs_you)return 42;
-    const char *names[]={"monitor","clock","music","timer","codex","home","weather","claude"};
+    starter_deck(7,12);send_stats();
+    const char *names[]={"monitor","clock","music","timer","codex","home","weather","claude","shortcuts"};
+    _Static_assert(sizeof(names)/sizeof(names[0])==BUDDY_APP_COUNT,"a frame name for every app");
     for(int app=0;app<BUDDY_APP_COUNT;++app){
         if(!buddy_ui_select_app((buddy_app_t)app))return 3;live(1400);if(buddy_ui_get_state().active_app!=(unsigned)app)return 4;
         save_frame(names[app]);
@@ -509,6 +563,51 @@ int main(int argc,char **argv){
                 tap_label(views[v]);live(300);if(frames[v])save_frame(frames[v]);
                 if(v==0){lv_obj_t *next=find_label(lv_scr_act(),LV_SYMBOL_RIGHT);if(!next)return 36;lv_obj_scroll_to_view_recursive(next,LV_ANIM_OFF);live(100);
                     tap_label(LV_SYMBOL_RIGHT);if(!find_label(lv_scr_act(),LV_SYMBOL_LEFT))return 37;save_frame("weather-hours-next");}}
+        }
+        if(app==BUDDY_APP_SHORTCUTS){
+            lv_obj_t *page=lv_obj_get_parent(lv_obj_get_parent(find_label(lv_scr_act(),BT(BT_MUTE_MIC))));lv_obj_scroll_to_y(page,0,LV_ANIM_OFF);live(100);
+            // A tap names the tile and the deck it came from; the reply lights the toggle.
+            music_last_action[0]=0;tap_label(BT(BT_MUTE_MIC));if(strcmp(music_last_action,"shortcut")||music_last_value!=(7U<<5|0U))return 53;
+            stats.shortcuts.on=1;music_reply();send_stats();live(250);save_frame("shortcuts-done");
+            live(1500);if(!find_label(lv_scr_act(),BT(BT_MIC_MUTED)))return 54;save_frame("shortcuts-mic-muted");
+            // Holding a volume tile repeats while the PC keeps answering; letting go adds no extra step.
+            lv_obj_t *up=lv_obj_get_parent(find_label(lv_scr_act(),BT(BT_VOLUME_UP)));lv_area_t a;lv_obj_get_coords(up,&a);
+            int before=music_sends;touch_x=(a.x1+a.x2)/2;touch_y=(a.y1+a.y2)/2;touch_state=LV_INDEV_STATE_PRESSED;
+            for(int i=0;i<8;++i){step(150);if(music_command_pending){music_reply();send_stats();}}
+            touch_state=LV_INDEV_STATE_RELEASED;step(50);if(music_command_pending){music_reply();send_stats();}
+            int held=music_sends-before;step(300);
+            if(held<3||music_sends-before!=held||music_last_value!=(7U<<5|3U))return 55;live(1200);
+            // A failure flashes the tile and says why.
+            // On the smallest screen these tiles sit on the second view, one swipe down.
+            if(H<400){lv_obj_scroll_to_y(page,H-44,LV_ANIM_OFF);live(100);}
+            tap_label(BT(BT_LOCK_PC));if(music_last_value!=(7U<<5|6U))return 56;
+            ++stats.music.control_id;stats.music.control_ok=false;snprintf(stats.music.control_error,sizeof(stats.music.control_error),"failed");
+            music_command_pending=0;send_stats();live(250);if(!find_label(lv_scr_act(),BT(BT_COULDN_T_RUN_THAT_SHORTCUT)))return 57;save_frame("shortcuts-failed");
+            stats.music.control_error[0]=0;live(3500);
+            // While the PC is locked only the sound and media tiles stay live.
+            stats.away=true;send_stats();live(400);save_frame("shortcuts-locked");
+            if(H<400){lv_obj_scroll_to_y(page,H-44,LV_ANIM_OFF);live(100);}
+            int sends=music_sends;tap_label(BT(BT_SCREENSHOT));if(music_sends!=sends||!find_label(lv_scr_act(),BT(BT_PC_IS_LOCKED)))return 58;
+            stats.away=false;send_stats();live(3500);
+            // Every deck size keeps the whole grid in view, or in whole views on the smallest screen.
+            starter_deck(8,6);send_stats();live(400);save_frame("shortcuts-6");
+            starter_deck(9,8);send_stats();live(400);save_frame("shortcuts-8");
+            starter_deck(10,16);
+            deck_tile(8,BUDDY_SHORTCUT_ICON_APP,"accent","Notes","",false,false,false);sim_deck.tiles[8].app_icon=true;
+            deck_tile(9,BUDDY_SHORTCUT_ICON_GLOBE,"teal","Forecast site","",false,false,false);
+            deck_tile(10,BUDDY_SHORTCUT_ICON_FOLDER,"amber","Projects","",false,false,false);
+            deck_tile(11,BUDDY_SHORTCUT_ICON_KEYBOARD,"pink","Push to talk","",false,false,false);
+            deck_tile(12,BUDDY_SHORTCUT_ICON_TASK_MANAGER,"grey","Task Manager","",false,false,false);
+            deck_tile(13,BUDDY_SHORTCUT_ICON_DESKTOP,"blue","Show desktop","",false,false,false);
+            deck_tile(15,BUDDY_SHORTCUT_ICON_STAR,"orange","","",false,false,false);
+            send_deck(10,16);if(!buddy_shortcuts_page_set_icon(10,8,sample_icon())||buddy_shortcuts_page_set_icon(9,8,sample_icon()))return 59;
+            send_stats();live(400);save_frame("shortcuts-16");
+            if(W<800){for(int i=0;i<2;++i)scroll_page();save_frame("shortcuts-16-scrolled");lv_obj_scroll_to_y(page,0,LV_ANIM_OFF);}
+            // Before a deck arrives, with an older PC app, and with nothing set up.
+            stats.shortcuts.present=false;send_stats();live(400);save_frame("shortcuts-old-pc");
+            memset(&sim_deck,0,sizeof(sim_deck));send_deck(11,12);send_stats();live(400);
+            if(!find_label(lv_scr_act(),BT(BT_ADD_SHORTCUTS_IN_CLAWPAL_ON_YOUR_PC)))return 60;save_frame("shortcuts-empty");
+            starter_deck(12,12);send_stats();live(400);
         }
         if(app==BUDDY_APP_CLAUDE){
             // A nearly spent window turns amber and projects when it runs out.
