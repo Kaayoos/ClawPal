@@ -55,7 +55,7 @@ static void flush(lv_disp_drv_t *drv,const lv_area_t *area,lv_color_t *pixels){
 }
 static void read_touch(lv_indev_drv_t *drv,lv_indev_data_t *data){
     uint16_t x=0,y=0;uint8_t n=0;
-    bool down=esp_lcd_touch_read_data(touch)==ESP_OK&&esp_lcd_touch_get_coordinates(touch,&x,&y,NULL,&n,1)&&n;
+    bool down=touch&&esp_lcd_touch_read_data(touch)==ESP_OK&&esp_lcd_touch_get_coordinates(touch,&x,&y,NULL,&n,1)&&n;
     data->state=down?LV_INDEV_STATE_PRESSED:LV_INDEV_STATE_RELEASED;
     if(down){data->point.x=x;data->point.y=y;}
 }
@@ -98,10 +98,17 @@ esp_err_t board_init(void){
     const bool swap=true,mirror_x=true;
 #endif
     ESP_RETURN_ON_ERROR(esp_lcd_panel_invert_color(panel,true),TAG,"Color invert");ESP_RETURN_ON_ERROR(esp_lcd_panel_swap_xy(panel,swap),TAG,"Orientation");ESP_RETURN_ON_ERROR(esp_lcd_panel_mirror(panel,mirror_x,false),TAG,"Mirror");ESP_RETURN_ON_ERROR(esp_lcd_panel_disp_on_off(panel,true),TAG,"Display on");
-    esp_lcd_panel_io_handle_t ti=NULL;const esp_lcd_panel_io_i2c_config_t tic=ESP_LCD_TOUCH_IO_I2C_FT5x06_CONFIG();
-    ESP_RETURN_ON_ERROR(esp_lcd_new_panel_io_i2c((esp_lcd_i2c_bus_handle_t)I2C_NUM_0,&tic,&ti),TAG,"Touch IO");
-    esp_lcd_touch_config_t tc={.x_max=swap?240:320,.y_max=swap?320:240,.rst_gpio_num=TOUCH_RST,.int_gpio_num=-1,.flags={.swap_xy=swap,.mirror_x=mirror_x}};
-    ESP_RETURN_ON_ERROR(esp_lcd_touch_new_i2c_ft5x06(ti,&tc,&touch),TAG,"Touch driver");
+    // The FT5x06 macro sets scl_speed_hz, which only the new i2c_master driver uses; this port
+    // runs on the legacy driver (speed set in i2c_config above), as the GT911 macro implies by omitting it.
+    esp_lcd_panel_io_handle_t ti=NULL;esp_lcd_panel_io_i2c_config_t tic=ESP_LCD_TOUCH_IO_I2C_FT5x06_CONFIG();tic.scl_speed_hz=0;
+    // A touch fault must not leave the screen dark: log it and carry on without touch input.
+    esp_err_t touch_err=esp_lcd_new_panel_io_i2c((esp_lcd_i2c_bus_handle_t)I2C_NUM_0,&tic,&ti);
+    if(touch_err!=ESP_OK)ESP_LOGE(TAG,"Touch IO failed: %s (0x%x)",esp_err_to_name(touch_err),(unsigned)touch_err);
+    else{
+        esp_lcd_touch_config_t tc={.x_max=swap?240:320,.y_max=swap?320:240,.rst_gpio_num=TOUCH_RST,.int_gpio_num=-1,.flags={.swap_xy=swap,.mirror_x=mirror_x}};
+        touch_err=esp_lcd_touch_new_i2c_ft5x06(ti,&tc,&touch);
+        if(touch_err!=ESP_OK){touch=NULL;ESP_LOGE(TAG,"Touch driver failed: %s (0x%x)",esp_err_to_name(touch_err),(unsigned)touch_err);}
+    }
     lv_init();mutex=xSemaphoreCreateRecursiveMutex();ESP_RETURN_ON_FALSE(mutex,ESP_ERR_NO_MEM,TAG,"LVGL mutex");
     static lv_disp_draw_buf_t draw;lv_color_t *pixels=heap_caps_malloc(320*24*sizeof(lv_color_t),MALLOC_CAP_DMA|MALLOC_CAP_INTERNAL);ESP_RETURN_ON_FALSE(pixels,ESP_ERR_NO_MEM,TAG,"DMA buffer");
     lv_disp_draw_buf_init(&draw,pixels,NULL,320*24);lv_disp_drv_init(&display_driver);display_driver.hor_res=320;display_driver.ver_res=240;display_driver.draw_buf=&draw;display_driver.flush_cb=flush;display_driver.user_data=panel;
