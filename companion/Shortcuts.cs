@@ -222,7 +222,7 @@ public sealed record ShortcutDeck(int Size, ShortcutTile[] Tiles)
             var kind = ShortcutCatalog.Get(action);
             return new(slot, action, L.DisplayText(displayLanguage, kind.LabelKey), kind.Icon, kind.Color);
         }
-        return new(12, [Tile(0, "mute_mic"), Tile(1, "mute_sound"), Tile(2, "volume_down"), Tile(3, "volume_up"),
+        return new(8, [Tile(0, "mute_mic"), Tile(1, "mute_sound"), Tile(2, "volume_down"), Tile(3, "volume_up"),
             Tile(4, "play_pause"), Tile(5, "next"), Tile(6, "lock"), Tile(7, "screenshot")]);
     }
     // A fresh tile for an action, labelled the way the display will show it.

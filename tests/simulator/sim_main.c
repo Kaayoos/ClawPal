@@ -482,6 +482,14 @@ static void tap_label(const char *text){
     int x=(area.x1+area.x2)/2,y=(area.y1+area.y2)/2;
     if(x<0||x>=W||y<0||y>=H-44){fprintf(stderr,"Unreachable control %s at %d,%d\n",text,x,y);exit(21);}tap(x,y,90);live(180);
 }
+/* The tile after the one labelled text: the smallest screen shortens long names with dots. */
+static void tap_tile_after(const char *text){
+    lv_obj_t *label=find_label(lv_scr_act(),text);if(!label){fprintf(stderr,"Missing control %s\n",text);exit(20);}
+    lv_obj_t *tile=lv_obj_get_parent(label),*next=lv_obj_get_child(lv_obj_get_parent(tile),(int32_t)lv_obj_get_index(tile)+1);
+    if(!next){fprintf(stderr,"No tile after %s\n",text);exit(20);}
+    lv_area_t area;lv_obj_get_coords(next,&area);int x=(area.x1+area.x2)/2,y=(area.y1+area.y2)/2;
+    if(x<0||x>=W||y<0||y>=H-44){fprintf(stderr,"Unreachable tile after %s at %d,%d\n",text,x,y);exit(21);}tap(x,y,90);live(180);
+}
 /* Full-screen overlays cover the app footer, so their controls may sit at the bottom edge. */
 static void tap_overlay_label(const char *text){
     lv_obj_t *label=find_label(lv_scr_act(),text);if(!label){fprintf(stderr,"Missing control %s\n",text);exit(20);}
@@ -520,7 +528,7 @@ int main(int argc,char **argv){
     live(400);if(!buddy_ui_get_state().needs_you||!find_label(lv_scr_act(),BT(BT_CLAUDE_CODE_NEEDS_YOU)))return 40;save_frame("needs-you");
     tap_overlay_label(BT(BT_SHOW_ON_PC));if(strcmp(music_last_action,"focus")||music_last_value!=BUDDY_APP_CLAUDE||buddy_ui_get_state().needs_you)return 41;
     music_reply();live(1000);if(buddy_ui_get_state().needs_you)return 42;
-    starter_deck(7,12);send_stats();
+    starter_deck(7,8);send_stats();
     const char *names[]={"monitor","clock","music","timer","codex","home","weather","claude","shortcuts"};
     _Static_assert(sizeof(names)/sizeof(names[0])==BUDDY_APP_COUNT,"a frame name for every app");
     for(int app=0;app<BUDDY_APP_COUNT;++app){
@@ -587,7 +595,7 @@ int main(int argc,char **argv){
             // While the PC is locked only the sound and media tiles stay live.
             stats.away=true;send_stats();live(400);save_frame("shortcuts-locked");
             if(H<400){lv_obj_scroll_to_y(page,H-44,LV_ANIM_OFF);live(100);}
-            int sends=music_sends;tap_label(BT(BT_SCREENSHOT));if(music_sends!=sends||!find_label(lv_scr_act(),BT(BT_PC_IS_LOCKED)))return 58;
+            int sends=music_sends;tap_tile_after(BT(BT_LOCK_PC));if(music_sends!=sends||!find_label(lv_scr_act(),BT(BT_PC_IS_LOCKED)))return 58;
             stats.away=false;send_stats();live(3500);
             // Every deck size keeps the whole grid in view, or in whole views on the smallest screen.
             starter_deck(8,6);send_stats();live(400);save_frame("shortcuts-6");
@@ -607,7 +615,7 @@ int main(int argc,char **argv){
             stats.shortcuts.present=false;send_stats();live(400);save_frame("shortcuts-old-pc");
             memset(&sim_deck,0,sizeof(sim_deck));send_deck(11,12);send_stats();live(400);
             if(!find_label(lv_scr_act(),BT(BT_ADD_SHORTCUTS_IN_CLAWPAL_ON_YOUR_PC)))return 60;save_frame("shortcuts-empty");
-            starter_deck(12,12);send_stats();live(400);
+            starter_deck(12,8);send_stats();live(400);
         }
         if(app==BUDDY_APP_CLAUDE){
             // A nearly spent window turns amber and projects when it runs out.

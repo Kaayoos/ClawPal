@@ -15,7 +15,7 @@ internal static class ShortcutChecks
 
         var starter = ShortcutDeck.Starter("en");
         starter.Validate();
-        Check(starter.Size == 12 && starter.Tiles.Length == 8 && starter.At(0)?.Action == "mute_mic" && starter.At(6)?.Action == "lock", "the starter deck holds eight safe tiles in a 12-slot grid");
+        Check(starter.Size == 8 && starter.Tiles.Length == 8 && starter.At(0)?.Action == "mute_mic" && starter.At(6)?.Action == "lock", "the starter deck fills an 8-tile grid with safe tiles");
         Check(ShortcutDeck.Starter("pl").At(0)?.Label == L.DisplayText("pl", "mute_mic") && starter.At(0)?.Label == "Mute mic", "starter labels follow the display's language");
         Check(ShortcutCatalog.Actions.All(a => ShortcutArt.FindIcon(a.Icon) is not null && ShortcutArt.HasColor(a.Color)), "every action starts with an icon and colour the display knows");
         Check(ShortcutCatalog.Actions.All(a => L.Text($"shortcut_{a.Id}") != $"shortcut_{a.Id}") && ShortcutArt.Colors.All(c => L.Text($"colour_{c.Id}") != $"colour_{c.Id}"), "every action and colour has a name in the PC app");
@@ -24,7 +24,7 @@ internal static class ShortcutChecks
         var app = ShortcutDeck.NewTile(8, "open_app", "en", @"C:\Tools\Secret Notes.exe");
         var site = ShortcutDeck.NewTile(9, "open_website", "en", "https://www.example.com/private?token=abc");
         var keys = ShortcutDeck.NewTile(10, "keys", "en", keys: "Ctrl+Shift+M");
-        var deck = starter.Set(8, app).Set(9, site).Set(10, keys);
+        var deck = starter.Resize(12).Set(8, app).Set(9, site).Set(10, keys);
         deck.Validate();
         Check(app.Label == "Secret Notes" && app.UsesAppIcon && site.Label == "example.com" && keys.Label == "Ctrl + Shift + M", "new tiles are named after their app, site or keys");
         string sent = System.Text.Encoding.UTF8.GetString(deck.DisplayJson("en"));
@@ -48,7 +48,7 @@ internal static class ShortcutChecks
         // Moving, resizing and validation.
         var moved = deck.Move(0, 11);
         Check(moved.At(11)?.Action == "mute_mic" && moved.At(0) is null && deck.Move(0, 1).At(0)?.Action == "mute_sound" && deck.Move(0, 1).At(1)?.Action == "mute_mic", "dragging moves onto empty slots and swaps with used ones");
-        var small = starter.Resize(8);
+        var small = starter.Resize(16).Resize(8);
         Check(small.Size == 8 && small.Tiles.Length == 8 && small.Tiles.All(t => t.Slot < 8), "a smaller grid keeps every tile when there is room");
         bool refused = false; try { deck.Resize(6); } catch (ArgumentException) { refused = true; }
         Check(refused, "a grid too small for its tiles is refused");
@@ -83,7 +83,7 @@ internal static class ShortcutChecks
         {
             File.WriteAllText(path, JsonSerializer.Serialize(new Configuration { Shortcuts = deck.Set(3, deck.At(3)! with { Icon = "rocket" }) }));
             var loaded = Configuration.LoadFrom(path, recover: false);
-            Check(loaded.Shortcuts?.Tiles.Length == 8 && loaded.Shortcuts.Size == 12, "a saved deck that no longer validates is replaced by the starter deck");
+            Check(loaded.Shortcuts?.Tiles.Length == 8 && loaded.Shortcuts.Size == 8, "a saved deck that no longer validates is replaced by the starter deck");
             File.WriteAllText(path, JsonSerializer.Serialize(new Configuration { Shortcuts = deck }));
             Check(Configuration.LoadFrom(path, recover: false).Shortcuts?.Revision("en") == rev, "a saved deck loads unchanged");
         }
@@ -96,7 +96,7 @@ internal static class ShortcutChecks
             try
             {
                 using var form = new Form { Size = new(700, 520), ShowInTaskbar = false };
-                using var preview = new DeckPreview(starter, BoardCatalog.DefaultId, () => "en") { Bounds = new(10, 10, 640, 400) };
+                using var preview = new DeckPreview(starter.Resize(12), BoardCatalog.DefaultId, () => "en") { Bounds = new(10, 10, 640, 400) };
                 ShortcutDeck? changed = null; preview.Changed += value => changed = value;
                 form.Controls.Add(preview); form.Show(); Application.DoEvents();
                 var first = preview.TileBounds(0); var last = preview.TileBounds(11);

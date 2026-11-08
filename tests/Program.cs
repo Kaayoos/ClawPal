@@ -58,5 +58,6 @@ passed += UpdateChecks.Run();
 passed += BoardChecks.Run();
 passed += ChoiceBoxChecks.Run();
 passed += DesktopLayoutChecks.Run();
+passed += UiChecks.Run();
 Console.WriteLine($"{passed} installer and UI checks passed.");
 

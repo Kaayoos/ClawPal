@@ -1,14 +1,14 @@
 using System.Diagnostics;
 using System.Drawing.Imaging;
-using System.Net.Http.Json;
 using System.Text.Json;
 
 namespace ClawPal.Companion;
 
 internal sealed class SettingsForm : ClawWindow
 {
-    /* Sidebar order; About opens from the version label instead of the list. */
-    private enum SettingsPage { Home, Appearance, Apps, Shortcuts, Clock, Companion, Device, Updates, Screen, Language, About }
+    /* Sidebar order: what the display shows, then this PC. About opens from the version label. */
+    private enum SettingsPage { Home, Apps, Shortcuts, Clock, Screen, Look, Pc, Connection, Updates, About }
+    private static readonly SettingsPage[][] Groups = [[SettingsPage.Home, SettingsPage.Apps, SettingsPage.Shortcuts, SettingsPage.Clock, SettingsPage.Screen, SettingsPage.Look], [SettingsPage.Pc, SettingsPage.Connection, SettingsPage.Updates]];
     private readonly Configuration config;
     private readonly Connection connection;
     private readonly DeviceSettingsClient wireless;
@@ -19,18 +19,21 @@ internal sealed class SettingsForm : ClawWindow
     private readonly bool preview;
     private readonly Panel sidebar=new(){Dock=DockStyle.Left,Width=210,BackColor=ClawTheme.Surface};
     private readonly ClawScrollPanel pages=new(){Dock=DockStyle.Fill,Padding=new Padding(30,12,28,20)};
-    private readonly Label title=ClawTheme.Label("",700,25,true,46),subtitle=ClawTheme.Label("",700,10,false,38),status=ClawTheme.Label("",640,9,false,50),link=ClawTheme.Label("",184,9,false,44);
+    private readonly ClawHeading title=new(){Font=ClawTheme.Font(24,true),ForeColor=ClawTheme.Ink,Height=46};
+    private readonly Label subtitle=ClawTheme.Label("",700,10,false,38),status=ClawTheme.Label("",640,9,false,50),link=ClawTheme.Label("",184,9,false,44);
     private readonly ClawButton save=new(){Text=L.Text("save_changes"),Primary=true,Width=156};
     private readonly CrabView crab=new(){Size=new(144,144),State="idle"};
-    private readonly List<ClawButton> navigation=new();
+    private readonly Dictionary<SettingsPage,ClawButton> navigation=new();
+    private readonly List<Label> groupLabels=new();
     private readonly System.Windows.Forms.Timer refresh=new(){Interval=1000};
     private Label? updateStatus,releaseStatus,firmwareLabel;
     private ClawButton? installUpdate,prepareUpdate,checkUpdate;
-    private Panel? activePage;
+    private Control? activePage;
     private SettingsPage pageIndex;
     private HomePreview? homePreview;
     private HomeOrderList? orderList;
-    private ChoiceBox? addChoice;
+    private ClawWrap? addApps;
+    private Label? addNote;
     internal event Action? OpenInstaller;
     internal SettingsForm(Configuration config,Connection connection,bool preview=false)
     {
@@ -39,11 +42,14 @@ internal sealed class SettingsForm : ClawWindow
         Text=L.Text("clawpal_your_desk_companion");ClientSize=new(1120,790);AutoScaleMode=AutoScaleMode.Dpi;
         using(var stream=typeof(SettingsForm).Assembly.GetManifestResourceStream("ClawPal.Companion.CrabIcon"))if(stream is not null)Icon=new Icon(stream);
         var content=new Panel(){Dock=DockStyle.Fill};Controls.Add(content);Controls.Add(sidebar);
-        var brand=ClawTheme.Label(L.Text("clawpal"),170,25,true,46);brand.Location=new(24,28);sidebar.Controls.Add(brand);
-        link.Location=new(26,83);sidebar.Controls.Add(link);
-        var names=new[]{L.Text("your_home"),L.Text("appearance"),L.Text("apps"),L.Text("shortcuts"),L.Text("clock_weather"),L.Text("pc_companion"),L.Text("device"),L.Text("updates"),L.Text("screen"),L.Text("language")};
-        // Ten rows of 40 px leave room for the Discord button even in the smallest window.
-        for(int i=0;i<names.Length;i++) {var index=(SettingsPage)i;var button=new ClawButton(){Text=names[i],Size=new(174,NavRow),Location=new(18,NavTop+i*NavRow)};button.Click+=(_,_)=>ShowPage(index);navigation.Add(button);sidebar.Controls.Add(button);}
+        var brand=ClawTheme.Label(L.Text("clawpal"),170,25,true,46);brand.Location=new(24,22);sidebar.Controls.Add(brand);
+        link.Location=new(26,70);link.Height=36;sidebar.Controls.Add(link);
+        int y=NavTop;string[] groupNames=[L.Text("nav_group_display"),L.Text("nav_group_pc")];
+        for(int g=0;g<Groups.Length;g++){
+            var heading=ClawTheme.Label(groupNames[g].ToUpperInvariant(),170,8,true,GroupRow);heading.ForeColor=ClawTheme.Muted;heading.TextAlign=ContentAlignment.BottomLeft;heading.Location=new(28,y);sidebar.Controls.Add(heading);groupLabels.Add(heading);y+=GroupRow;
+            foreach(var page in Groups[g]){var button=new NavButton(){Text=PageName(page),Size=new(174,NavRow),Location=new(18,y)};button.Click+=(_,_)=>ShowPage(page);navigation[page]=button;sidebar.Controls.Add(button);y+=NavRow;}
+            y+=6;
+        }
         sidebar.Controls.Add(crab);sidebar.Resize+=(_,_)=>PlaceCrab();
         ClawTheme.Changed+=LookChanged;
         var version=ClawTheme.Label(L.Text("clawpal_94dbc7")+typeof(SettingsForm).Assembly.GetName().Version?.ToString(3),170,9,false,30);version.Location=new(25,sidebar.Height-48);version.Anchor=AnchorStyles.Left|AnchorStyles.Bottom;sidebar.Controls.Add(version);
@@ -54,10 +60,10 @@ internal sealed class SettingsForm : ClawWindow
         // The community link stays in view on every page, just above the version.
         var discord=new ClawButton(){Text=L.Text("join_discord"),Brand=Color.FromArgb(0x58,0x65,0xF2),Size=new(174,40),Location=new(18,sidebar.Height-DiscordInset),Anchor=AnchorStyles.Left|AnchorStyles.Bottom};
         discord.Click+=(_,_)=>{if(!preview)Process.Start(new ProcessStartInfo(DiscordInvite){UseShellExecute=true});};sidebar.Controls.Add(discord);
-        var header=new Panel(){Dock=DockStyle.Top,Height=116,Padding=new Padding(30,27,28,0)};
+        var header=new Panel(){Dock=DockStyle.Top,Height=106,Padding=new Padding(30,26,28,0)};
         title.Dock=DockStyle.Top;subtitle.Dock=DockStyle.Fill;header.Controls.Add(subtitle);header.Controls.Add(title);
-        var footer=new Panel(){Dock=DockStyle.Bottom,Height=96,Padding=new Padding(30,12,28,20)};
-        save.Anchor=AnchorStyles.Right|AnchorStyles.Top;save.Top=20;status.Location=new(30,15);footer.Controls.AddRange([status,save]);
+        var footer=new Panel(){Dock=DockStyle.Bottom,Height=84,Padding=new Padding(30,12,28,20)};
+        save.Anchor=AnchorStyles.Right|AnchorStyles.Top;save.Top=18;status.Location=new(30,14);footer.Controls.AddRange([status,save]);
         footer.Resize+=(_,_)=>{save.Left=footer.Width-save.Width-28;status.Width=Math.Max(180,save.Left-48);};
         content.Controls.Add(pages);content.Controls.Add(header);content.Controls.Add(footer);
         save.Click+=async(_,_)=>await Save();
@@ -67,11 +73,15 @@ internal sealed class SettingsForm : ClawWindow
         L.Changed+=LanguageChanged;ShowPage(SettingsPage.Home);RefreshState();
     }
     private const string DiscordInvite="https://discord.com/invite/gR5DqCdGre";
-    internal const int NavTop=130,NavRow=40,DiscordInset=96;
+    internal const int NavTop=112,NavRow=38,GroupRow=28,DiscordInset=96;
+    private static string PageName(SettingsPage page)=>page switch{
+        SettingsPage.Home=>L.Text("home"),SettingsPage.Apps=>L.Text("apps"),SettingsPage.Shortcuts=>L.Text("shortcuts"),SettingsPage.Clock=>L.Text("clock_weather"),
+        SettingsPage.Screen=>L.Text("screen"),SettingsPage.Look=>L.Text("look_language"),SettingsPage.Pc=>L.Text("pc_app_nav"),SettingsPage.Connection=>L.Text("connection_nav"),
+        SettingsPage.Updates=>L.Text("updates"),_=>L.Text("about_clawpal")};
     /* The crab rests between the navigation and the Discord button when there is room and the look has one. */
     private void PlaceCrab()
     {
-        int top=NavTop+navigation.Count*NavRow+8,bottom=sidebar.Height-DiscordInset-8;
+        int top=navigation.Values.Max(b=>b.Bottom)+8,bottom=sidebar.Height-DiscordInset-8;
         int size=Math.Min(144,Math.Max(0,bottom-top)/48*48);crab.Visible=size>=48&&ClawTheme.Mascot;
         if(size>=48)crab.SetBounds((sidebar.Width-size)/2,bottom-size,size,size);
     }
@@ -86,7 +96,7 @@ internal sealed class SettingsForm : ClawWindow
         if(installUpdate is not null){installUpdate.Visible=updates.Device?.OtaReady!=false;installUpdate.Enabled=!updates.Busy&&!updates.Checking&&updates.Device?.OtaReady==true&&!updates.CompanionRequired&&(updates.AvailableVersion is not null||updates.BundledNewer);installUpdate.Text=updates.AvailableVersion is { } v?L.Text("install_version", v):L.Text("install_bundled_update");}
         if(prepareUpdate is not null){prepareUpdate.Visible=updates.Device?.OtaReady==false;prepareUpdate.Enabled=!updates.Busy;}
         if(checkUpdate is not null)checkUpdate.Enabled=!updates.Busy&&!updates.Checking;
-        navigation[(int)SettingsPage.Updates].Text=updates.NotificationVersion is null?L.Text("updates"):L.Text("updates_1");
+        var updatesName=updates.NotificationVersion is null?L.Text("updates"):L.Text("updates_1");if(navigation[SettingsPage.Updates].Text!=updatesName)navigation[SettingsPage.Updates].Text=updatesName;
         if(updates.Busy)crab.State="working";
         pages.Enabled=!updates.Busy;
         link.Text=updates.Busy?L.Text("updating_your_display"):config.Paused?L.Text("pc_monitoring_paused"):online?L.Text("connected_over_wi_fi"):L.Text("display_offline_settings_are_still_available");link.ForeColor=online?ClawTheme.Accent:ClawTheme.Muted;
@@ -100,119 +110,157 @@ internal sealed class SettingsForm : ClawWindow
     }
     private void SetDraft(DeviceSettings value)
     {
-        draft=value;Dirty(true);homePreview?.SetSettings(draft);orderList?.SetSettings(draft);RefreshAddChoices();
+        draft=value;Dirty(true);homePreview?.SetSettings(draft);orderList?.SetSettings(draft);RefreshAddApps();
     }
+    private void Clear()
+    {
+        homePreview=null;orderList=null;addApps=null;addNote=null;updateStatus=null;releaseStatus=null;firmwareLabel=null;installUpdate=null;prepareUpdate=null;checkUpdate=null;
+        foreach(Control child in pages.Content.Controls.Cast<Control>().ToArray())child.Dispose();
+    }
+    /* A page whose parts arrange themselves by hand (Home and Shortcuts, which place a preview beside an editor). */
     private Panel Page(int height=510)
     {
-        homePreview=null;orderList=null;addChoice=null;updateStatus=null;releaseStatus=null;firmwareLabel=null;installUpdate=null;prepareUpdate=null;checkUpdate=null;
-        foreach(Control child in pages.Content.Controls.Cast<Control>().ToArray())child.Dispose();
-        var p=new Panel(){Dock=DockStyle.Top,Width=pages.Content.Width,Height=height,BackColor=ClawTheme.Background};
-        pages.Content.Controls.Add(p);activePage=p;pages.ResetScroll();
-        return p;
+        Clear();var p=new Panel(){Dock=DockStyle.Top,Width=pages.Content.Width,Height=height,BackColor=ClawTheme.Background};
+        pages.Content.Controls.Add(p);activePage=p;pages.ResetScroll();return p;
     }
-    private static Label Put(Panel panel,string text,int x,int y,int width,float size=10,bool bold=false,int height=32)
+    /* Every other page: titled cards, one above the other. */
+    private ClawStack Cards()
     {
-        var label=ClawTheme.Label(text,width,size,bold,height);label.Location=new(x,y);panel.Controls.Add(label);return label;
+        Clear();var p=new ClawStack(){Dock=DockStyle.Top,Width=pages.Content.Width,Gap=16,BackColor=ClawTheme.Background,Padding=new Padding(0,4,0,8)};
+        pages.Content.Controls.Add(p);activePage=p;pages.ResetScroll();return p;
     }
-    private static ClawSwitch Switch(Panel panel,string text,bool value,int y,Action<bool> change)
+    private static Label Note(string text,float size=9)=>ClawTheme.Label(text,400,size,false,20);
+    private static Label Caption(string text)=>ClawTheme.Label(text,400,10,true,24);
+    private static ClawSwitch Switch(string text,bool value,Action<bool> change)
     {
-        var control=new ClawSwitch(){Text=text,Checked=value,Location=new(0,y),Width=panel.Width-12,Anchor=AnchorStyles.Left|AnchorStyles.Top|AnchorStyles.Right};
-        control.CheckedChanged+=(_,_)=>change(control.Checked);panel.Controls.Add(control);return control;
+        var control=new ClawSwitch(){Text=text,Checked=value,Height=40};control.CheckedChanged+=(_,_)=>change(control.Checked);return control;
     }
+    private static ClawRow Row(int stackBelow=0,params (Control control,int width)[] items)
+    {
+        var row=new ClawRow(){StackBelow=stackBelow};foreach(var (control,width) in items)row.Add(control,width);return row;
+    }
+    private static ClawStack Column(params Control[] items){var column=new ClawStack(){Gap=8,BackColor=ClawTheme.Surface};foreach(var item in items)column.Add(item);return column;}
     private void ShowPage(SettingsPage index)
     {
-        pageIndex=index;for(int i=0;i<navigation.Count;i++){navigation[i].Selected=i==(int)index;navigation[i].Invalidate();}
+        pageIndex=index;foreach(var (page,button) in navigation){button.Selected=page==index;button.Invalidate();}
         switch(index){
-            case SettingsPage.Home:HomePage();break;case SettingsPage.Appearance:AppearancePage();break;case SettingsPage.Apps:AppsPage();break;
-            case SettingsPage.Shortcuts:ShortcutsPage();break;
-            case SettingsPage.Clock:ClockPage();break;case SettingsPage.Companion:CompanionPage();break;case SettingsPage.Device:DevicePage();break;
-            case SettingsPage.Updates:UpdatesPage();break;case SettingsPage.Screen:ScreenPage();break;case SettingsPage.Language:LanguagePage();break;default:AboutPage();break;
+            case SettingsPage.Home:HomePage();break;case SettingsPage.Apps:AppsPage();break;case SettingsPage.Shortcuts:ShortcutsPage();break;
+            case SettingsPage.Clock:ClockPage();break;case SettingsPage.Screen:ScreenPage();break;case SettingsPage.Look:LookPage();break;
+            case SettingsPage.Pc:PcPage();break;case SettingsPage.Connection:ConnectionPage();break;case SettingsPage.Updates:UpdatesPage();break;default:AboutPage();break;
         }
     }
 
-    private void LanguageChanged(){if(IsDisposed)return;pcLanguage=L.Language;L.RefreshControls(this);ShowPage(pageIndex);RefreshState();}
+    private void LanguageChanged(){if(IsDisposed)return;pcLanguage=L.Language;L.RefreshControls(this);foreach(var (page,button) in navigation)button.Text=PageName(page);string[] groupNames=[L.Text("nav_group_display"),L.Text("nav_group_pc")];for(int i=0;i<groupLabels.Count;i++)groupLabels[i].Text=groupNames[i].ToUpperInvariant();ShowPage(pageIndex);RefreshState();}
     private void AboutPage()
     {
-        title.Text=L.Text("about_clawpal");subtitle.Text=L.Text("created_by_minimalpulse");var p=Page(670);
-        void Link(string caption,string url,int y){var b=new ClawButton{Text=caption,Location=new(0,y),Width=Math.Min(510,p.Width),Anchor=AnchorStyles.Left|AnchorStyles.Top|AnchorStyles.Right};
-            b.Click+=(_,_)=>{if(!preview)Process.Start(new ProcessStartInfo(url){UseShellExecute=true});};p.Controls.Add(b);}
-        Put(p,L.Text("companion_version_value",typeof(SettingsForm).Assembly.GetName().Version?.ToString(3)),0,0,p.Width,13,true);
-        Link("minimalpulse.com","https://minimalpulse.com/",48);
-        Link("github.com/Kaayoos/clawpal","https://github.com/Kaayoos/clawpal",99);
-        Put(p,L.Text("about_license"),0,165,p.Width,11,false,72);
-        Put(p,L.Text("about_weather"),0,248,p.Width,10,false,76);
-        Put(p,L.Text("about_tools"),0,334,p.Width,10,false,72);
-        Put(p,L.Text("about_marks"),0,415,p.Width,10,false,76);
-        var licenses=new ClawButton{Text=L.Text("open_licenses"),Location=new(0,515),Width=230};
-        licenses.Click+=(_,_)=>{if(preview)return;Installer.PreparePayload();Process.Start(new ProcessStartInfo(Path.Combine(Installer.PayloadPath,"licenses","THIRD_PARTY_NOTICES.txt")){UseShellExecute=true});};p.Controls.Add(licenses);
-        Put(p,L.Text("about_device_hint"),0,580,p.Width,10,false,70);
-    }
-
-    private void LanguagePage()
-    {
-        title.Text=L.Text("language_title");subtitle.Text=L.Text("language_description");var p=Page(380);
-        ChoiceBox Picker(string title,int y,string code,Action<string> change){
-            Put(p,title,0,y,p.Width,12,true);var picker=new ChoiceBox{Location=new(0,y+42),Width=Math.Min(500,p.Width),Anchor=AnchorStyles.Left|AnchorStyles.Top|AnchorStyles.Right};
-            foreach(var language in L.Languages)picker.Items.Add(language);
-            picker.SelectedIndex=L.Languages.ToList().FindIndex(l=>l.Code==code);
-            picker.SelectedIndexChanged+=(_,_)=>{if(picker.SelectedItem is LanguageChoice language)change(language.Code);};p.Controls.Add(picker);return picker;
-        }
-        Picker(L.Text("pc_language"),0,pcLanguage,code=>{pcLanguage=code;Dirty(false);});
-        Picker(L.Text("display_language"),133,draft.Language,code=>SetDraft(draft with{Language=code}));
-        Put(p,L.Text("language_note"),0,272,p.Width,10,false,80);
+        title.Text=L.Text("about_clawpal");subtitle.Text=L.Text("created_by_minimalpulse");var p=Cards();
+        ClawButton Link(string caption,string url){var b=new ClawButton{Text=caption,Height=42};b.Click+=(_,_)=>{if(!preview)Process.Start(new ProcessStartInfo(url){UseShellExecute=true});};return b;}
+        var about=p.Add(new ClawCard(L.Text("companion_version_value",typeof(SettingsForm).Assembly.GetName().Version?.ToString(3))));
+        about.Add(Row(520,(Link("minimalpulse.com","https://minimalpulse.com/"),0),(Link("github.com/Kaayoos/clawpal","https://github.com/Kaayoos/clawpal"),0)));
+        about.Add(Note(L.Text("about_license"),10));
+        var credits=p.Add(new ClawCard(L.Text("about_credits_title")));
+        credits.Add(Note(L.Text("about_weather")));credits.Add(Note(L.Text("about_tools")));credits.Add(Note(L.Text("about_marks")));
+        var licenses=new ClawButton{Text=L.Text("open_licenses"),Height=42};
+        licenses.Click+=(_,_)=>{if(preview)return;Installer.PreparePayload();Process.Start(new ProcessStartInfo(Path.Combine(Installer.PayloadPath,"licenses","THIRD_PARTY_NOTICES.txt")){UseShellExecute=true});};
+        credits.Add(Row(0,(licenses,230)));
+        p.Add(Note(L.Text("about_device_hint")));
     }
 
     /* The look applies to this app at once, so the choice can be judged before saving it to the display. */
-    private void AppearancePage()
+    private void LookPage()
     {
-        title.Text=L.Text("appearance_title");subtitle.Text=L.Text("appearance_description");var p=Page(560);
-        var picker=new LookPicker(draft.Theme,draft.Accent){Location=new(0,0),Width=Math.Min(760,p.Width),Anchor=AnchorStyles.Left|AnchorStyles.Top};p.Controls.Add(picker);
-        var note=Put(p,L.Text("appearance_restart_note"),0,0,p.Width,9,false,48);
-        void Layout(){picker.Width=Math.Min(760,p.Width);note.SetBounds(0,picker.Bottom+10,picker.Width,48);p.Height=note.Bottom+20;}
+        title.Text=L.Text("look_language_title");subtitle.Text=L.Text("look_language_description");var p=Cards();
+        var lookCard=p.Add(new ClawCard(L.Text("look_section")));
+        var picker=new LookPicker(draft.Theme,draft.Accent){BackColor=ClawTheme.Surface};lookCard.Add(picker);
         picker.Changed+=(theme,accent)=>{SetDraft(draft with{Theme=theme,Accent=accent});ClawTheme.Use(theme,accent);};
-        picker.Resize+=(_,_)=>Layout();p.Resize+=(_,_)=>Layout();Layout();
+        lookCard.Add(Note(L.Text("appearance_restart_note")));
+        var languageCard=p.Add(new ClawCard(L.Text("language")));
+        ClawStack Picker(string caption,string code,Action<string> change){
+            var box=new ChoiceBox();foreach(var language in L.Languages)box.Items.Add(language);
+            box.SelectedIndex=L.Languages.ToList().FindIndex(l=>l.Code==code);
+            box.SelectedIndexChanged+=(_,_)=>{if(box.SelectedItem is LanguageChoice language)change(language.Code);};
+            return Column(Caption(caption),box);
+        }
+        languageCard.Add(Row(560,(Picker(L.Text("pc_language"),pcLanguage,code=>{pcLanguage=code;Dirty(false);}),0),(Picker(L.Text("display_language"),draft.Language,code=>SetDraft(draft with{Language=code})),0)));
+        languageCard.Add(Note(L.Text("language_note")));
     }
 
     private void HomePage()
     {
         title.Text=L.Text("a_place_for_your_favorites");subtitle.Text=L.Text("arrange_your_shortcuts_your_crab_keeps_the_best_seat");
         var p=Page();homePreview=new(draft,config.BoardId);orderList=new(draft){Font=ClawTheme.Font()};p.Controls.AddRange([homePreview,orderList]);
-        var previewCaption=Put(p,L.Text("your_display_dimensions",BoardCatalog.Get(config.BoardId).Width,BoardCatalog.Get(config.BoardId).Height),0,0,390,9);
-        var listCaption=Put(p,L.Text("on_your_home"),0,0,300,13,true);
-        var instruction=Put(p,L.Text("drag_to_reorder_the_minus_removes_a_shortcut"),0,0,330,9,false,38);
-        var hint=Put(p,L.Text("apps_stay_available_in_the_display_s_apps_menu"),0,0,395,10,false,65);
-        addChoice=new ChoiceBox(){Width=220,Height=38};var add=new ClawButton(){Text=L.Text("add"),Width=64,Height=38};p.Controls.AddRange([addChoice,add]);
-        add.Click+=(_,_)=>{if(draft.HomeOrder.Length<5 && addChoice.SelectedItem is DisplayAppChoice choice)SetDraft(draft with{HomeOrder=draft.HomeOrder.Append(choice.App.Id).ToArray()});};
+        var previewCaption=ClawTheme.Label(L.Text("your_display_dimensions",BoardCatalog.Get(config.BoardId).Width,BoardCatalog.Get(config.BoardId).Height),390,9,false,24);
+        var listCaption=ClawTheme.Label(L.Text("on_your_home"),300,13,true,30);
+        var instruction=ClawTheme.Label(L.Text("drag_to_reorder_the_minus_removes_a_shortcut"),330,9,false,38);
+        var hint=ClawTheme.Label(L.Text("apps_stay_available_in_the_display_s_apps_menu"),395,10,false,65);
+        var addCaption=ClawTheme.Label(L.Text("add_to_home"),300,13,true,30);
+        addNote=ClawTheme.Label("",330,9,false,38);addApps=new ClawWrap(){ItemWidth=146,ItemHeight=50,Gap=8};
+        p.Controls.AddRange([previewCaption,listCaption,instruction,hint,addCaption,addNote,addApps]);
         orderList.Changed+=SetDraft;
         void Layout(){
-            if(homePreview is null||orderList is null||addChoice is null)return;
+            if(homePreview is null||orderList is null||addApps is null||addNote is null)return;
             bool sideBySide=p.Width>=790;
             int left=sideBySide?Math.Min(700,(int)(p.Width*.59)):Math.Min(560,p.Width);
             var model=BoardCatalog.Get(config.BoardId);homePreview.SetBounds(0,28,left,left*model.Height/model.Width);previewCaption.SetBounds(0,0,left,24);
             hint.SetBounds(0,homePreview.Bottom+18,left,58);
             int x=sideBySide?left+28:0,y=sideBySide?0:hint.Bottom+24,right=sideBySide?p.Width-x:left;
             listCaption.SetBounds(x,y,right,30);instruction.SetBounds(x,y+34,right,40);
-            orderList.SetBounds(x,y+80,right,310);addChoice.SetBounds(x,y+410,Math.Max(90,right-76),44);add.SetBounds(x+right-64,y+410,64,44);
-            p.Height=Math.Max(hint.Bottom,y+454)+24;
+            int listHeight=Math.Max(62,draft.HomeOrder.Length*62);orderList.SetBounds(x,y+80,right,listHeight);
+            int addTop=orderList.Bottom+22;addCaption.SetBounds(x,addTop,right,30);
+            addNote.SetBounds(x,addTop+34,right,ClawStack.TextHeight(addNote,right));
+            addApps.SetBounds(x,addNote.Bottom+8,right,addApps.Height);addApps.PerformLayout();
+            p.Height=Math.Max(hint.Bottom,addApps.Bottom)+24;
         }
-        p.Resize+=(_,_)=>Layout();Layout();RefreshAddChoices();
+        addApps.Resize+=(_,_)=>Layout();p.Resize+=(_,_)=>Layout();orderList.Changed+=_=>Layout();RefreshAddApps();Layout();
     }
-    private sealed record DisplayAppChoice(DisplayApp App){public override string ToString()=>App.Name;}
-    private void RefreshAddChoices()
+    /* Every enabled app not yet on Home, as a tile that adds it. */
+    private void RefreshAddApps()
     {
-        if(addChoice is null)return;addChoice.Items.Clear();if(draft.HomeOrder.Length>=5){addChoice.SelectedIndex=-1;addChoice.Enabled=false;addChoice.Text=L.Text("home_holds_up_to_5_shortcuts");return;}foreach(var app in DisplayApps.All.Where(a=>draft.Enabled(a.Id)&&!draft.HomeOrder.Contains(a.Id)))addChoice.Items.Add(new DisplayAppChoice(app));
-        addChoice.SelectedIndex=addChoice.Items.Count>0?0:-1;addChoice.Enabled=addChoice.Items.Count>0;
-        if(addChoice.Items.Count==0)addChoice.Text=L.Text("all_enabled_apps_are_on_home");
+        if(addApps is null||addNote is null)return;
+        foreach(Control chip in addApps.Controls.Cast<Control>().ToArray())chip.Dispose();
+        bool full=draft.HomeOrder.Length>=5;
+        var waiting=DisplayApps.All.Where(a=>draft.Enabled(a.Id)&&!draft.HomeOrder.Contains(a.Id)).ToArray();
+        addNote.Text=waiting.Length==0?L.Text("all_enabled_apps_are_on_home"):full?L.Text("home_is_full_remove_one"):L.Text("click_an_app_to_add_it");
+        foreach(var app in waiting){
+            var chip=new AppChip(app){Enabled=!full};
+            chip.Click+=(_,_)=>{if(draft.HomeOrder.Length<5&&!draft.HomeOrder.Contains(app.Id))SetDraft(draft with{HomeOrder=draft.HomeOrder.Append(app.Id).ToArray()});};
+            addApps.Controls.Add(chip);
+        }
+        addApps.PerformLayout();
     }
+    /* Each app with its switch, and the options that belong to it right underneath. */
     private void AppsPage()
     {
         title.Text=L.Text("a_little_less_or_all_of_it");subtitle.Text=L.Text("choose_the_apps_available_on_your_display_home_stays");
-        var p=Page(DisplayApps.All.Length*91+65);
-        int row=0;foreach(var app in DisplayApps.All){int y=row++*91;var icon=new AppIcon(app.Id){Location=new(1,y+8),Size=new(36,36)};p.Controls.Add(icon);
-            var toggle=new ClawSwitch(){Text=app.Name,Checked=draft.Enabled(app.Id),Location=new(53,y),Width=p.Width-65,Anchor=AnchorStyles.Left|AnchorStyles.Top|AnchorStyles.Right};
-            toggle.CheckedChanged+=(_,_)=>SetDraft(draft.SetEnabled(app.Id,toggle.Checked));p.Controls.Add(toggle);Put(p,app.Description,53,y+42,p.Width-65,9);
+        var p=Cards();
+        var general=p.Add(new ClawCard(L.Text("auto_open_title")));
+        general.Add(Switch(L.Text("automatically_open_spotify_or_codex"),auto,value=>{auto=value;Dirty(false);}),2);
+        general.Add(Note(L.Text("when_an_enabled_app_opens_on_your_pc_show")));
+        foreach(var app in DisplayApps.All){
+            var card=p.Add(new ClawCard());
+            var header=new AppHeader(app,draft.Enabled(app.Id));header.Toggled+=on=>SetDraft(draft.SetEnabled(app.Id,on));card.Add(header);
+            if(app.Id==0){
+                card.Add(Switch(L.Text("track_game_fps_in_pc_monitor"),fps,value=>{fps=value;Dirty(false);}),2);
+                card.Add(Note(L.Text("uses_windows_frame_events_through_presentmon_game_files_stay")));
+            }
+            else if(app.Id==7)ClaudeOptions(card);
+            else if(app.Id==8){var edit=new ClawButton{Text=L.Text("edit_shortcut_tiles"),Height=40};edit.Click+=(_,_)=>ShowPage(SettingsPage.Shortcuts);card.Add(Row(0,(edit,220)));}
+            else if(app.Id is 1 or 6){var edit=new ClawButton{Text=L.Text("clock_weather_settings"),Height=40};edit.Click+=(_,_)=>ShowPage(SettingsPage.Clock);card.Add(Row(0,(edit,260)));}
         }
-        Put(p,L.Text("turning_an_app_off_also_removes_its_home_shortcut"),0,DisplayApps.All.Length*91+8,p.Width,9,false,42);
+        p.Add(Note(L.Text("turning_an_app_off_also_removes_its_home_shortcut")));
+    }
+    private void ClaudeOptions(ClawCard card)
+    {
+        card.Add(Caption(L.Text("claude_link_title")),4);
+        card.Add(Note(L.Text("claude_link_description")));
+        var claudeLink=new ClawButton(){Text=L.Text("claude_link_button"),Height=40};
+        var claudeUnlink=new ClawButton(){Text=L.Text("claude_link_disconnect"),Height=40};
+        card.Add(Row(520,(claudeLink,0),(claudeUnlink,0)));
+        var claudeStatus=card.Add(Note(preview?L.Text("claude_link_ready"):ClaudeBridge.Status));
+        var liveSwitch=card.Add(Switch(L.Text("claude_live_limits"),claudeLive,value=>{claudeLive=value;Dirty(false);}),2);
+        card.Add(Note(L.Text("claude_live_description")));
+        claudeLink.Click+=(_,_)=>{try{if(!preview)ClaudeBridge.Install();claudeStatus.Text=L.Text("claude_link_ready");crab.State="happy";}catch(Exception error){claudeStatus.Text=error.Message;crab.State="error";}};
+        claudeUnlink.Click+=(_,_)=>{try{if(!preview){ClaudeBridge.Uninstall();config.ClaudeLiveUsage=false;config.Save();}liveSwitch.Checked=false;claudeLive=false;claudeStatus.Text=L.Text("claude_link_removed");crab.State="idle";}catch(Exception error){claudeStatus.Text=error.Message;crab.State="error";}};
     }
     private sealed record DeckSize(int Tiles){public override string ToString()=>L.Text("n_tiles",Tiles);}
     /* The deck as the display shows it, beside everything about the chosen tile. */
@@ -220,13 +268,14 @@ internal sealed class SettingsForm : ClawWindow
     {
         title.Text=L.Text("your_pc_at_a_tap");subtitle.Text=L.Text("tiles_on_your_display_that_run_things_on_this_pc");
         var p=Page(640);
-        var sizeCaption=Put(p,L.Text("grid"),0,0,90,10,true,44);
+        var sizeCaption=ClawTheme.Label(L.Text("grid"),90,10,true,44);
         var size=new ChoiceBox(){Width=170,Height=44};foreach(int n in ShortcutDeck.Sizes)size.Items.Add(new DeckSize(n));
         size.SelectedIndex=Array.IndexOf(ShortcutDeck.Sizes,shortcutDeck.Size);
         var restore=new ClawButton(){Text=L.Text("restore_starter_shortcuts"),Size=new(220,44)};
         var deckPreview=new DeckPreview(shortcutDeck,config.BoardId,()=>draft.Language);
-        var hint=Put(p,L.Text("click_a_tile_to_edit_it_drag_to_move_it"),0,0,400,9,false,44);
-        var state=Put(p,"",0,0,400,9,false,44);
+        var hint=ClawTheme.Label(L.Text("click_a_tile_to_edit_it_drag_to_move_it"),400,9,false,44);
+        var state=ClawTheme.Label("",400,9,false,44);
+        p.Controls.AddRange([sizeCaption,hint,state]);
         ShortcutInspector? inspector=null;
         void Change(ShortcutDeck deck){shortcutDeck=deck;shortcutsDirty=true;Dirty(false);deckPreview.SetDeck(deck);ShowState();}
         // Says whether the deck can be saved, and if not, why.
@@ -259,20 +308,34 @@ internal sealed class SettingsForm : ClawWindow
     private void ClockPage()
     {
         title.Text=L.Text("your_time_your_little_forecast");subtitle.Text=L.Text("time_and_weather_are_saved_on_the_display_and");
-        var p=Page(670);
-        Put(p,L.Text("time_format"),0,0,300,12,true);
-        var twentyFour=new ClawButton(){Text=L.Text("24_hours_17_34"),Location=new(0,40),Width=195,Selected=draft.Use24h};
-        var twelve=new ClawButton(){Text=L.Text("12_hours_5_34_pm"),Location=new(207,40),Width=205,Selected=!draft.Use24h};p.Controls.AddRange([twentyFour,twelve]);
+        var p=Cards();
+        var clock=p.Add(new ClawCard(L.Text("time_format")));
+        var twentyFour=new ClawButton(){Text=L.Text("24_hours_17_34"),Selected=draft.Use24h,Height=44};
+        var twelve=new ClawButton(){Text=L.Text("12_hours_5_34_pm"),Selected=!draft.Use24h,Height=44};
+        clock.Add(Row(0,(twentyFour,200),(twelve,210)));
         void Hours(bool value){SetDraft(draft with{Use24h=value});twentyFour.Selected=value;twelve.Selected=!value;twentyFour.Invalidate();twelve.Invalidate();}
         twentyFour.Click+=(_,_)=>Hours(true);twelve.Click+=(_,_)=>Hours(false);
-        Switch(p,L.Text("show_minimal_weather_in_clock"),draft.WeatherEnabled,108,value=>SetDraft(draft with{WeatherEnabled=value}));
-        Put(p,L.Text("weather_location"),0,178,400,12,true);
-        var city=ClawTheme.Input(L.Text("find_a_city_or_village"));city.Text=draft.City=="Weather"?"":draft.City;city.SetBounds(0,216,p.Width-167,44);city.Anchor=AnchorStyles.Left|AnchorStyles.Top|AnchorStyles.Right;
-        var search=new ClawButton(){Text=L.Text("find_location"),Location=new(p.Width-155,216),Width=155,Anchor=AnchorStyles.Right|AnchorStyles.Top};
-        var zones=new ChoiceBox(){Location=new(0,401),Width=p.Width,Anchor=AnchorStyles.Left|AnchorStyles.Top|AnchorStyles.Right};
-        var choices=new ChoiceBox(){Location=new(0,274),Width=p.Width,Anchor=AnchorStyles.Left|AnchorStyles.Top|AnchorStyles.Right};
-        choices.Items.Add(new Place(draft.City,"","",draft.Latitude,draft.Longitude,""));choices.SelectedIndex=0;
-        var feedback=Put(p,L.Text("search_then_choose_the_location_that_matches"),0,325,p.Width,9,false,35);
+
+        var weather=p.Add(new ClawCard(L.Text("weather_card")));
+        weather.Add(Switch(L.Text("show_minimal_weather_in_clock"),draft.WeatherEnabled,value=>SetDraft(draft with{WeatherEnabled=value})));
+        weather.Add(Caption(L.Text("weather_location")),6);
+        var city=ClawTheme.Input(L.Text("find_a_city_or_village"));city.Text=draft.City=="Weather"?"":draft.City;
+        var search=new ClawButton(){Text=L.Text("find_location"),Height=44};
+        weather.Add(Row(0,(city,0),(search,170)),8);
+        var choices=new ChoiceBox();
+        choices.Items.Add(new Place(draft.City,"","",draft.Latitude,draft.Longitude,""));choices.SelectedIndex=0;weather.Add(choices,6);
+        var feedback=weather.Add(Note(L.Text("search_then_choose_the_location_that_matches")));
+        weather.Add(Caption(L.Text("weather_temperature_unit")),6);
+        var celsius=new ClawButton{Text=L.Text("celsius"),Selected=!draft.WeatherFahrenheit,Height=44};
+        var fahrenheit=new ClawButton{Text=L.Text("fahrenheit"),Selected=draft.WeatherFahrenheit,Height=44};
+        weather.Add(Row(0,(celsius,200),(fahrenheit,210)),6);
+        void Units(bool useFahrenheit){SetDraft(draft with{WeatherFahrenheit=useFahrenheit});celsius.Selected=!useFahrenheit;fahrenheit.Selected=useFahrenheit;celsius.Invalidate();fahrenheit.Invalidate();}
+        celsius.Click+=(_,_)=>Units(false);fahrenheit.Click+=(_,_)=>Units(true);
+        weather.Add(Note(L.Text("weather_unit_scope")));
+
+        var zoneCard=p.Add(new ClawCard(L.Text("time_zone")));
+        var zones=new ChoiceBox();TimeZones.Fill(zones,draft.Timezone);zoneCard.Add(zones);
+        zones.SelectedIndexChanged+=(_,_)=>{if(zones.SelectedItem is TimeZoneChoice zone)SetDraft(draft with{Timezone=zone.Posix});};
         choices.SelectedIndexChanged+=(_,_)=>{if(choices.SelectedItem is Place place){SetDraft(draft with{City=place.Name,Latitude=place.Latitude,Longitude=place.Longitude});TimeZones.SelectFor(zones,place);}};
         search.Click+=async(_,_)=>{
             if(city.Text.Trim().Length<2){feedback.Text=L.Text("type_at_least_two_letters");return;}search.Enabled=false;feedback.Text=L.Text("looking_for_your_corner_of_the_world");crab.State="thinking";
@@ -285,113 +348,88 @@ internal sealed class SettingsForm : ClawWindow
                     string Str(string key)=>place.TryGetProperty(key,out var v)?v.GetString()??"":"";
                     choices.Items.Add(new Place(Str("name"),Str("country"),Str("admin1"),place.GetProperty("latitude").GetDouble(),place.GetProperty("longitude").GetDouble(),Str("timezone")));
                 }
+                if(choices.Items.Count>0)choices.SelectedIndex=0;
                 feedback.Text=choices.Items.Count>0?L.Text("choose_your_location_from_the_results"):L.Text("no_match_try_a_nearby_town");crab.State=choices.Items.Count>0?"idle":"error";
             }catch(Exception){if(!feedback.IsDisposed)feedback.Text=L.Text("location_search_is_unavailable_check_your_internet_connection_and");crab.State="error";}
             finally{if(!search.IsDisposed)search.Enabled=true;}
         };
-        p.Controls.AddRange([city,search,choices]);
-        Put(p,L.Text("time_zone"),0,361,300,12,true);
-        TimeZones.Fill(zones,draft.Timezone);
-        zones.SelectedIndexChanged+=(_,_)=>{if(zones.SelectedItem is TimeZoneChoice zone)SetDraft(draft with{Timezone=zone.Posix});};p.Controls.Add(zones);
-        Put(p,L.Text("weather_temperature_unit"),0,469,p.Width,12,true);
-        var celsius=new ClawButton{Text=L.Text("celsius"),Location=new(0,508),Width=195,Selected=!draft.WeatherFahrenheit};
-        var fahrenheit=new ClawButton{Text=L.Text("fahrenheit"),Location=new(207,508),Width=205,Selected=draft.WeatherFahrenheit};
-        void Units(bool useFahrenheit){SetDraft(draft with{WeatherFahrenheit=useFahrenheit});celsius.Selected=!useFahrenheit;fahrenheit.Selected=useFahrenheit;celsius.Invalidate();fahrenheit.Invalidate();}
-        celsius.Click+=(_,_)=>Units(false);fahrenheit.Click+=(_,_)=>Units(true);p.Controls.AddRange([celsius,fahrenheit]);
-        Put(p,L.Text("weather_unit_scope"),0,562,p.Width,9,false,36);
-        Put(p,L.Text("weather_by_open_meteo_location_search_by_geonames"),0,620,p.Width,9,false,27);
+        p.Add(Note(L.Text("weather_by_open_meteo_location_search_by_geonames")));
     }
     private sealed record SettingChoice(int Value,string Label){public override string ToString()=>Label;}
-    private ChoiceBox Choice(Panel panel,string label,int y,int value,IEnumerable<SettingChoice> choices,Action<int> change,int x=0,int width=360)
-    {
-        Put(panel,label,x,y,width,10,true);
-        var control=new ChoiceBox(){Location=new(x,y+34),Width=width};
-        foreach(var choice in choices)control.Items.Add(choice);
-        control.SelectedIndex=control.Items.Cast<SettingChoice>().ToList().FindIndex(c=>c.Value==value);
-        control.SelectedIndexChanged+=(_,_)=>{if(control.SelectedItem is SettingChoice c)change(c.Value);};panel.Controls.Add(control);return control;
-    }
     private void ScreenPage()
     {
         title.Text=L.Text("a_screen_that_settles_with_you");subtitle.Text=L.Text("touch_to_wake_these_preferences_work_on_every_app");
-        var p=Page(706);
-        Put(p,L.Text("automatic_dimming"),0,0,p.Width,12,true);
+        var p=Cards();
+        var dim=p.Add(new ClawCard(L.Text("automatic_dimming")));
         var modes=new[]{(1,L.Text("pc_offline")),(2,L.Text("whenever_idle")),(0,L.Text("never"))};
-        var modeButtons=modes.Select(mode=>new ClawButton{Text=mode.Item2,Selected=draft.DimBehavior==mode.Item1,AccessibleName=L.Text("dim")+mode.Item2}).ToArray();
-        p.Controls.AddRange(modeButtons);
-        var behaviorNote=Put(p,"",0,90,p.Width,9,false,38);
-        var delayLabel=Put(p,L.Text("idle_delay_minutes_seconds"),0,148,300,10,true);
+        var modeButtons=modes.Select(mode=>new ClawButton{Text=mode.Item2,Selected=draft.DimBehavior==mode.Item1,AccessibleName=L.Text("dim")+mode.Item2,Height=44}).ToArray();
+        dim.Add(Row(0,modeButtons.Select(b=>((Control)b,0)).ToArray()),8);
+        var behaviorNote=dim.Add(Note(""));
         var delay=new ClawTimeInput{Minimum=15,Maximum=3600,Step=15,Format=ClawNumberFormat.Duration,Value=draft.DimAfterSeconds,AccessibleName=L.Text("idle_delay")};
-        var brightnessLabel=Put(p,L.Text("dimmed_brightness"),0,148,360,10,true);
-        var brightness=new ClawSlider{Value=draft.DimBrightness};p.Controls.AddRange([delay,brightness]);
-        var brightnessNote=Put(p,L.Text("touch_restores_full_brightness"),0,237,p.Width,9,false,28);
-        var delayNote=Put(p,L.Text("15_seconds_to_60_minutes"),0,237,p.Width,9,false,28);
+        var brightness=new ClawSlider{Value=draft.DimBrightness};
+        dim.Add(Row(560,(Column(Caption(L.Text("idle_delay_minutes_seconds")),delay,Note(L.Text("15_seconds_to_60_minutes"))),0),(Column(Caption(L.Text("dimmed_brightness")),brightness,Note(L.Text("touch_restores_full_brightness"))),0)));
         delay.ValueChanged+=(_,_)=>SetDraft(draft with{DimAfterSeconds=delay.Value});brightness.ValueChanged+=(_,_)=>SetDraft(draft with{DimBrightness=brightness.Value});
         void Mode(int value){for(int i=0;i<modes.Length;i++){modeButtons[i].Selected=modes[i].Item1==value;modeButtons[i].Invalidate();}delay.Enabled=brightness.Enabled=value!=0;
             behaviorNote.Text=value switch{1=>L.Text("dim_after_inactivity_when_your_pc_is_disconnected"),2=>L.Text("dim_after_inactivity_even_while_your_pc_is_connected"),_=>L.Text("keep_normal_brightness_night_hours_can_still_turn_the")};}
         for(int i=0;i<modes.Length;i++){int value=modes[i].Item1;modeButtons[i].Click+=(_,_)=>{SetDraft(draft with{DimBehavior=value});Mode(value);};}Mode(draft.DimBehavior);
+
+        var night=p.Add(new ClawCard(L.Text("night_hours_card")));
         var start=new ClawTimeInput{Value=draft.NightStart,AccessibleName=L.Text("night_hours_start")};var end=new ClawTimeInput{Value=draft.NightEnd,AccessibleName=L.Text("night_hours_end")};
-        Switch(p,L.Text("turn_the_screen_off_during_night_hours"),draft.NightEnabled,289,value=>{SetDraft(draft with{NightEnabled=value});start.Enabled=end.Enabled=value;});
-        var from=Put(p,L.Text("from_24_hour_time"),0,350,300,10,true);var until=Put(p,L.Text("until_24_hour_time"),0,350,300,10,true);
-        p.Controls.AddRange([start,end]);start.Enabled=end.Enabled=draft.NightEnabled;
+        night.Add(Switch(L.Text("turn_the_screen_off_during_night_hours"),draft.NightEnabled,value=>{SetDraft(draft with{NightEnabled=value});start.Enabled=end.Enabled=value;}));
+        night.Add(Row(560,(Column(Caption(L.Text("from_24_hour_time")),start),0),(Column(Caption(L.Text("until_24_hour_time")),end),0)));
+        start.Enabled=end.Enabled=draft.NightEnabled;
         start.ValueChanged+=(_,_)=>SetDraft(draft with{NightStart=start.Value});end.ValueChanged+=(_,_)=>SetDraft(draft with{NightEnd=end.Value});
-        var nightNote=Put(p,L.Text("uses_the_display_s_local_time_while_your_pc"),0,451,p.Width,9,false,64);
-        var apps=new[]{new SettingChoice(5,L.Text("home"))}.Concat(DisplayApps.All.Where(a=>draft.Enabled(a.Id)).Select(a=>new SettingChoice(a.Id,a.Name)));
-        var offline=Choice(p,L.Text("when_the_pc_has_been_offline_for_30_seconds"),544,draft.Enabled(draft.OfflineApp)?draft.OfflineApp:5,apps,value=>SetDraft(draft with{OfflineApp=value}),width:p.Width);
-        var offlineNote=Put(p,L.Text("clock_is_the_default_a_running_timer_delays_automatic"),0,636,p.Width,9,false,58);
-        void LayoutScreen(){int half=(p.Width-28)/2;
-            for(int i=0;i<modeButtons.Length;i++)modeButtons[i].SetBounds(i*(p.Width+8)/3,38,(p.Width-16)/3,44);
-            behaviorNote.Width=p.Width;delayLabel.Width=half;delay.SetBounds(0,187,half,48);
-            brightnessLabel.SetBounds(half+28,148,half,32);brightness.SetBounds(half+28,187,half,48);
-            from.Width=half;start.SetBounds(0,389,half,48);until.SetBounds(half+28,350,half,32);end.SetBounds(half+28,389,half,48);
-            delayNote.Width=half;brightnessNote.SetBounds(half+28,237,half,28);nightNote.Width=offlineNote.Width=offline.Width=p.Width;
-        }
-        p.Resize+=(_,_)=>LayoutScreen();LayoutScreen();
+        night.Add(Note(L.Text("uses_the_display_s_local_time_while_your_pc")));
+
+        var offlineCard=p.Add(new ClawCard(L.Text("when_the_pc_has_been_offline_for_30_seconds")));
+        var apps=new[]{new SettingChoice(5,L.Text("home"))}.Concat(DisplayApps.All.Where(a=>draft.Enabled(a.Id)&&a.Id!=8).Select(a=>new SettingChoice(a.Id,a.Name)));
+        var offline=new ChoiceBox();foreach(var choice in apps)offline.Items.Add(choice);
+        offline.SelectedIndex=offline.Items.Cast<SettingChoice>().ToList().FindIndex(c=>c.Value==(draft.Enabled(draft.OfflineApp)?draft.OfflineApp:5));
+        offline.SelectedIndexChanged+=(_,_)=>{if(offline.SelectedItem is SettingChoice c)SetDraft(draft with{OfflineApp=c.Value});};
+        offlineCard.Add(offline);offlineCard.Add(Note(L.Text("clock_is_the_default_a_running_timer_delays_automatic")));
     }
-    private void CompanionPage()
+    private void PcPage()
     {
         title.Text=L.Text("a_quiet_companion_on_your_pc");subtitle.Text=L.Text("these_settings_apply_here_no_usb_cable_or_display");
-        var p=Page(820);
-        Switch(p,L.Text("start_clawpal_with_windows"),startup,0,value=>{startup=value;Dirty(false);});Put(p,L.Text("starts_quietly_in_the_tray_open_this_window_whenever"),0,46,p.Width,9);
-        Switch(p,L.Text("track_game_fps_in_pc_monitor"),fps,108,value=>{fps=value;Dirty(false);});Put(p,L.Text("uses_windows_frame_events_through_presentmon_game_files_stay"),0,154,p.Width,9,false,40);
-        Switch(p,L.Text("automatically_open_spotify_or_codex"),auto,216,value=>{auto=value;Dirty(false);});Put(p,L.Text("when_an_enabled_app_opens_on_your_pc_show"),0,262,p.Width,9);
-        Put(p,L.Text("claude_link_title"),0,440,p.Width,12,true);
-        Put(p,L.Text("claude_link_description"),0,478,p.Width,9,false,62);
-        var claudeStatus=Put(p,preview?L.Text("claude_link_ready"):ClaudeBridge.Status,0,592,p.Width,9,false,55);
-        var claudeLink=new ClawButton(){Text=L.Text("claude_link_button"),Location=new(0,546),Width=245};p.Controls.Add(claudeLink);
-        claudeLink.Click+=(_,_)=>{try{if(!preview)ClaudeBridge.Install();claudeStatus.Text=L.Text("claude_link_ready");crab.State="happy";}catch(Exception error){claudeStatus.Text=error.Message;crab.State="error";}};
-        var claudeUnlink=new ClawButton(){Text=L.Text("claude_link_disconnect"),Location=new(257,546),Width=230};p.Controls.Add(claudeUnlink);
-        var liveSwitch=Switch(p,L.Text("claude_live_limits"),claudeLive,666,value=>{claudeLive=value;Dirty(false);});
-        Put(p,L.Text("claude_live_description"),0,712,p.Width,9,false,96);
-        claudeUnlink.Click+=(_,_)=>{try{if(!preview){ClaudeBridge.Uninstall();config.ClaudeLiveUsage=false;config.Save();}liveSwitch.Checked=false;claudeLive=false;claudeStatus.Text=L.Text("claude_link_removed");crab.State="idle";}catch(Exception error){claudeStatus.Text=error.Message;crab.State="error";}};
-        Switch(p,L.Text("pause_pc_monitoring"),paused,324,value=>{paused=value;Dirty(false);});Put(p,L.Text("wireless_settings_remain_available_while_telemetry_is_paused"),0,370,p.Width,9);
+        var p=Cards();
+        var startCard=p.Add(new ClawCard(L.Text("startup_card")));
+        startCard.Add(Switch(L.Text("start_clawpal_with_windows"),startup,value=>{startup=value;Dirty(false);}),2);
+        startCard.Add(Note(L.Text("starts_quietly_in_the_tray_open_this_window_whenever")));
+        var monitorCard=p.Add(new ClawCard(L.Text("pc_monitoring_card")));
+        monitorCard.Add(Switch(L.Text("pause_pc_monitoring"),paused,value=>{paused=value;Dirty(false);}),2);
+        monitorCard.Add(Note(L.Text("wireless_settings_remain_available_while_telemetry_is_paused")));
+        monitorCard.Add(Note(L.Text("app_options_moved_note")));
+        var help=p.Add(new ClawCard(L.Text("help_card")));
+        var logs=new ClawButton(){Text=L.Text("open_logs"),Height=40};logs.Click+=(_,_)=>{if(!preview)Process.Start(new ProcessStartInfo("notepad.exe",'"'+Log.PathName+'"'){UseShellExecute=true});};
+        var about=new ClawButton(){Text=L.Text("about_clawpal"),Height=40};about.Click+=(_,_)=>ShowPage(SettingsPage.About);
+        help.Add(Row(0,(logs,160),(about,200)));
     }
-    private void DevicePage()
+    private void ConnectionPage()
     {
         title.Text=L.Text("right_here_over_wi_fi");subtitle.Text=L.Text("your_display_settings_travel_across_your_local_network");
-        var p=Page(670);
-        Put(p,BoardCatalog.Get(config.BoardId).ToString(),0,0,p.Width,14,true,38);
-        Put(p,BoardCatalog.Get(config.BoardId).Description,0,112,p.Width,9,false,28);
-        Put(p,L.Text("device_version", preview?Installer.BundledVersion:wireless.FirmwareVersion.Length>0?wireless.FirmwareVersion:L.Text("waiting_for_display")),0,44,p.Width,10);
-        Put(p,L.Text("wi_fi")+(preview?L.Text("home_wi_fi"):wireless.WifiSsid.Length>0?wireless.WifiSsid:L.Text("available_when_connected")),0,81,p.Width,10);
-        Put(p,L.Text("change_wi_fi"),0,145,p.Width,12,true);
-        int half=(p.Width-18)/2;
-        var ssidLabel=Put(p,L.Text("wi_fi_name_2_4_ghz"),0,185,half,9);var passwordLabel=Put(p,L.Text("password_blank_for_an_open_network"),half+18,185,half,9);
-        var ssid=ClawTheme.Input(L.Text("new_2_4_ghz_wi_fi_name"));ssid.SetBounds(0,219,half,44);ssid.Anchor=AnchorStyles.Left|AnchorStyles.Top|AnchorStyles.Right;
-        var password=ClawTheme.Input(L.Text("wi_fi_password_leave_blank_for_an_open_network"));password.UseSystemPasswordChar=true;password.SetBounds(half+18,219,half,44);password.Anchor=AnchorStyles.Left|AnchorStyles.Top|AnchorStyles.Right;p.Controls.AddRange([ssid,password]);
-        void LayoutWifi(){int width=(p.Width-18)/2;ssidLabel.SetBounds(0,185,width,32);passwordLabel.SetBounds(width+18,185,width,32);ssid.SetBounds(0,219,width,44);password.SetBounds(width+18,219,width,44);}
-        p.Resize+=(_,_)=>LayoutWifi();LayoutWifi();
-        var change=new ClawButton(){Text=L.Text("change_network"),Location=new(0,310),Width=180};p.Controls.Add(change);
-        Put(p,L.Text("the_display_must_be_online_it_reconnects_after_this"),196,307,p.Width-196,9,false,57);
-        var reveal=new ClawSwitch(){Text=L.Text("show_password"),Width=250,Location=new(0,268),Height=34};reveal.CheckedChanged+=(_,_)=>password.UseSystemPasswordChar=!reveal.Checked;p.Controls.Add(reveal);
+        var p=Cards();var model=BoardCatalog.Get(config.BoardId);
+        var info=p.Add(new ClawCard(model.ToString()));
+        info.Add(Note(L.Text("device_version", preview?Installer.BundledVersion:wireless.FirmwareVersion.Length>0?wireless.FirmwareVersion:L.Text("waiting_for_display")),10),4);
+        info.Add(Note(L.Text("wi_fi")+(preview?L.Text("home_wi_fi"):wireless.WifiSsid.Length>0?wireless.WifiSsid:L.Text("available_when_connected")),10),4);
+        info.Add(Note(model.Description));
+
+        var wifi=p.Add(new ClawCard(L.Text("change_wi_fi"),L.Text("the_display_must_be_online_it_reconnects_after_this")));
+        var ssid=ClawTheme.Input(L.Text("new_2_4_ghz_wi_fi_name"));
+        var password=ClawTheme.Input(L.Text("wi_fi_password_leave_blank_for_an_open_network"));password.UseSystemPasswordChar=true;
+        var picker=wifi.Add(new WifiPicker(ssid,preview));
+        wifi.Add(Row(560,(Column(Caption(L.Text("wi_fi_name_2_4_ghz")),ssid),0),(Column(Caption(L.Text("password_blank_for_an_open_network")),password),0)));
+        var reveal=new ClawSwitch(){Text=L.Text("show_password"),Height=36};reveal.CheckedChanged+=(_,_)=>password.UseSystemPasswordChar=!reveal.Checked;wifi.Add(reveal);
+        var change=new ClawButton(){Text=L.Text("change_network"),Primary=true,Height=42};wifi.Add(Row(0,(change,200)));
         change.Click+=async(_,_)=>{
             change.Enabled=false;crab.State="working";
             try{using var timeout=new CancellationTokenSource(TimeSpan.FromSeconds(90));await wireless.ChangeWifiAsync(ssid.Text,password.Text,message=>status.Text=message,timeout.Token);password.Clear();status.Text=L.Text("network_saved_the_display_is_reconnecting");crab.State="happy";}
             catch(Exception e){status.Text=e.Message;crab.State="error";}finally{if(!change.IsDisposed)change.Enabled=true;}
         };
-        Put(p,L.Text("maintenance"),0,397,p.Width,12,true);
-        var usb=new ClawButton(){Text=L.Text("usb_setup_recovery"),Location=new(0,440),Width=210};usb.Click+=(_,_)=>OpenInstaller?.Invoke();p.Controls.Add(usb);
-        var logs=new ClawButton(){Text=L.Text("open_logs"),Location=new(222,440),Width=130};logs.Click+=(_,_)=>{if(!preview)Process.Start(new ProcessStartInfo("notepad.exe",'"'+Log.PathName+'"'){UseShellExecute=true});};p.Controls.Add(logs);
-        Put(p,L.Text("usb_is_for_initial_installation_and_recovery_updates_work"),0,496,p.Width,9,false,42);
+        _=picker.LoadAsync();
+
+        var maintenance=p.Add(new ClawCard(L.Text("maintenance"),L.Text("usb_is_for_initial_installation_and_recovery_updates_work")));
+        var usb=new ClawButton(){Text=L.Text("usb_setup_recovery"),Height=40};usb.Click+=(_,_)=>OpenInstaller?.Invoke();
+        maintenance.Add(Row(0,(usb,230)));
     }
     private async Task RefreshFirmware()
     {
@@ -403,23 +441,25 @@ internal sealed class SettingsForm : ClawWindow
     private void UpdatesPage()
     {
         title.Text=L.Text("a_little_better_over_wi_fi");subtitle.Text=L.Text("new_firmware_same_settings_clawpal_checks_releases_you_choose");
-        var p=Page(670);var updates=connection.Updates;
-        firmwareLabel=Put(p,"",0,0,p.Width,13,true,34);
-        updateStatus=Put(p,"",0,40,p.Width,10,false,54);
-        installUpdate=new ClawButton(){Text=L.Text("install_over_wi_fi"),Primary=true,Location=new(0,104),Width=224};
-        prepareUpdate=new ClawButton(){Text=L.Text("prepare_over_usb_once"),Location=new(0,104),Width=224};
-        var refreshFirmware=new ClawButton(){Text=L.Text("refresh_display"),Location=new(236,104),Width=154};
-        refreshFirmware.Click+=async(_,_)=>await RefreshFirmware();p.Controls.AddRange([installUpdate,prepareUpdate,refreshFirmware]);
-        Put(p,L.Text("your_display_restarts_after_the_upload_keep_it_powered"),0,157,p.Width,9,false,45);
-        Put(p,L.Text("github_releases"),0,215,p.Width,13,true,34);
-        Put(p,L.Text("official_update_source"),0,255,p.Width,10,false,48);
-        var automatic=new ClawSwitch(){Text=L.Text("automatically_check_every_6_hours"),Checked=config.AutoCheckUpdates,Location=new(0,311),Width=p.Width,Anchor=AnchorStyles.Left|AnchorStyles.Top|AnchorStyles.Right};p.Controls.Add(automatic);
+        var p=Cards();var updates=connection.Updates;
+        var firmware=p.Add(new ClawCard(L.Text("display_firmware_card")));
+        firmwareLabel=firmware.Add(ClawTheme.Label("",400,12,true,30),4);
+        updateStatus=firmware.Add(Note("",10));
+        installUpdate=new ClawButton(){Text=L.Text("install_over_wi_fi"),Primary=true,Height=42};
+        prepareUpdate=new ClawButton(){Text=L.Text("prepare_over_usb_once"),Height=42};
+        var refreshFirmware=new ClawButton(){Text=L.Text("refresh_display"),Height=42};
+        refreshFirmware.Click+=async(_,_)=>await RefreshFirmware();
+        firmware.Add(Row(0,(installUpdate,230),(prepareUpdate,230),(refreshFirmware,170)));
+        firmware.Add(Note(L.Text("your_display_restarts_after_the_upload_keep_it_powered")));
+        var releases=p.Add(new ClawCard(L.Text("github_releases"),L.Text("official_update_source")));
+        var automatic=new ClawSwitch(){Text=L.Text("automatically_check_every_6_hours"),Checked=config.AutoCheckUpdates,Height=40};releases.Add(automatic);
         automatic.CheckedChanged+=(_,_)=>{if(!preview)updates.SetAutomaticChecks(automatic.Checked);};
-        releaseStatus=Put(p,"",0,364,p.Width,10,false,60);
-        checkUpdate=new ClawButton(){Text=L.Text("check_github_now"),Location=new(0,438),Width=196};p.Controls.Add(checkUpdate);
-        var pcUpdate=new ClawButton(){Text=L.Text("download_pc_update"),Location=new(208,438),Width=230};p.Controls.Add(pcUpdate);
+        releaseStatus=releases.Add(Note("",10));
+        checkUpdate=new ClawButton(){Text=L.Text("check_github_now"),Height=42};
+        var pcUpdate=new ClawButton(){Text=L.Text("download_pc_update"),Height=42};
         pcUpdate.Click+=(_,_)=>{if(!preview)Process.Start(new ProcessStartInfo(updates.ReleasePage.AbsoluteUri){UseShellExecute=true});};
-        Put(p,L.Text("official_update_help"),0,494,p.Width,9,false,70);
+        releases.Add(Row(0,(checkUpdate,200),(pcUpdate,230)));
+        releases.Add(Note(L.Text("official_update_help")));
         checkUpdate.Click+=async(_,_)=>{if(preview)return;try{using var timeout=new CancellationTokenSource(TimeSpan.FromSeconds(45));await updates.Check(timeout.Token);}catch(Exception e){updates.ReportProblem(e);status.Text=e.Message;crab.State="error";}RefreshState();};
         installUpdate.Click+=async(_,_)=>{
             if(preview)return;
@@ -465,19 +505,53 @@ internal sealed class SettingsForm : ClawWindow
     internal void RenderPreviews(string directory)
     {
         Directory.CreateDirectory(directory);Show();Application.DoEvents();
-        for(int i=0;i<=(int)SettingsPage.About;i++){ShowPage((SettingsPage)i);Application.DoEvents();using var bitmap=new Bitmap(Width,Height);DrawToBitmap(bitmap,new Rectangle(Point.Empty,Size));bitmap.Save(Path.Combine(directory,$"settings-{i}.png"),ImageFormat.Png);}
         void Capture(string name){Application.DoEvents();using var bitmap=new Bitmap(Width,Height);DrawToBitmap(bitmap,new Rectangle(Point.Empty,Size));bitmap.Save(Path.Combine(directory,name+".png"),ImageFormat.Png);}
+        for(int i=0;i<=(int)SettingsPage.About;i++){ShowPage((SettingsPage)i);Capture($"settings-{i}");if(pages.MaximumOffset>0){pages.ScrollTo(pages.MaximumOffset);Capture($"settings-{i}-end");}}
         foreach(var size in new[]{new Size(960,680),new Size(1600,900)}){ClientSize=size;ShowPage(SettingsPage.Home);Capture($"home-{size.Width}");}
         WindowState=FormWindowState.Maximized;ShowPage(SettingsPage.Home);Capture("home-maximized");WindowState=FormWindowState.Normal;ClientSize=new(1120,790);
-        foreach(var size in new[]{new Size(960,680),new Size(1120,790)}){ClientSize=size;ShowPage(SettingsPage.Companion);Application.DoEvents();pages.ScrollTo(pages.MaximumOffset);Capture($"claude-{size.Width}");}
-        ClientSize=new(960,680);ShowPage(SettingsPage.Shortcuts);Capture("shortcuts-960");ClientSize=new(1120,790);
-        ShowPage(SettingsPage.Screen);pages.ScrollTo(pages.MaximumOffset);Capture("screen-bottom");
-        ShowPage(SettingsPage.Clock);pages.ScrollTo(pages.MaximumOffset);Capture("weather-units");
-        ShowPage(SettingsPage.Clock);Application.DoEvents();var choices=activePage!.Controls.OfType<ChoiceBox>().Last();choices.PerformClick();Application.DoEvents();
-        using(var bitmap=new Bitmap(choices.SelectionMenu.Width,choices.SelectionMenu.Height)){choices.SelectionMenu.DrawToBitmap(bitmap,new Rectangle(Point.Empty,bitmap.Size));bitmap.Save(Path.Combine(directory,"choice-popup.png"),ImageFormat.Png);}choices.SelectionMenu.Close();
+        foreach(var size in new[]{new Size(960,680),new Size(1120,790)}){ClientSize=size;ShowPage(SettingsPage.Apps);Application.DoEvents();pages.ScrollTo(pages.MaximumOffset);Capture($"claude-{size.Width}");}
+        ClientSize=new(960,680);ShowPage(SettingsPage.Shortcuts);Capture("shortcuts-960");ShowPage(SettingsPage.Screen);Capture("screen-960");ClientSize=new(1120,790);
+        ShowPage(SettingsPage.Clock);Application.DoEvents();var zones=activePage!.Controls.Cast<Control>().SelectMany(Descendants).OfType<ChoiceBox>().Last();zones.PerformClick();Application.DoEvents();
+        var list=zones.SelectionList;using(var bitmap=new Bitmap(list.Width,list.Height)){list.DrawToBitmap(bitmap,new Rectangle(Point.Empty,bitmap.Size));bitmap.Save(Path.Combine(directory,"choice-popup.png"),ImageFormat.Png);}zones.SelectionMenu.Close();
         Close();
     }
+    private static IEnumerable<Control> Descendants(Control control){yield return control;foreach(Control child in control.Controls)foreach(var nested in Descendants(child))yield return nested;}
     protected override void Dispose(bool disposing){if(disposing){L.Changed-=LanguageChanged;ClawTheme.Changed-=LookChanged;refresh.Dispose();}base.Dispose(disposing);}
-    private sealed class AppIcon(int id):Control {protected override void OnPaint(PaintEventArgs e){base.OnPaint(e);e.Graphics.SmoothingMode=System.Drawing.Drawing2D.SmoothingMode.AntiAlias;AppArtwork.Draw(e.Graphics,id,ClientRectangle);}}
-}
 
+    /* A sidebar entry: left-aligned, with an accent bar on the page you are on. */
+    private sealed class NavButton : ClawButton
+    {
+        internal NavButton(){Font=ClawTheme.Font(10,true);}
+        protected override void OnPaint(PaintEventArgs e)
+        {
+            var g=e.Graphics;g.SmoothingMode=System.Drawing.Drawing2D.SmoothingMode.AntiAlias;g.Clear(Parent?.BackColor??ClawTheme.Surface);
+            bool hot=ClientRectangle.Contains(PointToClient(MousePosition));
+            if(Selected||hot)ClawTheme.Fill(g,ClawTheme.Hover,new RectangleF(0,1,Width-1,Height-3),8);
+            if(Selected)ClawTheme.Fill(g,ClawTheme.Accent,new RectangleF(0,9,3,Height-19),2);
+            ClawTheme.Text(g,Text,Font,Selected?ClawTheme.Accent:ClawTheme.Ink,new Rectangle(16,0,Width-24,Height));
+            if(Focused&&ShowFocusCues){using var p=ClawTheme.Round(new RectangleF(1,2,Width-3,Height-5),7);using var pen=new Pen(ClawTheme.Accent);g.DrawPath(pen,p);}
+        }
+    }
+    /* An app's icon, name and description, with the switch that turns it on or off. */
+    private sealed class AppHeader : Panel
+    {
+        internal event Action<bool>? Toggled;
+        internal ClawSwitch Toggle {get;}
+        private readonly DisplayApp app;
+        internal AppHeader(DisplayApp app,bool on)
+        {
+            this.app=app;Height=54;BackColor=ClawTheme.Surface;DoubleBuffered=true;
+            Toggle=new ClawSwitch(){Text="",Checked=on,Size=new(56,40),AccessibleName=app.Name,Anchor=AnchorStyles.Top|AnchorStyles.Right};
+            Toggle.CheckedChanged+=(_,_)=>Toggled?.Invoke(Toggle.Checked);Controls.Add(Toggle);
+            Resize+=(_,_)=>Toggle.Location=new(Width-Toggle.Width,(Height-Toggle.Height)/2);
+        }
+        protected override void OnPaint(PaintEventArgs e)
+        {
+            base.OnPaint(e);var g=e.Graphics;g.SmoothingMode=System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
+            AppArtwork.Draw(g,app.Id,new Rectangle(0,(Height-34)/2,34,34));
+            using var name=ClawTheme.Font(12,true);using var detail=ClawTheme.Font(9);
+            ClawTheme.Text(g,app.Name,name,ClawTheme.Ink,new Rectangle(50,4,Width-120,26));
+            ClawTheme.Text(g,app.Description,detail,ClawTheme.Muted,new Rectangle(50,28,Width-120,22));
+        }
+    }
+}

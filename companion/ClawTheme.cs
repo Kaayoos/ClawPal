@@ -23,6 +23,9 @@ internal static class ClawTheme
     internal static Color TrackHover=>Mix(Border,Ink,.1f);
     internal static Color Thumb=>Mix(Border,Ink,.25f);
     internal static bool Mascot=>Look.Mascot;
+    /* Inside a card the surface is the backdrop, so fields sink to the background and buttons rise to the hover tone. */
+    internal static bool OnSurface(Control control)=>control.Parent?.BackColor.ToArgb()==Surface.ToArgb();
+    internal static Color Field(Control control)=>OnSurface(control)?Background:Surface;
     internal static Color Mix(Color a,Color b,float amount)=>Color.FromArgb((int)(a.R+(b.R-a.R)*amount),(int)(a.G+(b.G-a.G)*amount),(int)(a.B+(b.B-a.B)*amount));
     /* Switches every open window at once; colours assigned from the old look move to the matching role. */
     internal static void Use(string? theme,string? accent)
@@ -89,10 +92,12 @@ internal class ClawButton : Button
     {
         e.Graphics.SmoothingMode=SmoothingMode.AntiAlias;e.Graphics.Clear(Parent?.BackColor??ClawTheme.Background);
         var fill=!Enabled?ClawTheme.Surface:Brand is { } brand?(pressed?ControlPaint.Dark(brand,.1f):hovered?ControlPaint.Light(brand,.15f):brand):
-            Primary?(pressed?ClawTheme.AccentPressed:hovered?ClawTheme.AccentHover:ClawTheme.Accent):Selected||hovered?ClawTheme.Hover:ClawTheme.Surface;
+            Primary?(pressed?ClawTheme.AccentPressed:hovered?ClawTheme.AccentHover:ClawTheme.Accent):
+            ClawTheme.OnSurface(this)?(Selected||hovered?ClawTheme.Mix(ClawTheme.Hover,ClawTheme.Ink,.08f):ClawTheme.Hover):Selected||hovered?ClawTheme.Hover:ClawTheme.Surface;
         ClawTheme.Fill(e.Graphics,fill,new RectangleF(0,0,Width-1,Height-1),9);
         var ink=!Enabled?ClawTheme.Muted:Brand is not null?Color.White:Primary?ClawTheme.Background:Selected?ClawTheme.Accent:ClawTheme.Ink;
         ClawTheme.Text(e.Graphics,Text,Font,ink,ClientRectangle,TextFormatFlags.HorizontalCenter|TextFormatFlags.VerticalCenter|TextFormatFlags.EndEllipsis);
+        if(Selected&&!Primary&&Brand is null&&Enabled&&ClawTheme.OnSurface(this)){using var p=ClawTheme.Round(new RectangleF(.5f,.5f,Width-2,Height-2),9);using var pen=new Pen(ClawTheme.Accent);e.Graphics.DrawPath(pen,p);}
         if(Focused&&ShowFocusCues){using var p=ClawTheme.Round(new RectangleF(2,2,Width-5,Height-5),8);using var pen=new Pen(ClawTheme.Accent);e.Graphics.DrawPath(pen,p);}
     }
 }

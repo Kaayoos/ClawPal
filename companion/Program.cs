@@ -57,6 +57,11 @@ internal static class Program
                 }
             }
             if (Value(args, "--diagnostics") is { } diagnosticPath) { Diagnostics(diagnosticPath).GetAwaiter().GetResult(); return 0; }
+            // Counts only: network names stay out of diagnostics.
+            if (Value(args, "--wifi-diagnostics") is { } wifiPath) {
+                var scan = args.Contains("--wifi-scan") ? Task.Run(() => WifiNetworks.ScanAsync(CancellationToken.None)).GetAwaiter().GetResult() : WifiNetworks.Read();
+                File.WriteAllText(wifiPath, JsonSerializer.Serialize(new { networks = scan.Networks.Length, band24 = scan.Networks.Count(n => n.Has24GHz), connected = scan.Networks.Count(n => n.Connected), open = scan.Networks.Count(n => !n.Secured), scan.Problem }, Protocol.Json)); return 0;
+            }
             if (Value(args, "--shortcut-diagnostics") is { } shortcutPath) { ShortcutDiagnostics(shortcutPath, Value(args, "--shortcut-run")).GetAwaiter().GetResult(); return 0; }
             if (Value(args, "--music-diagnostics") is { } musicPath) { MusicDiagnostics(musicPath, Value(args, "--music-command")).GetAwaiter().GetResult(); return 0; }
             if (Value(args, "--claude-diagnostics") is { } claudePath) {

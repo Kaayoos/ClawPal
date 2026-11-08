@@ -7,7 +7,7 @@
     <Nullable>enable</Nullable>
     <AssemblyName>ClawPal.Companion</AssemblyName>
     <RootNamespace>ClawPal.Companion</RootNamespace>
-    <Version>0.12.0</Version>
+    <Version>0.13.0</Version>
     <Authors>MinimalPulse</Authors>
     <Company>MinimalPulse</Company>
     <Copyright>Copyright © 2026 MinimalPulse and contributors</Copyright>

@@ -48,65 +48,70 @@ internal sealed class SetupForm : ClawWindow
     private enum Step { Look, Connect, Personalize, Companion, Review, Install }
     private readonly Configuration config;
     private readonly Connection connection;
-    private readonly ClawScrollPanel content = new() { Dock = DockStyle.Fill, Padding = new Padding(40,30,40,20) };
-    private readonly Label title = new(), subtitle = new(), status = new(), stepText = new();
-    private readonly Button next, back;
+    private readonly ClawScrollPanel content = new() { Dock = DockStyle.Fill, Padding = new Padding(44,6,40,16), MaximumContentWidth = 760 };
+    private readonly ClawHeading title = new();
+    private readonly Label subtitle = new(), status = new();
+    private readonly StepList steps = new();
+    private readonly Panel side = new() { Dock = DockStyle.Left, Width = 280, BackColor = ClawTheme.Surface };
+    private readonly Label brand, tagline, version;
+    private readonly ClawButton next, back;
     private readonly CrabView crab = new();
     private readonly LookPicker look;
     private readonly ChoiceBox pcLanguages=new(), displayLanguages=new();
     private readonly ChoiceBox ports = new(), places = new(), zones = new();
     private readonly ClawTextField ssid = new(), password = new(), city = new();
+    private readonly WifiPicker wifi;
     private readonly ChoiceBox boards = new();
     private BoardDefinition SelectedBoard => (BoardDefinition?)boards.SelectedItem ?? BoardCatalog.Get(BoardCatalog.DefaultId);
-    private readonly Label boardDescription = new() { Height=66, AutoSize=false };
+    private readonly Label boardDescription = ClawTheme.Label("",400,9,false,20);
     private readonly ClawSwitch boardConfirmed = new(), fps = new(), auto = new(), startup = new(), backup = new() { Checked = true };
-    private readonly Label deviceStatus = new() { Width = 600, Height = 58, ForeColor = ClawTheme.Muted };
-    private readonly Label backupNote = new() { Width = 600, Height = 60, ForeColor = ClawTheme.Muted };
+    private readonly Label deviceStatus = ClawTheme.Label("",400,9.5f,false,20);
+    private readonly Label backupNote = ClawTheme.Label("",400,9,false,20);
     private DetectedDevice? detected;
     private UsbDevice? SelectedDevice => ports.SelectedItem as UsbDevice;
-    private bool refreshingDevices;
+    private bool refreshingDevices, wifiLoaded;
     private int deviceTicks;
-    private readonly ProgressBar progress = new();
+    private readonly ClawProgress progress = new() { Height = 8 };
     private readonly System.Windows.Forms.Timer stateTimer = new() { Interval = 1000 };
     private Step step;
     private bool busy, installed;
     public bool Busy => busy;
     internal event Action? OpenSettings;
-    internal void ReportProblem(string message) { crab.State="error"; status.Text=message; Show(); Activate(); }
+    internal void ReportProblem(string message) { crab.State="error"; status.Text=message; status.ForeColor=ClawTheme.Warning; Show(); Activate(); }
     private string? backupFolder;
     private Place? selected;
     private readonly bool preview;
+    private Control[] Persistent => [look,boards,boardDescription,pcLanguages,displayLanguages,ports,places,zones,ssid,password,city,wifi,boardConfirmed,fps,auto,startup,backup,deviceStatus,backupNote,progress];
     public SetupForm(Configuration config, Connection connection, bool preview = false)
     {
         this.config = config; this.connection = connection; this.preview = preview;
-        Text = L.Text("clawpal"); BackColor = ClawTheme.Background; ForeColor = ClawTheme.Ink; Font = new Font("Segoe UI", 10);
-        AutoScaleMode = AutoScaleMode.Dpi; ClientSize = new(1000,740); MinimumSize = new(970,770); StartPosition = FormStartPosition.CenterScreen;
+        Text = L.Text("clawpal"); BackColor = ClawTheme.Background; ForeColor = ClawTheme.Ink; Font = ClawTheme.Font();
+        AutoScaleMode = AutoScaleMode.Dpi; ClientSize = new(1040,760); MinimumSize = new(960,700); StartPosition = FormStartPosition.CenterScreen;
         using (var iconStream = typeof(SetupForm).Assembly.GetManifestResourceStream("ClawPal.Companion.CrabIcon")) if (iconStream != null) Icon = new Icon(iconStream);
-        var side = new Panel { Dock = DockStyle.Left, Width = 285, BackColor = ClawTheme.Surface, Padding = new Padding(30) };
-        var brand = Label(L.Text("clawpal"), 27, true); brand.Location = new(30,35); brand.AutoSize = true; side.Controls.Add(brand);
-        var tagline = Label(L.Text("a_little_company_for_your_desk_30d149"), 10); tagline.Location = new(32,89); tagline.Size = new(235,50); side.Controls.Add(tagline);
-        crab.Location = new(22,220); crab.Anchor = AnchorStyles.Left | AnchorStyles.Top; side.Controls.Add(crab);
-        stepText.Location = new(32,470); stepText.Size = new(220,210); stepText.ForeColor = ClawTheme.Muted; stepText.Font = new Font("Segoe UI", 11); side.Controls.Add(stepText);
-        var version = Label(L.Text("clawpal_94dbc7") + typeof(SetupForm).Assembly.GetName().Version?.ToString(3), 9); version.Dock = DockStyle.Bottom; version.Height = 25; side.Controls.Add(version);
+        brand = ClawTheme.Label(L.Text("clawpal"),230,24,true,44); tagline = ClawTheme.Label(L.Text("a_little_company_for_your_desk_30d149"),230,10,false,24);
+        version = ClawTheme.Label(L.Text("clawpal_94dbc7") + typeof(SetupForm).Assembly.GetName().Version?.ToString(3),230,9,false,24);
+        side.Controls.AddRange([brand,tagline,steps,crab,version]); side.Resize += (_,_) => LayoutSide();
         var right = new Panel { Dock = DockStyle.Fill }; Controls.Add(right); Controls.Add(side);
-        var header = new Panel { Dock = DockStyle.Top, Height = 130, Padding = new Padding(40,32,32,0) };
-        title.Dock = DockStyle.Top; title.Height = 47; title.Font = new Font("Segoe UI", 25, FontStyle.Bold); title.ForeColor = ClawTheme.Ink;
-        subtitle.Dock = DockStyle.Fill; subtitle.ForeColor = ClawTheme.Muted;
+        var header = new Panel { Dock = DockStyle.Top, Height = 112, Padding = new Padding(44,30,40,0) };
+        title.Dock = DockStyle.Top; title.Height = 46; title.Font = ClawTheme.Font(24,true); title.ForeColor = ClawTheme.Ink;
+        subtitle.Dock = DockStyle.Fill; subtitle.ForeColor = ClawTheme.Muted; subtitle.Font = ClawTheme.Font(10.5f); subtitle.UseMnemonic = false;
         header.Controls.Add(subtitle); header.Controls.Add(title);
-        var footer = new Panel { Dock = DockStyle.Bottom, Height = 120, Padding = new Padding(40,8,40,24) };
-        next = Button(L.Text("continue"), true); next.Size = new(170,44); next.Anchor = AnchorStyles.Right | AnchorStyles.Bottom; next.Location = new(505,52);
-        back = Button(L.Text("back")); back.Size = new(100,44); back.Location = new(40,52); back.Anchor = AnchorStyles.Left | AnchorStyles.Bottom;
-        status.SetBounds(40,3,620,43); status.Anchor = AnchorStyles.Left | AnchorStyles.Right | AnchorStyles.Top; status.ForeColor = ClawTheme.Muted; status.Font = new Font("Segoe UI",9);
-        footer.Controls.AddRange([next,back,status]); footer.Resize += (_,_) => next.Left = footer.ClientSize.Width-next.Width-40;
-        right.Controls.Add(content); right.Controls.Add(header); right.Controls.Add(footer);
-        foreach (var box in new[] { ports, places, zones }) box.Width = 600;
-        foreach (var box in new[] { ssid, password, city }) { box.BackColor = ClawTheme.Surface; box.ForeColor = ClawTheme.Ink;  box.Width = 600; box.Font = new Font("Segoe UI",12); }
-        password.UseSystemPasswordChar = true;
-        foreach (var check in new[] { boardConfirmed, fps, auto, startup, backup }) { check.ForeColor = ClawTheme.Ink; check.AutoSize = false; check.Size = new(600,40); check.FlatStyle = FlatStyle.Standard; }
+        var footer = new Panel { Dock = DockStyle.Bottom, Height = 84 };
+        next = new ClawButton { Text = L.Text("continue"), Primary = true, Size = new(180,46), Anchor = AnchorStyles.Right | AnchorStyles.Top };
+        back = new ClawButton { Text = L.Text("back"), Size = new(110,46), Anchor = AnchorStyles.Left | AnchorStyles.Top };
+        status.ForeColor = ClawTheme.Muted; status.Font = ClawTheme.Font(9); status.UseMnemonic = false; status.TextAlign = ContentAlignment.MiddleLeft;
+        footer.Controls.AddRange([next,back,status]);
+        // Back, a short status line, then Continue; the line takes whatever room is between them.
+        this.footer = footer; footer.Resize += (_,_) => LayoutFooter();
+        var divider = new Panel { Dock = DockStyle.Bottom, Height = 1, BackColor = ClawTheme.Border };
+        right.Controls.Add(content); right.Controls.Add(header); right.Controls.Add(divider); right.Controls.Add(footer);
+        password.UseSystemPasswordChar = true; ssid.PlaceholderText = L.Text("new_2_4_ghz_wi_fi_name"); city.PlaceholderText = L.Text("search_a_city_or_village");
+        wifi = new WifiPicker(ssid, preview) { BackColor = ClawTheme.Surface };
+        foreach (var check in new[] { boardConfirmed, fps, auto, startup, backup }) check.Height = 40;
         boards.Items.AddRange(BoardCatalog.All.Cast<object>().ToArray()); boards.SelectedIndex=0;
         boards.SelectedIndexChanged += async (_,_) => { boardConfirmed.Checked=false; detected=null; boardDescription.Text=SelectedBoard.Description; UpdateContinue(); if(!preview)await CheckDevice(); };
         boardConfirmed.Text = L.Text("confirm_selected_board");
-        boardDescription.ForeColor=ClawTheme.Muted; boardDescription.Text=SelectedBoard.Description;
+        boardDescription.Text=SelectedBoard.Description;
         boardConfirmed.CheckedChanged += (_,_) => UpdateContinue();
         backup.Text = L.Text("save_a_full_device_backup_before_installing_recommended");
         backup.CheckedChanged += (_,_) => UpdateBackupChoice();
@@ -119,7 +124,7 @@ internal sealed class SetupForm : ClawWindow
         displayLanguages.SelectedIndex=L.Languages.ToList().FindIndex(l=>l.Code==L.Normalize(config.DisplaySettings?.Language));
         pcLanguages.SelectedIndexChanged+=(_,_)=>{if(pcLanguages.SelectedItem is LanguageChoice language){config.CompanionLanguage=language.Code;config.Save();L.SetLanguage(language.Code);}};
         L.Changed+=LanguageChanged;
-        look = new LookPicker(config.DisplaySettings?.Theme ?? ClawTheme.Look.Id, config.DisplaySettings?.Accent ?? ClawTheme.Look.AccentId);
+        look = new LookPicker(config.DisplaySettings?.Theme ?? ClawTheme.Look.Id, config.DisplaySettings?.Accent ?? ClawTheme.Look.AccentId) { BackColor = ClawTheme.Surface };
         look.Changed += (theme, accent) => ClawTheme.Use(theme, accent);
         ClawTheme.Changed += LookChanged; LookChanged();
         TimeZones.Fill(zones, config.Timezone);
@@ -134,22 +139,41 @@ internal sealed class SetupForm : ClawWindow
         Shown += async (_,_) => { if (!preview) await RefreshDevices(true); };
         stateTimer.Start(); ShowStep();
     }
-    private static Label Label(string text, float size = 10, bool bold = false) => new() { Text = text, Font = new Font("Segoe UI", size, bold ? FontStyle.Bold : FontStyle.Regular), ForeColor = bold ? ClawTheme.Ink : ClawTheme.Muted, AutoSize = false, Height = 38, Width = 610 };
-    private static Button Button(string text, bool primary = false)
+    private readonly Panel footer;
+    private void LayoutFooter()
     {
-        var b = new ClawButton { Primary=primary, Text = text, FlatStyle = FlatStyle.Flat, BackColor = primary ? ClawTheme.Accent : ClawTheme.Surface, ForeColor = primary ? ClawTheme.Background : ClawTheme.Ink, Cursor = Cursors.Hand, Height = 40, Width = 155, UseVisualStyleBackColor = false };
-        b.FlatAppearance.BorderSize = 0; b.FlatAppearance.MouseOverBackColor = primary ? ClawTheme.AccentHover : ClawTheme.Hover; return b;
+        int pad = footer.LogicalToDeviceUnits(40), top = footer.LogicalToDeviceUnits(16);
+        back.Location = new(pad, top); next.Location = new(footer.ClientSize.Width - next.Width - pad, top);
+        int left = back.Visible ? back.Right + pad / 2 : pad; status.SetBounds(left, top - 4, Math.Max(40, next.Left - left - pad / 2), next.Height + 8);
+        back.BringToFront(); next.BringToFront();
     }
-    private FlowLayoutPanel Flow()
+    private string[] StepNames => [L.Text("language_and_look"), L.Text("connect_your_display"), L.Text("make_it_yours"), L.Text("companion_settings"), L.Text("review_install")];
+    /* Brand at the top, steps under it, the version at the bottom, and the crab in whatever room is left between. */
+    private void LayoutSide()
     {
-        foreach(Control child in content.Content.Controls.Cast<Control>().ToArray()){foreach(Control item in new Control[]{look,boards,boardDescription,pcLanguages,displayLanguages,ports,places,zones,ssid,password,city,boardConfirmed,fps,auto,startup,backup,deviceStatus,backupNote,progress})if(child.Contains(item))item.Parent=null;child.Dispose();}
+        int pad = side.LogicalToDeviceUnits(30), w = side.ClientSize.Width - 2 * pad;
+        brand.SetBounds(pad - 2, side.LogicalToDeviceUnits(28), w, side.LogicalToDeviceUnits(44));
+        tagline.SetBounds(pad, brand.Bottom, w, side.LogicalToDeviceUnits(26));
+        steps.SetBounds(pad, tagline.Bottom + side.LogicalToDeviceUnits(34), w, steps.Height);
+        version.SetBounds(pad, side.ClientSize.Height - side.LogicalToDeviceUnits(40), w, side.LogicalToDeviceUnits(24));
+        int room = version.Top - steps.Bottom - side.LogicalToDeviceUnits(24), size = Math.Min(side.LogicalToDeviceUnits(192), room) / 48 * 48;
+        crab.Visible = ClawTheme.Mascot && size >= 96;
+        if (crab.Visible) crab.SetBounds((side.ClientSize.Width - size) / 2, steps.Bottom + (room - size) / 2 + side.LogicalToDeviceUnits(12), size, size);
+    }
+    private ClawStack page = null!;
+    /* Clears the page but keeps the inputs that live across steps, then starts a new stack of cards. */
+    private ClawStack Cards()
+    {
+        foreach (var item in Persistent) item.Parent?.Controls.Remove(item);
+        foreach (Control child in content.Content.Controls.Cast<Control>().ToArray()) child.Dispose();
         content.ResetScroll();
-        var flow = new FlowLayoutPanel { Dock = DockStyle.Top, AutoSize = true, FlowDirection = FlowDirection.TopDown, WrapContents = false };
-        content.Content.Controls.Add(flow);
-        flow.SizeChanged+=(_,_)=>{foreach(Control item in flow.Controls){if(item is not System.Windows.Forms.Button || item is ChoiceBox || item is ClawSwitch)item.Width=Math.Max(1,flow.ClientSize.Width-item.Margin.Horizontal);}};
-        return flow;
+        page = new ClawStack { Dock = DockStyle.Top, Width = content.Content.Width, Gap = 16, BackColor = ClawTheme.Background, Padding = new Padding(0,4,0,8) };
+        content.Content.Controls.Add(page); return page;
     }
-    private static void Add(FlowLayoutPanel flow, Control control, int after = 14) { control.Margin = new Padding(0,0,0,after); flow.Controls.Add(control);if(control is not System.Windows.Forms.Button || control is ChoiceBox || control is ClawSwitch)control.Width=Math.Max(1,flow.ClientSize.Width-control.Margin.Horizontal); }
+    private static Label Note(string text, float size = 9) => ClawTheme.Label(text, 400, size, false, 20);
+    private static Label Caption(string text) => ClawTheme.Label(text, 400, 10, true, 24);
+    private static ClawRow Row(int stackBelow, params (Control control, int width)[] items) { var row = new ClawRow { StackBelow = stackBelow }; foreach (var (control, width) in items) row.Add(control, width); return row; }
+    private static ClawStack Column(params Control[] items) { var column = new ClawStack { Gap = 8, BackColor = ClawTheme.Surface }; foreach (var item in items) column.Add(item); return column; }
     private void UpdateContinue()
     {
         if (step == Step.Connect) next.Enabled = !busy && boardConfirmed.Checked && detected?.Port == SelectedDevice?.Port && detected is not null;
@@ -159,7 +183,7 @@ internal sealed class SetupForm : ClawWindow
         backupNote.Text = backup.Checked
             ? L.Text("a_full_backup_is_saved_and_verified_before_writing")
             : L.Text("no_backup_will_be_created_you_will_need_an");
-        backupNote.ForeColor = backup.Checked ? ClawTheme.Muted : ClawTheme.Accent;
+        backupNote.ForeColor = backup.Checked ? ClawTheme.Muted : ClawTheme.Warning;
         if (step == Step.Review) next.Text = backup.Checked ? L.Text("back_up_install") : L.Text("install_569ca4");
     }
     private async Task RefreshDevices(bool force = false)
@@ -204,7 +228,7 @@ internal sealed class SetupForm : ClawWindow
             deviceStatus.Text = L.Text("device_confirmed", result.Summary, result.DeviceId);
             status.Text = L.Text("usb_connection_checked_no_firmware_has_been_changed");
         } catch (Exception e) {
-            crab.State = "error"; deviceStatus.ForeColor = ClawTheme.Accent;
+            crab.State = "error"; deviceStatus.ForeColor = ClawTheme.Warning;
             deviceStatus.Text = L.Text("device_check_failed_reconnect_the_usb_cable_or_close");
             status.Text = e.Message.Split('\n')[0];
         } finally { busy = false; content.Enabled = true; UpdateContinue(); }
@@ -213,73 +237,87 @@ internal sealed class SetupForm : ClawWindow
     {
         if (IsDisposed) return;
         status.Text = message;
-        if (UsbToolOutput.Percent(message) is { } percent) {
-            progress.Style = ProgressBarStyle.Continuous; progress.Value = percent;
-        } else progress.Style = ProgressBarStyle.Marquee;
+        if (UsbToolOutput.Percent(message) is { } percent) { progress.Style = ProgressBarStyle.Continuous; progress.Value = percent; }
+        else progress.Style = ProgressBarStyle.Marquee;
     }
     private void ShowStep()
     {
-        var f = Flow(); status.Text = ""; back.Visible = step is > Step.Look and < Step.Install; next.Enabled = true;
-        stepText.Text = string.Join("\n\n", new[] { L.Text("language_and_look"), L.Text("connect_your_display"), L.Text("make_it_yours"), L.Text("companion_settings"), L.Text("review_install") }.Select((s,i) => (i == (int)step ? "→  " : "    ")+s));
+        var p = Cards(); status.Text = ""; status.ForeColor = ClawTheme.Muted; back.Visible = step is > Step.Look and < Step.Install; next.Enabled = true;
+        steps.Set(StepNames, Math.Min((int)step, StepNames.Length)); LayoutSide(); LayoutFooter();
         crab.State = step == Step.Install ? "working" : "idle";
         next.Text = step == Step.Review ? L.Text("back_up_install") : step == Step.Install ? L.Text("keep_in_tray") : L.Text("continue");
         if (step == Step.Look) {
             title.Text = L.Text("welcome_to_clawpal"); subtitle.Text = L.Text("choose_a_look_subtitle");
-            Add(f,Label(L.Text("look_section"),10,true),6);Add(f,look,18);
-            Add(f,Label(L.Text("pc_language"),10,true),2);Add(f,pcLanguages,12);
-            Add(f,Label(L.Text("display_language"),10,true),2);Add(f,displayLanguages,12);
-            Add(f,Label(L.Text("setup_languages_note")),18);
+            var lookCard = p.Add(new ClawCard(L.Text("look_section"))); lookCard.Add(look);
+            var languages = p.Add(new ClawCard(L.Text("language")));
+            languages.Add(Row(520,(Column(Caption(L.Text("pc_language")),pcLanguages),0),(Column(Caption(L.Text("display_language")),displayLanguages),0)));
+            languages.Add(Note(L.Text("setup_languages_note")));
         } else if (step == Step.Connect) {
             title.Text = L.Text("meet_your_desk_companion"); subtitle.Text = L.Text("connect_your_display_with_a_usb_data_cable_to");
-            Add(f,Label(L.Text("display_model"),10,true),4); Add(f,boards,8); Add(f,boardDescription,12);
-            Add(f,Label(L.Text("connected_usb_display"),10,true),2); Add(f,ports,8);
-            Add(f,deviceStatus,8);
-            var scan = Button(L.Text("check_again")); scan.Click += async (_,_) => await RefreshDevices(true); Add(f,scan,12);
-            Add(f,boardConfirmed,8);
-            Add(f,Label(L.Text("usb_confirms_the_chip_and_flash_check_the_exact")),10);
+            var model = p.Add(new ClawCard(L.Text("display_model"))); model.Add(boards); model.Add(boardDescription);
+            var usb = p.Add(new ClawCard(L.Text("connected_usb_display")));
+            var scan = new ClawButton { Text = L.Text("check_again"), Height = 44 }; scan.Click += async (_,_) => await RefreshDevices(true);
+            usb.Add(Row(0,(ports,0),(scan,160))); usb.Add(deviceStatus);
+            var confirm = p.Add(new ClawCard());
+            confirm.Add(boardConfirmed, 2); confirm.Add(Note(L.Text("usb_confirms_the_chip_and_flash_check_the_exact")));
+            var restore = new ClawButton { Text = L.Text("restore_a_backup"), Height = 40 }; restore.Click += async (_,_) => await Restore();
+            var recovery = p.Add(new ClawCard(L.Text("restore_backup_title"), L.Text("restore_backup_hint"))); recovery.Add(Row(0,(restore,220)));
             UpdateContinue();
-            var restore = Button(L.Text("restore_a_backup")); restore.Click += async (_,_) => await Restore(); Add(f,restore,12);
-
         } else if (step == Step.Personalize) {
             title.Text = L.Text("make_yourself_at_home"); subtitle.Text = L.Text("your_pc_and_clawpal_should_share_the_same_local");
-            Add(f,Label(L.Text("wi_fi_name_2_4_ghz"),10,true),2); Add(f,ssid,12);
-            Add(f,Label(L.Text("wi_fi_password"),10,true),2); Add(f,password,8);
-            var reveal = new ClawSwitch { Text = L.Text("show_password"), Width=600, ForeColor = ClawTheme.Muted }; reveal.CheckedChanged += (_,_) => password.UseSystemPasswordChar = !reveal.Checked; Add(f,reveal,15);
-            var searchLine = new Panel { Width = 615, Height = 48 }; city.Width = 425; city.PlaceholderText = L.Text("search_a_city_or_village");
-            var search = Button(L.Text("find_location")); search.Click += async (_,_) => await Search(search); searchLine.Controls.Add(city); searchLine.Controls.Add(search);searchLine.Resize+=(_,_)=>{city.SetBounds(0,0,Math.Max(80,searchLine.Width-search.Width-12),44);search.Location=new(searchLine.Width-search.Width,0);}; Add(f,searchLine,6);
-            Add(f,places,12); Add(f,Label(L.Text("time_zone"),10,true),2); Add(f,zones,0);
+            var network = p.Add(new ClawCard(L.Text("wi_fi_card"), L.Text("wifi_24_only_note")));
+            network.Add(wifi);
+            network.Add(Row(520,(Column(Caption(L.Text("wi_fi_name_2_4_ghz")),ssid),0),(Column(Caption(L.Text("wi_fi_password")),password),0)));
+            var reveal = new ClawSwitch { Text = L.Text("show_password"), Height = 36 }; reveal.CheckedChanged += (_,_) => password.UseSystemPasswordChar = !reveal.Checked; network.Add(reveal);
+            if (!wifiLoaded) { wifiLoaded = true; _ = wifi.LoadAsync(); }
+            var place = p.Add(new ClawCard(L.Text("weather_location"), L.Text("weather_location_hint")));
+            var search = new ClawButton { Text = L.Text("find_location"), Height = 44 }; search.Click += async (_,_) => await Search(search);
+            place.Add(Row(0,(city,0),(search,170)),8); place.Add(places);
+            place.Add(Caption(L.Text("time_zone")),6); place.Add(zones);
         } else if (step == Step.Companion) {
             title.Text = L.Text("your_companion_your_rules"); subtitle.Text = L.Text("choose_how_clawpal_behaves_on_your_pc");
-            Add(f,startup,16); Add(f,auto,16); Add(f,fps,4);
-            Add(f,Label(L.Text("fps_uses_presentmon_to_read_windows_frame_events_it")),25);
-            Add(f,Label(L.Text("ready_on_your_display"),14,true),6);
-            Add(f,Label(L.Text("home_pc_monitor_clock_weather_spotify_timer_codex")),22);
+            var pc = p.Add(new ClawCard(L.Text("on_this_pc")));
+            pc.Add(startup, 2); pc.Add(Note(L.Text("starts_quietly_in_the_tray_open_this_window_whenever")));
+            pc.Add(auto, 2); pc.Add(Note(L.Text("when_an_enabled_app_opens_on_your_pc_show")));
+            pc.Add(fps, 2); pc.Add(Note(L.Text("fps_uses_presentmon_to_read_windows_frame_events_it")));
+            var ready = p.Add(new ClawCard(L.Text("ready_on_your_display"), L.Text("ready_on_your_display_hint")));
+            var apps = new ClawWrap { ItemWidth = 176, ItemHeight = 48, Gap = 8 };
+            foreach (var app in DisplayApps.All) apps.Controls.Add(new AppChip(app, false));
+            ready.Add(apps);
         } else if (step == Step.Review) {
             title.Text = L.Text("ready_when_you_are"); subtitle.Text = L.Text("review_your_display_settings_and_backup_preference");
-            var boardTitle = Label(SelectedBoard.ToString()+" · "+Installer.BundledVersion,16,true); boardTitle.Height=32; Add(f,boardTitle,10);
-            foreach (string row in new[] { L.Text("usb") + SelectedDevice?.Port + " · ESP32-S3 · " + (SelectedBoard.FlashBytes/1048576) + " MB", L.Text("wi_fi_e8eec7") + ssid.Text, L.Text("weather_566a6d") + selected, L.Text("time_zone_47a287") + zones.SelectedItem }) {
-                var line=Label(row); line.Height=28; Add(f,line,4);
+            var summary = p.Add(new ClawCard(SelectedBoard.ToString()));
+            var chosen = Themes.Get(look.Theme, look.Accent);
+            foreach (var (name, value) in new[] {
+                (L.Text("review_firmware"), Installer.BundledVersion),
+                (L.Text("review_usb"), $"{SelectedDevice?.Port} · ESP32-S3 · {SelectedBoard.FlashBytes/1048576} MB"),
+                (L.Text("review_wifi"), ssid.Text),
+                (L.Text("review_weather"), selected?.ToString() ?? ""),
+                (L.Text("time_zone"), zones.SelectedItem?.ToString() ?? ""),
+                (L.Text("language"), L.Text("review_languages", pcLanguages.SelectedItem, displayLanguages.SelectedItem)),
+                (L.Text("look_section"), chosen.HasAccents ? chosen.Name + " · " + L.Text($"accent_{chosen.AccentId}") : chosen.Name) }) {
+                var key = ClawTheme.Label(name, 160, 10, false, 22); var item = ClawTheme.Label(value, 300, 10, false, 22); item.ForeColor = ClawTheme.Ink;
+                summary.Add(Row(0,(key,170),(item,0)), 6);
             }
-            Add(f,Label(L.Text("language_review",pcLanguages.SelectedItem,displayLanguages.SelectedItem)),2);
-            var chosen=Themes.Get(look.Theme,look.Accent);
-            Add(f,Label(L.Text("look_review",chosen.HasAccents?chosen.Name+" · "+L.Text($"accent_{chosen.AccentId}"):chosen.Name)),6);
-            Add(f,Label(L.Text("install_will_replace_the_current_device_firmware_and_its")),10);
-            backup.Height=34; Add(f,backup,4); backupNote.Height=48; Add(f,backupNote,6); UpdateBackupChoice();
-            var path=Label(L.Text("backups") + Installer.BackupsPath,9); path.Height=38; Add(f,path,2);
-            var legal=Label(L.Text("install_license_notice"),9);legal.Height=70;Add(f,legal,10);
-            var notices=new ClawButton{Text=L.Text("open_licenses"),Width=260};
-            notices.Click+=(_,_)=>{if(preview)return;try{Installer.PreparePayload();OpenFolder(Path.Combine(Installer.PayloadPath,"licenses"));}catch(Exception e){ReportProblem(e.Message);}};Add(f,notices,8);
+            var safety = p.Add(new ClawCard(L.Text("backup_card"), L.Text("install_will_replace_the_current_device_firmware_and_its")));
+            safety.Add(backup, 2); safety.Add(backupNote); UpdateBackupChoice();
+            safety.Add(Note(L.Text("backups") + Installer.BackupsPath));
+            var legal = p.Add(new ClawCard());
+            legal.Add(Note(L.Text("install_license_notice")));
+            var notices = new ClawButton { Text = L.Text("open_licenses"), Height = 40 };
+            notices.Click += (_,_) => { if (preview) return; try { Installer.PreparePayload(); OpenFolder(Path.Combine(Installer.PayloadPath,"licenses")); } catch (Exception e) { ReportProblem(e.Message); } };
+            legal.Add(Row(0,(notices,240)));
         } else {
             title.Text = L.Text("a_little_crab_work"); subtitle.Text = L.Text("clawpal_is_preparing_your_display");
-            progress.Style = ProgressBarStyle.Marquee; progress.Width = 590; progress.Height = 8; Add(f,progress,30);
-            Add(f,Label(backup.Checked ? L.Text("a_backup_first_then_a_fresh_start") : L.Text("a_fresh_start_for_your_display"),17,true),12);
-            Add(f,Label(L.Text("keep_this_window_open_and_leave_your_display_connected")),15);
+            var work = p.Add(new ClawCard(backup.Checked ? L.Text("a_backup_first_then_a_fresh_start") : L.Text("a_fresh_start_for_your_display")));
+            progress.Style = ProgressBarStyle.Marquee; work.Add(progress, 14);
+            work.Add(Note(L.Text("keep_this_window_open_and_leave_your_display_connected"), 10));
             next.Enabled = false;
         }
     }
     private void LanguageChanged(){if(IsDisposed)return;L.RefreshControls(this);zones.Text=zones.SelectedItem?.ToString()??"";ShowStep();}
-    /* Studio has no crab in the sidebar; the steps move up into its place. */
-    private void LookChanged(){if(IsDisposed)return;crab.Visible=ClawTheme.Mascot;stepText.Top=ClawTheme.Mascot?470:220;look.SetLook(ClawTheme.Look.Id,ClawTheme.Look.AccentId);Invalidate(true);}
+    /* Studio has no crab in the sidebar; the space simply stays calm. */
+    private void LookChanged(){if(IsDisposed)return;look.SetLook(ClawTheme.Look.Id,ClawTheme.Look.AccentId);LayoutSide();Invalidate(true);}
     private SetupOptions Options() => new(SelectedDevice?.Port ?? "",ssid.Text,password.Text,selected?.Name ?? "",selected?.Latitude ?? double.NaN,selected?.Longitude ?? double.NaN,(zones.SelectedItem as TimeZoneChoice)?.Posix ?? "",fps.Checked,auto.Checked,startup.Checked,backup.Checked,((LanguageChoice)pcLanguages.SelectedItem!).Code,((LanguageChoice)displayLanguages.SelectedItem!).Code,SelectedBoard.Id,look.Theme,look.Accent);
     private async Task Next()
     {
@@ -294,14 +332,29 @@ internal sealed class SetupForm : ClawWindow
             backupFolder = await installer.Install(options,config,() => { connection.SetAutoOpenApps(config.AutoOpenApps); connection.SetPaused(config.Paused); });
             installed = true; busy = false; password.Clear(); crab.State = "happy"; progress.Style = ProgressBarStyle.Continuous; progress.Value = 100;
             title.Text = L.Text("clawpal_is_installed"); subtitle.Text = L.Text("the_firmware_has_been_written_and_verified");
-            var f=Flow();
-            if (backupFolder is not null) {
-                Add(f,Label(L.Text("your_backup_is_safe"),18,true),15); var folder = Button(L.Text("open_backup_folder")); folder.Width=190; folder.Click += (_,_) => OpenFolder(backupFolder); Add(f,folder,20);
-            } else Add(f,Label(L.Text("installed_without_a_backup_as_selected"),16,true),20);
-            Add(f,Label(L.Text("clawpal_now_lives_in_your_tray_open_it_any")),16);
-            Add(f,Label(L.Text("weather_data_open_meteo_cc_by_4_0"),9),5); var credits=Button(L.Text("about_credits")); credits.Click+=(_,_)=>MessageBox.Show(this,L.Text("clawpal_94dbc7") + typeof(SetupForm).Assembly.GetName().Version?.ToString(3) + L.Text("original_crab_art_supplied_by_the_project_owner_weather"),L.Text("clawpal")); Add(f,credits);
+            steps.Set(StepNames, StepNames.Length);
+            var p = Cards();
+            var done = p.Add(new ClawCard(backupFolder is not null ? L.Text("your_backup_is_safe") : L.Text("installed_without_a_backup_as_selected")));
+            done.Add(Note(L.Text("clawpal_now_lives_in_your_tray_open_it_any"), 10));
+            if (backupFolder is not null) { var folder = new ClawButton { Text = L.Text("open_backup_folder"), Height = 40 }; folder.Click += (_,_) => OpenFolder(backupFolder); done.Add(Row(0,(folder,220))); }
+            var credits = p.Add(new ClawCard());
+            credits.Add(Note(L.Text("weather_data_open_meteo_cc_by_4_0")));
+            var about = new ClawButton { Text = L.Text("about_credits"), Height = 40 };
+            about.Click += (_,_) => MessageBox.Show(this,L.Text("clawpal_94dbc7") + typeof(SetupForm).Assembly.GetName().Version?.ToString(3) + L.Text("original_crab_art_supplied_by_the_project_owner_weather"),L.Text("clawpal"));
+            credits.Add(Row(0,(about,200)));
             next.Text=L.Text("open_settings"); next.Enabled = true;
-        } catch (Exception e) { busy=false; connection.SetPaused(config.Paused); crab.State="error"; progress.Style=ProgressBarStyle.Continuous; status.Text=e.Message; next.Enabled=true; if(step==Step.Install) { title.Text=L.Text("let_s_get_this_sorted"); subtitle.Text=L.Text("setup_did_not_finish_your_saved_backups_remain_available"); var f=Flow(); var error=Label(e.Message); error.Height=160; Add(f,error); var backups=Button(L.Text("open_backups")); backups.Click+=(_,_)=>OpenFolder(Installer.BackupsPath); Add(f,backups); var retry=Button(L.Text("back_to_setup")); retry.Click+=(_,_)=>{step=Step.Connect;ShowStep();}; Add(f,retry); next.Text=L.Text("close"); } }
+        } catch (Exception e) {
+            busy=false; connection.SetPaused(config.Paused); crab.State="error"; progress.Style=ProgressBarStyle.Continuous; status.Text=e.Message.Split('\n')[0]; status.ForeColor=ClawTheme.Warning; next.Enabled=true;
+            if (step == Step.Install) {
+                title.Text=L.Text("let_s_get_this_sorted"); subtitle.Text=L.Text("setup_did_not_finish_your_saved_backups_remain_available");
+                var p = Cards(); var problem = p.Add(new ClawCard(L.Text("what_went_wrong")));
+                problem.Add(Note(e.Message, 10));
+                var backups = new ClawButton { Text = L.Text("open_backups"), Height = 40 }; backups.Click += (_,_) => OpenFolder(Installer.BackupsPath);
+                var retry = new ClawButton { Text = L.Text("back_to_setup"), Height = 40 }; retry.Click += (_,_) => { step = Step.Connect; ShowStep(); };
+                problem.Add(Row(0,(retry,200),(backups,200)));
+                next.Text = L.Text("close");
+            }
+        }
     }
     private async Task Search(Button button)
     {
@@ -336,22 +389,17 @@ internal sealed class SetupForm : ClawWindow
     internal void RenderPreviews(string directory)
     {
         Directory.CreateDirectory(directory);
+        void Capture(string name){Application.DoEvents();using var bitmap=new Bitmap(Width,Height);DrawToBitmap(bitmap,new Rectangle(Point.Empty,Size));bitmap.Save(Path.Combine(directory,name+".png"),ImageFormat.Png);}
         ports.Items.Add(new UsbDevice("COM4", L.Text("espressif_usb_device"), "preview")); ports.SelectedIndex=0;
         detected=new("COM4","001122334455",16777216); boardConfirmed.Checked=true;
         deviceStatus.Text=detected.Summary + L.Text("example_device_usb_check_complete_confirm_the_model_below"); deviceStatus.ForeColor=ClawTheme.Ink;
-        ssid.Text="Home Wi-Fi"; selected=new("Warsaw","Poland","",52.2297,21.0122,"");
+        selected=new("Warsaw","Poland","",52.2297,21.0122,""); places.Items.Add(selected); places.SelectedIndex=0; city.Text="Warsaw";
         Show(); Application.DoEvents();
-        for(int i=0;i<(int)Step.Install;i++){ step=(Step)i;ShowStep();Application.DoEvents();using var bitmap=new Bitmap(Width,Height);DrawToBitmap(bitmap,new Rectangle(Point.Empty,Size));bitmap.Save(Path.Combine(directory,$"setup-{i}.png"),ImageFormat.Png); }
-        backup.Checked=false; ShowStep(); Application.DoEvents();
-        using(var bitmap=new Bitmap(Width,Height)){DrawToBitmap(bitmap,new Rectangle(Point.Empty,Size));bitmap.Save(Path.Combine(directory,"setup-no-backup.png"),ImageFormat.Png);}
-        backup.Checked=true; step=Step.Install; ShowStep(); ReportProgress(L.Text("backing_up_50_8_0_16_mb_03_00")); Application.DoEvents();
-        using(var bitmap=new Bitmap(Width,Height)){DrawToBitmap(bitmap,new Rectangle(Point.Empty,Size));bitmap.Save(Path.Combine(directory,"setup-backup-progress.png"),ImageFormat.Png);}
-        step=Step.Install;ShowStep();title.Text=L.Text("let_s_get_this_sorted");subtitle.Text=L.Text("example_error_state_no_device_was_changed");crab.State="error";Application.DoEvents();
-        using(var bitmap=new Bitmap(Width,Height)){DrawToBitmap(bitmap,new Rectangle(Point.Empty,Size));bitmap.Save(Path.Combine(directory,"setup-error.png"),ImageFormat.Png);}
+        for(int i=0;i<(int)Step.Install;i++){ step=(Step)i;ShowStep();Capture($"setup-{i}");if(content.MaximumOffset>0){content.ScrollTo(content.MaximumOffset);Capture($"setup-{i}-end");} }
+        backup.Checked=false; ShowStep(); content.ScrollTo(content.MaximumOffset); Capture("setup-no-backup");
+        backup.Checked=true; step=Step.Install; ShowStep(); ReportProgress(L.Text("backing_up_50_8_0_16_mb_03_00")); Capture("setup-backup-progress");
+        ClientSize=new(960,660); step=Step.Look; ShowStep(); Capture("setup-small");
         Close();
     }
-    protected override void Dispose(bool disposing) { if(disposing){L.Changed-=LanguageChanged;ClawTheme.Changed-=LookChanged;stateTimer.Dispose();}base.Dispose(disposing); }
+    protected override void Dispose(bool disposing) { if(disposing){L.Changed-=LanguageChanged;ClawTheme.Changed-=LookChanged;stateTimer.Dispose();foreach(var item in Persistent)if(item.Parent is null)item.Dispose();}base.Dispose(disposing); }
 }
-
-
-

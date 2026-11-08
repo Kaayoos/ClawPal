@@ -47,14 +47,14 @@ internal static class LocalizationChecks
                 Check(!pickers[0].IsDisposed&&Descendants(setup).OfType<ClawButton>().Any(b=>b.Text=="Dalej"),"setup changes language live without disposing persistent inputs");
                 setup.Hide();
                 using var form=new SettingsForm(new Configuration{CompanionLanguage="pl",DisplaySettings=en},connection,true);form.Show();Application.DoEvents();
-                Descendants(form).OfType<ClawButton>().Single(b=>b.Text=="Język").PerformClick();Application.DoEvents();
+                Descendants(form).OfType<ClawButton>().Single(b=>b.Text=="Wygląd i język").PerformClick();Application.DoEvents();
                 var selectors=Descendants(form).OfType<ChoiceBox>().ToArray();
                 Check(selectors.Length==2&&((LanguageChoice)selectors[0].SelectedItem!).Code=="pl"&&((LanguageChoice)selectors[1].SelectedItem!).Code=="en","settings keeps the PC and display languages independent");
                 selectors[1].SelectedIndex=1;Application.DoEvents();
                 var draft=(DeviceSettings)typeof(SettingsForm).GetField("draft",BindingFlags.NonPublic|BindingFlags.Instance)!.GetValue(form)!;
                 Check(draft.Language=="pl"&&draft.HomeOrder.SequenceEqual(en.HomeOrder)&&draft.DimBrightness==25,"changing language preserves the draft screen preferences");
                 L.SetLanguage("en");Application.DoEvents();
-                Check(Descendants(form).OfType<ClawButton>().Any(b=>b.Text=="Language"),"language settings remain discoverable after a live switch");
+                Check(Descendants(form).OfType<ClawButton>().Any(b=>b.Text=="Look & language"),"language settings remain discoverable after a live switch");
                 form.Close();setup.Close();
             }catch(Exception e){failure=e;}finally{L.SetLanguage("en");}
         });thread.SetApartmentState(ApartmentState.STA);thread.Start();thread.Join();if(failure is not null)throw failure;

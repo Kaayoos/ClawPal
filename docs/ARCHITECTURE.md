@@ -34,7 +34,7 @@ Signed requests stop replay, but the traffic is not encrypted, and a token copie
 
 ## Windows lifetime
 
-Manual launch opens setup only for an unpaired or incomplete installation. A completed pairing opens `SettingsForm` on its Home preview, including when the display is offline. Legacy paired configurations migrate as completed. Installation marks setup incomplete before replacing pairing and complete only after firmware verification. The Device page explicitly opens USB maintenance. Windows startup creates only the tray companion.
+Manual launch opens setup only for an unpaired or incomplete installation. A completed pairing opens `SettingsForm` on its Home preview, including when the display is offline. Legacy paired configurations migrate as completed. Installation marks setup incomplete before replacing pairing and complete only after firmware verification. The Connection page explicitly opens USB maintenance. Windows startup creates only the tray companion.
 
 A session mutex prevents duplicate companions, and a named event brings up the existing window. Closing configuration hides it and retains unsaved edits; closing setup leaves the tray running. Tray actions are Open, status/version, and Exit. While a USB operation is in progress, closing the window or using tray Exit is blocked. External termination/power loss remains recoverable through the previously saved backup.
 

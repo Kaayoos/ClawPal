@@ -28,19 +28,26 @@ internal sealed class ClawTextField : UserControl
     protected override void OnMouseDown(MouseEventArgs e){base.OnMouseDown(e);Editor.Focus();}
     protected override void OnPaint(PaintEventArgs e)
     {
-        base.OnPaint(e);e.Graphics.SmoothingMode=SmoothingMode.AntiAlias;
-        ClawTheme.Fill(e.Graphics,ClawTheme.Surface,new RectangleF(0,0,Width-1,Height-1),8);
+        base.OnPaint(e);e.Graphics.SmoothingMode=SmoothingMode.AntiAlias;var field=ClawTheme.Field(this);if(Editor.BackColor!=field)Editor.BackColor=field;
+        ClawTheme.Fill(e.Graphics,field,new RectangleF(0,0,Width-1,Height-1),8);
         using var path=ClawTheme.Round(new RectangleF(.5f,.5f,Width-2,Height-2),8);
         using var pen=new Pen(ContainsFocus?ClawTheme.Accent:hover?ClawTheme.Muted:ClawTheme.Border);e.Graphics.DrawPath(pen,path);
     }
 }
 
+// A field that opens its own scrolling list: the wheel and a draggable bar move through long
+// lists, typing jumps to a match, and clicking the field again closes it.
 internal sealed class ChoiceBox : ClawButton
 {
     public List<object> Items { get; } = new();
     private int selected=-1;
-    private readonly ContextMenuStrip menu=new() { BackColor=ClawTheme.Surface,ForeColor=ClawTheme.Ink,ShowImageMargin=false,ShowCheckMargin=false,Padding=new Padding(5),DropShadowEnabled=false,Renderer=new ChoiceRenderer() };
-    internal ContextMenuStrip SelectionMenu=>menu;
+    private readonly ChoiceList list;
+    private readonly ToolStripControlHost host;
+    private readonly ToolStripDropDown popup;
+    private long closedAt;
+    private bool closedByOwnClick;
+    internal ToolStripDropDown SelectionMenu=>popup;
+    internal ChoiceList SelectionList=>list;
     public event EventHandler? SelectedIndexChanged;
     public int SelectedIndex {
         get=>selected>=0&&selected<Items.Count?selected:-1;
@@ -50,49 +57,161 @@ internal sealed class ChoiceBox : ClawButton
     public ChoiceBox()
     {
         Text=L.Text("select");Size=new(300,44);MinimumSize=new(90,40);Font=ClawTheme.Font(10);AccessibleRole=AccessibleRole.ComboBox;
-        Click+=(_,_)=>OpenChoices();menu.Closed+=(_,_)=>Invalidate();
+        list=new ChoiceList{Font=Font};
+        host=new ToolStripControlHost(list){Margin=Padding.Empty,Padding=Padding.Empty,AutoSize=false};
+        popup=new ToolStripDropDown{Padding=Padding.Empty,AutoSize=false,DropShadowEnabled=false,Renderer=new PopupRenderer(),BackColor=ClawTheme.Surface};
+        popup.Items.Add(host);
+        popup.Closed+=(_,e)=>{
+            closedAt=Environment.TickCount64;
+            // The press that dismissed the list lands on this field next; it must not reopen it.
+            closedByOwnClick=e.CloseReason==ToolStripDropDownCloseReason.AppClicked&&IsHandleCreated&&ClientRectangle.Contains(PointToClient(MousePosition));
+            Invalidate();
+        };
+        list.Chosen+=index=>{popup.Close(ToolStripDropDownCloseReason.ItemClicked);if(Items.Count>index)SelectedIndex=index;if(CanFocus)Focus();};
+        list.Cancelled+=()=>popup.Close(ToolStripDropDownCloseReason.Keyboard);
+        Click+=(_,_)=>Toggle();
+    }
+    private void Toggle()
+    {
+        if(popup.Visible){popup.Close(ToolStripDropDownCloseReason.ItemClicked);return;}
+        if(closedByOwnClick&&Environment.TickCount64-closedAt<500){closedByOwnClick=false;return;}
+        OpenChoices();
     }
     private void OpenChoices()
     {
-        // Reuse through Windows' selection/close dispatch; disposal belongs to the owner.
-        foreach(var item in menu.Items.Cast<ToolStripItem>().ToArray())item.Dispose();menu.Items.Clear();
-        menu.Font=Font;int width=Math.Min(Width,Screen.FromControl(this).WorkingArea.Width-16);menu.MinimumSize=new(width,0);menu.MaximumSize=new(width,Math.Min(440*DeviceDpi/96,Screen.FromControl(this).WorkingArea.Height-32));int row=44*DeviceDpi/96;
-        for(int i=0;i<Items.Count;i++){
-            int index=i;var item=new ToolStripMenuItem(Items[i].ToString()){Checked=i==SelectedIndex,AutoSize=false,Size=new(Math.Max(100,width-10),row)};
-            item.Click+=(_,_)=>SelectedIndex=index;menu.Items.Add(item);
-        }
-        if(Items.Count==0)menu.Items.Add(new ToolStripMenuItem(L.Text("no_choices_available")){Enabled=false,AutoSize=false,Size=new(Math.Max(100,width-10),row)});
-        menu.Show(this,new Point(0,Height+4));if(SelectedIndex>=0)menu.Items[SelectedIndex].Select();Invalidate();
+        var area=Screen.FromControl(this).WorkingArea;
+        int row=40*DeviceDpi/96,pad=5*DeviceDpi/96,width=Math.Min(Width,area.Width-16);
+        int rows=Math.Clamp(Items.Count,1,8),height=rows*row+2*pad;
+        list.Font=Font;list.Reset(Items.Select(i=>i.ToString()??"").ToArray(),SelectedIndex,row,pad,L.Text("no_choices_available"));
+        list.Size=new(width,height);host.Size=list.Size;popup.Size=list.Size;
+        using(var shape=ClawTheme.Round(new RectangleF(0,0,width,height),8))popup.Region=new Region(shape);
+        // Opens upwards when the screen has no room below the field.
+        bool above=PointToScreen(new Point(0,Height+4+height)).Y>area.Bottom&&PointToScreen(Point.Empty).Y-height-4>=area.Top;
+        popup.Show(this,new Point(0,above?-height-4:Height+4));list.Focus();list.EnsureVisible(SelectedIndex);Invalidate();
     }
     protected override bool IsInputKey(Keys keyData)=>(keyData&Keys.KeyCode) is Keys.Up or Keys.Down || base.IsInputKey(keyData);
     protected override void OnKeyDown(KeyEventArgs e)
     {
-        if(e.KeyCode is Keys.Up or Keys.Down){OpenChoices();e.Handled=e.SuppressKeyPress=true;}else base.OnKeyDown(e);
+        if(e.KeyCode is Keys.Up or Keys.Down){if(!popup.Visible)OpenChoices();e.Handled=e.SuppressKeyPress=true;}else base.OnKeyDown(e);
     }
     protected override void OnPaint(PaintEventArgs e)
     {
         e.Graphics.Clear(Parent?.BackColor??ClawTheme.Background);e.Graphics.SmoothingMode=SmoothingMode.AntiAlias;
-        bool hot=ClientRectangle.Contains(PointToClient(MousePosition));
-        ClawTheme.Fill(e.Graphics,hot&&Enabled?ClawTheme.Hover:ClawTheme.Surface,new RectangleF(0,0,Width-1,Height-1),8);
+        bool hot=ClientRectangle.Contains(PointToClient(MousePosition)),open=popup.Visible;
+        ClawTheme.Fill(e.Graphics,(hot||open)&&Enabled?ClawTheme.Hover:ClawTheme.Field(this),new RectangleF(0,0,Width-1,Height-1),8);
         using var outline=ClawTheme.Round(new RectangleF(.5f,.5f,Width-2,Height-2),8);
-        using var border=new Pen(Enabled&&(Focused||menu.Visible)?ClawTheme.Accent:ClawTheme.Border);e.Graphics.DrawPath(border,outline);
+        using var border=new Pen(Enabled&&(Focused||open)?ClawTheme.Accent:ClawTheme.Border);e.Graphics.DrawPath(border,outline);
         ClawTheme.Text(e.Graphics,Text,Font,Enabled?ClawTheme.Ink:ClawTheme.Muted,new Rectangle(14,0,Math.Max(1,Width-52),Height));
-        using var pen=new Pen(Enabled?ClawTheme.Muted:ClawTheme.Border,1.6f);int x=Width-22,y=Height/2;
-        e.Graphics.DrawLines(pen,new Point[]{new(x-4,y-2),new(x,y+2),new(x+4,y-2)});
+        using var pen=new Pen(Enabled?ClawTheme.Muted:ClawTheme.Border,1.6f);int x=Width-22,y=Height/2,d=open?-1:1;
+        e.Graphics.DrawLines(pen,new Point[]{new(x-4,y-2*d),new(x,y+2*d),new(x+4,y-2*d)});
     }
-    protected override void Dispose(bool disposing){if(disposing)menu.Dispose();base.Dispose(disposing);}
-    private sealed class ChoiceRenderer : ToolStripProfessionalRenderer
+    protected override void Dispose(bool disposing){if(disposing){popup.Dispose();list.Dispose();}base.Dispose(disposing);}
+    private sealed class PopupRenderer : ToolStripProfessionalRenderer
     {
-        internal ChoiceRenderer():base(new ClawMenuColors()){RoundedEdges=false;}
-        protected override void OnRenderMenuItemBackground(ToolStripItemRenderEventArgs e)
-        {if(e.Item.Selected&&e.Item.Enabled)ClawTheme.Fill(e.Graphics,ClawTheme.Hover,new RectangleF(0,1,e.Item.Width-1,e.Item.Height-2),6);}
-        protected override void OnRenderItemText(ToolStripItemTextRenderEventArgs e)
-        {
-            bool selected=e.Item is ToolStripMenuItem {Checked:true};
-            ClawTheme.Text(e.Graphics,e.Text??"",e.TextFont!,!e.Item.Enabled?ClawTheme.Muted:selected?ClawTheme.Accent:ClawTheme.Ink,new Rectangle(12,0,e.ToolStrip!.Width-46,e.Item.Height));
-            if(selected){e.Graphics.SmoothingMode=SmoothingMode.AntiAlias;using var pen=new Pen(ClawTheme.Accent,1.8f);int x=e.ToolStrip!.Width-24,y=e.Item.Height/2;e.Graphics.DrawLines(pen,new Point[]{new(x-4,y),new(x-1,y+3),new(x+5,y-4)});}
+        internal PopupRenderer():base(new ClawMenuColors()){RoundedEdges=false;}
+        protected override void OnRenderToolStripBorder(ToolStripRenderEventArgs e){}
+        protected override void OnRenderToolStripBackground(ToolStripRenderEventArgs e){e.Graphics.Clear(ClawTheme.Surface);}
+    }
+}
+
+internal sealed class ChoiceList : Control
+{
+    private string[] items=[];
+    private string empty="";
+    private int selected=-1,hover=-1,row=40,pad=5,dragFrom=-1;
+    private float offset,dragOffset;
+    internal event Action<int>? Chosen;
+    internal event Action? Cancelled;
+    internal int Count=>items.Length;
+    internal int Hover=>hover;
+    internal int ScrollOffset=>(int)offset;
+    internal int MaximumOffset=>Math.Max(0,items.Length*row-(Height-2*pad));
+    internal string Placeholder=>items.Length==0?empty:"";
+    internal ChoiceList()
+    {
+        SetStyle(ControlStyles.UserPaint|ControlStyles.OptimizedDoubleBuffer|ControlStyles.AllPaintingInWmPaint|ControlStyles.Selectable,true);
+        TabStop=true;BackColor=ClawTheme.Surface;AccessibleRole=AccessibleRole.List;
+    }
+    internal void Reset(string[] values,int chosen,int rowHeight,int padding,string placeholder)
+    {
+        items=values;selected=chosen;hover=chosen;row=rowHeight;pad=padding;empty=placeholder;offset=0;dragFrom=-1;BackColor=ClawTheme.Surface;Invalidate();
+    }
+    private bool Scrolls=>MaximumOffset>0;
+    private Rectangle Track=>new(Width-pad-6,pad+2,4,Height-2*pad-4);
+    private Rectangle Thumb{get{var t=Track;int view=Height-2*pad,content=Math.Max(1,items.Length*row);int h=Math.Max(24,t.Height*view/content);
+        int y=t.Top+(int)((t.Height-h)*(MaximumOffset==0?0:offset/MaximumOffset));return new(t.Left-2,y,t.Width+4,h);}}
+    internal Rectangle RowBounds(int index)=>new(pad,pad+index*row-(int)offset,Width-2*pad-(Scrolls?12:0),row);
+    private int IndexAt(Point p){if(p.Y<pad||p.Y>=Height-pad||p.X>=Width-pad-(Scrolls?12:0))return -1;int i=(int)((p.Y-pad+offset)/row);return i>=0&&i<items.Length?i:-1;}
+    private void ScrollTo(float value){offset=Math.Clamp(value,0,MaximumOffset);Invalidate();}
+    internal void EnsureVisible(int index)
+    {
+        if(index<0||index>=items.Length)return;int top=index*row,view=Height-2*pad;
+        if(top<offset)ScrollTo(top);else if(top+row>offset+view)ScrollTo(top+row-view);
+    }
+    private void HoverAt(int index){if(items.Length==0)return;hover=Math.Clamp(index,0,items.Length-1);EnsureVisible(hover);Invalidate();}
+    protected override void OnMouseWheel(MouseEventArgs e)
+    {
+        int lines=SystemInformation.MouseWheelScrollLines;if(lines<=0)lines=3;
+        ScrollTo(offset-e.Delta/120f*row*Math.Min(lines,4));hover=IndexAt(e.Location);
+        if(e is HandledMouseEventArgs handled)handled.Handled=true;
+    }
+    protected override void OnMouseDown(MouseEventArgs e)
+    {
+        base.OnMouseDown(e);if(e.Button!=MouseButtons.Left||!Scrolls||e.X<Width-pad-14)return;
+        var thumb=Thumb;
+        // Pressing the track jumps a page; the thumb itself follows the pointer.
+        if(e.Y<thumb.Top)ScrollTo(offset-(Height-2*pad));else if(e.Y>thumb.Bottom)ScrollTo(offset+(Height-2*pad));
+        else{dragFrom=e.Y;dragOffset=offset;Capture=true;}
+    }
+    protected override void OnMouseMove(MouseEventArgs e)
+    {
+        base.OnMouseMove(e);
+        if(dragFrom>=0){var t=Track;float travel=Math.Max(1,t.Height-Thumb.Height);ScrollTo(dragOffset+(e.Y-dragFrom)*MaximumOffset/travel);return;}
+        int next=IndexAt(e.Location);if(next!=hover){hover=next;Invalidate();}
+    }
+    protected override void OnMouseUp(MouseEventArgs e)
+    {
+        base.OnMouseUp(e);
+        if(dragFrom>=0){dragFrom=-1;Capture=false;return;}
+        if(e.Button==MouseButtons.Left&&IndexAt(e.Location) is var index and >=0)Chosen?.Invoke(index);
+    }
+    protected override void OnMouseLeave(EventArgs e){base.OnMouseLeave(e);if(dragFrom<0){hover=-1;Invalidate();}}
+    protected override bool IsInputKey(Keys keyData)=>(keyData&Keys.KeyCode) is Keys.Up or Keys.Down or Keys.PageUp or Keys.PageDown or Keys.Home or Keys.End or Keys.Enter or Keys.Escape||base.IsInputKey(keyData);
+    protected override void OnKeyDown(KeyEventArgs e)
+    {
+        int page=Math.Max(1,(Height-2*pad)/row-1),from=hover>=0?hover:selected;
+        switch(e.KeyCode){
+            case Keys.Down:HoverAt(from+1);break;case Keys.Up:HoverAt(from<0?0:from-1);break;
+            case Keys.PageDown:HoverAt(from+page);break;case Keys.PageUp:HoverAt(from-page);break;
+            case Keys.Home:HoverAt(0);break;case Keys.End:HoverAt(items.Length-1);break;
+            case Keys.Enter:if(hover>=0)Chosen?.Invoke(hover);break;case Keys.Escape:Cancelled?.Invoke();break;
+            default:base.OnKeyDown(e);return;
         }
-        protected override void OnRenderArrow(ToolStripArrowRenderEventArgs e){e.ArrowColor=ClawTheme.Muted;base.OnRenderArrow(e);}
+        e.Handled=e.SuppressKeyPress=true;
+    }
+    /* Typing a letter jumps to the next entry that starts with it. */
+    protected override void OnKeyPress(KeyPressEventArgs e)
+    {
+        base.OnKeyPress(e);if(char.IsControl(e.KeyChar)||items.Length==0)return;
+        int start=hover>=0?hover:selected;
+        for(int step=1;step<=items.Length;step++){int i=((start<0?-1:start)+step)%items.Length;
+            if(items[i].StartsWith(e.KeyChar.ToString(),StringComparison.CurrentCultureIgnoreCase)){HoverAt(i);e.Handled=true;return;}}
+    }
+    protected override void OnPaint(PaintEventArgs e)
+    {
+        var g=e.Graphics;g.SmoothingMode=SmoothingMode.AntiAlias;g.Clear(ClawTheme.Surface);
+        using(var outline=ClawTheme.Round(new RectangleF(.5f,.5f,Width-2,Height-2),8))using(var border=new Pen(ClawTheme.Border))g.DrawPath(border,outline);
+        var view=new Rectangle(pad,pad,Width-2*pad,Height-2*pad);g.SetClip(view);
+        if(items.Length==0)ClawTheme.Text(g,empty,Font,ClawTheme.Muted,new Rectangle(pad+12,pad,Width-2*pad-24,row));
+        int first=Math.Max(0,(int)(offset/row)),last=Math.Min(items.Length-1,(int)((offset+view.Height)/row));
+        for(int i=first;i<=last;i++){
+            var r=RowBounds(i);bool chosen=i==selected;
+            if(i==hover)ClawTheme.Fill(g,ClawTheme.Hover,new RectangleF(r.X,r.Y+1,r.Width,r.Height-2),6);
+            ClawTheme.Text(g,items[i],Font,chosen?ClawTheme.Accent:ClawTheme.Ink,new Rectangle(r.X+12,r.Y,r.Width-(chosen?44:24),r.Height));
+            if(chosen){using var pen=new Pen(ClawTheme.Accent,1.8f);int x=r.Right-20,y=r.Y+r.Height/2;g.DrawLines(pen,new Point[]{new(x-5,y),new(x-2,y+3),new(x+4,y-4)});}
+        }
+        g.ResetClip();
+        if(Scrolls){ClawTheme.Fill(g,ClawTheme.Track,Track,2);var thumb=Thumb;ClawTheme.Fill(g,dragFrom>=0?ClawTheme.Muted:ClawTheme.Thumb,new RectangleF(thumb.X+2,thumb.Y,thumb.Width-4,thumb.Height),2);}
     }
 }
 
@@ -140,7 +259,8 @@ internal sealed class ClawTimeInput : UserControl
     protected override void OnEnabledChanged(EventArgs e){base.OnEnabledChanged(e);FormatText();}
     protected override void OnPaint(PaintEventArgs e)
     {
-        e.Graphics.SmoothingMode=SmoothingMode.AntiAlias;ClawTheme.Fill(e.Graphics,ClawTheme.Surface,new RectangleF(0,0,Width-1,Height-1),8);
+        var field=ClawTheme.Field(this);if(editor.BackColor!=field){editor.BackColor=field;BackColor=field;}
+        e.Graphics.SmoothingMode=SmoothingMode.AntiAlias;e.Graphics.Clear(Parent?.BackColor??ClawTheme.Background);ClawTheme.Fill(e.Graphics,field,new RectangleF(0,0,Width-1,Height-1),8);
         using var path=ClawTheme.Round(new RectangleF(.5f,.5f,Width-2,Height-2),8);using var pen=new Pen(ContainsFocus?ClawTheme.Accent:ClawTheme.Border);e.Graphics.DrawPath(pen,path);
     }
 }

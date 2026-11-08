@@ -21,7 +21,7 @@ internal static class DesktopLayoutChecks
                 void NoNativeBars(){Check(Descendants(form).OfType<Panel>().All(p=>(GetWindowLong(p.Handle,-16)&0x00300000)==0),"No native scrollbar styles during navigation and focus");}
                 var scroll=Descendants(form).OfType<ClawScrollPanel>().Single();
                 foreach(var size in new[]{new Size(960,680),new Size(1120,790),new Size(1600,900),new Size(1040,730)}){
-                    form.ClientSize=size;Page("Your Home");Application.DoEvents();
+                    form.ClientSize=size;Page("Home");Application.DoEvents();
                     var preview=Descendants(form).OfType<HomePreview>().Single();var list=Descendants(form).OfType<HomeOrderList>().Single();
                     Check(Math.Abs(preview.ScreenBounds.Width*3/5-preview.ScreenBounds.Height)<=1,"Home preview retains 800:480 aspect ratio after resizing");
                     Check(preview.ScreenBounds.Contains(preview.CrabBounds),"Crab stays within the preview when the window changes size");
@@ -31,9 +31,9 @@ internal static class DesktopLayoutChecks
                 }
                 form.ClientSize=new(960,680);Application.DoEvents();
                 var side=Descendants(form).OfType<ClawButton>().Where(b=>b.Parent is Panel{Dock:DockStyle.Left}).ToArray();
-                Check(side.Length==11&&side.All(a=>side.All(b=>a==b||!a.Bounds.IntersectsWith(b.Bounds)))&&side.All(b=>b.Bottom<=b.Parent!.ClientSize.Height),
+                Check(side.Length==10&&side.All(a=>side.All(b=>a==b||!a.Bounds.IntersectsWith(b.Bounds)))&&side.All(b=>b.Bottom<=b.Parent!.ClientSize.Height),
                     "Every sidebar page and the Discord button fit without overlapping in the smallest window");
-                foreach(string name in new[]{"Appearance","Apps","Shortcuts","Clock & weather","PC companion","Device","Updates","Screen"}){
+                foreach(string name in new[]{"Apps","Shortcuts","Clock & weather","Screen","Look & language","PC app","Connection","Updates"}){
                     Page(name);int left=scroll.Content.Left,width=scroll.Content.Width;NoNativeBars();Application.DoEvents();
                     scroll.ScrollTo(scroll.MaximumOffset);Application.DoEvents();
                     Check(scroll.Content.Left==left&&scroll.Content.Width==width,"Scrolling preserves page width and horizontal position");
