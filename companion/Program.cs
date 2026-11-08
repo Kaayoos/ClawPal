@@ -43,9 +43,18 @@ internal static class Program
                     WorkingDirectory = Path.GetDirectoryName(Startup.InstalledPath)!
                 };
                 if (args.Contains(StartupContract.StartupArgument)) start.ArgumentList.Add(StartupContract.StartupArgument);
-                using var installed = Process.Start(start) ?? throw new IOException(L.Text("could_not_launch_the_installed_companion"));
-                Log.Write("Launch redirected to installed companion.");
-                return 0;
+                try
+                {
+                    using var installed = Process.Start(start) ?? throw new IOException(L.Text("could_not_launch_the_installed_companion"));
+                    Log.Write("Launch redirected to installed companion.");
+                    return 0;
+                }
+                catch (System.ComponentModel.Win32Exception error)
+                {
+                    // Listed but not runnable: usually an uninstalled copy that something still holds open.
+                    if (!Startup.SetAsideBrokenInstall()) throw new IOException(L.Text("installed_clawpal_unavailable"), error);
+                    Log.Write($"Installed companion could not start (error {error.NativeErrorCode}); set it aside and continuing with this copy.");
+                }
             }
             if (Value(args, "--diagnostics") is { } diagnosticPath) { Diagnostics(diagnosticPath).GetAwaiter().GetResult(); return 0; }
             if (Value(args, "--shortcut-diagnostics") is { } shortcutPath) { ShortcutDiagnostics(shortcutPath, Value(args, "--shortcut-run")).GetAwaiter().GetResult(); return 0; }
@@ -98,6 +107,7 @@ internal static class Program
                 try { Uninstaller.Register(); }
                 catch (Exception error) when (error is IOException or UnauthorizedAccessException or System.Security.SecurityException) { Log.Write("Uninstall entry unavailable: " + error.GetType().Name); }
             Installer.DeleteStaleProvisioningImages();
+            Startup.DeleteSetAsideInstalls();
             ApplicationConfiguration.Initialize();
             Application.SetUnhandledExceptionMode(UnhandledExceptionMode.CatchException);
             Application.ThreadException += (_, e) => Log.Write($"UI error: {e.Exception.GetType().Name}: {e.Exception.Message}");

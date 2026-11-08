@@ -72,7 +72,8 @@ Keep the key only there and in your offline backups. Anyone who controls your
 GitHub account can approve a release, so protect it with a security key or an
 authenticator app. A tag ruleset that limits who can create `v*` tags adds
 another check. Pull requests, forks and branch builds never receive the key;
-their firmware is unsigned and installs over USB only.
+their firmware is unsigned, so a display cannot start it; it is for the simulator
+and build checks only.
 
 The first release with signed firmware also starts signed LAN requests, which
 older companions cannot send. `package-release.ps1` therefore sets

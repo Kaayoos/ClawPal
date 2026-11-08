@@ -76,6 +76,16 @@ public sealed class Installer
         foreach (var part in board.Parts) CheckHash(Path.Combine(PayloadPath, part.File), part.Sha256);
         return board;
     }
+    // Since 0.10.0 the firmware checks Wi-Fi updates against the key that signed it, and ESP-IDF
+    // stops at boot when the running image has no signature, so an unsigned image leaves the
+    // display dark. A Secure Boot V2 signature fills the image's last 4 KB sector: E7 02 ...
+    internal static bool IsSignedApp(byte[] image) =>
+        image.Length >= 8192 && image.Length % 4096 == 0 && image[^4096] == 0xE7 && image[^4095] == 0x02;
+    private static void RequireSignedFirmware(BoardProfile board)
+    {
+        foreach (var part in board.Parts.Where(p => p.File.EndsWith("/clawpal.bin", StringComparison.Ordinal)))
+            if (!IsSignedApp(File.ReadAllBytes(Path.Combine(PayloadPath, part.File)))) throw new IOException(L.Text("firmware_not_signed_usb"));
+    }
     public static void CheckHash(string path, string expected)
     {
         using var stream = File.OpenRead(path);
@@ -188,6 +198,7 @@ public sealed class Installer
         config.CompanionLanguage=options.CompanionLanguage;
         progress.Report(L.Text("checking_the_installation_bundle"));
         var board = await Task.Run(testProfile ?? (()=>PreparePayload(options.BoardId)));
+        RequireSignedFirmware(board);
         var id = await Identify(board, options.Port);
         string? folder = await BackupIfRequested(board, options, id);
         if (folder is not null && File.Exists(Configuration.ConfigPath))
@@ -245,6 +256,7 @@ public sealed class Installer
     {
         if(config.BoardId!=BoardCatalog.DefaultId)throw new IOException(L.Text("usb_migration_original_only"));
         var board=await Task.Run(()=>PreparePayload(config.BoardId));
+        RequireSignedFirmware(board);
         if(!config.SetupComplete || config.Token.Length!=64)throw new IOException(L.Text("pair_the_display_before_preparing_wireless_updates"));
         if(await Identify(board,port)!=config.DeviceId)throw new IOException(L.Text("this_usb_display_is_not_the_paired_device_nothing"));
         // Preserve the complete boot/table/settings prefix before the additive layout migration.

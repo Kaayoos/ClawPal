@@ -185,6 +185,8 @@
     "settings_cannot_contain_a_null_character": "Ustawienia nie mogą zawierać znaku zerowego.",
     "unknown": "nieznana",
     "could_not_launch_the_installed_companion": "Nie udało się uruchomić zainstalowanej aplikacji PC.",
+    "firmware_not_signed_usb": "To oprogramowanie nie jest podpisane, więc wyświetlacz nie może go uruchomić. Nic nie zostało zapisane na wyświetlaczu. Zainstaluj oficjalną wersję ClawPal albo najpierw podpisz własną kompilację (zobacz docs/BUILDING.md).",
+    "installed_clawpal_unavailable": "Windows wciąż usuwa poprzednią kopię ClawPal. Uruchom ponownie komputer, a potem otwórz ten instalator jeszcze raz.",
     "clawpal_could_not_start": "Nie udało się uruchomić ClawPal",
     "unsupported_spotify_diagnostic_command": "Nieobsługiwane polecenie diagnostyczne multimediów.",
     "buddy_discovery_timed_out": "Upłynął czas wyszukiwania Buddy.",

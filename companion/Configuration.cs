@@ -141,6 +141,22 @@ public static class Startup
     public static string InstalledPath => BuddyPaths.InstalledExecutable(WindowsFolders.Profile);
     public static string ShortcutPath => Path.Combine(WindowsFolders.Startup, "ClawPal.lnk");
     public static string StartMenuPath => Path.Combine(WindowsFolders.Programs, "ClawPal.lnk");
+    private const string SetAsidePrefix = "app.old-";
+    // A deleted file that another process still holds stays listed but cannot run until that
+    // handle closes, which can be hours. Moving its folder aside lets setup install a fresh copy.
+    internal static bool SetAsideBrokenInstall()
+    {
+        string app = Path.GetDirectoryName(InstalledPath)!;
+        try { Directory.Move(app, Path.Combine(Path.GetDirectoryName(app)!, SetAsidePrefix + DateTime.Now.ToString("yyyyMMdd-HHmmss"))); return true; }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException) { return false; }
+    }
+    internal static void DeleteSetAsideInstalls()
+    {
+        string data = Path.GetDirectoryName(Path.GetDirectoryName(InstalledPath)!)!;
+        if (!Directory.Exists(data)) return;
+        foreach (var folder in Directory.GetDirectories(data, SetAsidePrefix + "*"))
+            try { Directory.Delete(folder, true); } catch (IOException) { } catch (UnauthorizedAccessException) { }
+    }
     public static bool Enabled
     {
         get

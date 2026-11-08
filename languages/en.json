@@ -185,6 +185,8 @@
     "settings_cannot_contain_a_null_character": "Settings cannot contain a null character.",
     "unknown": "unknown",
     "could_not_launch_the_installed_companion": "Could not launch the installed companion.",
+    "firmware_not_signed_usb": "This firmware isn't signed, so a display can't start it. Nothing was written to your display. Install an official ClawPal release, or sign your own build first (see docs/BUILDING.md).",
+    "installed_clawpal_unavailable": "Windows is still removing an earlier copy of ClawPal. Restart your PC, then open this installer again.",
     "clawpal_could_not_start": "ClawPal could not start",
     "unsupported_spotify_diagnostic_command": "Unsupported media diagnostic command.",
     "buddy_discovery_timed_out": "Buddy discovery timed out.",

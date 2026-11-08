@@ -5,7 +5,8 @@ root=Path(__file__).resolve().parents[1]
 catalog=json.loads((root/'boards/catalog.json').read_text(encoding='utf-8'))
 p=argparse.ArgumentParser();g=p.add_mutually_exclusive_group();g.add_argument('--board',default=catalog['Default']);g.add_argument('--all',action='store_true');args=p.parse_args()
 # Release tags are signed in GitHub Actions (scripts/sign-firmware.py --payload). Local builds
-# sign only when CLAWPAL_SIGNING_KEY is set; unsigned builds install over USB.
+# sign only when CLAWPAL_SIGNING_KEY is set. Displays refuse to start unsigned firmware (it checks
+# Wi-Fi updates against its own signature), so unsigned builds are for the simulator and size checks.
 sign=bool(os.environ.get('CLAWPAL_SIGNING_KEY'))
 ids=[b['Id'] for b in catalog['Boards']];selected=ids if args.all else [args.board]
 if any(b not in ids for b in selected):p.error('Unknown exact board ID')
@@ -18,6 +19,6 @@ for board in selected:
  build=root/'firmware'/('build-'+board)
  subprocess.run([sys.executable,str(idf),'-C',str(root/'firmware'),'-B',str(build),'-DCLAWPAL_BOARD='+board,'-DSDKCONFIG='+str(build/'sdkconfig'),'build'],check=True)
  if sign:subprocess.run([sys.executable,str(root/'scripts/sign-firmware.py'),str(build/'clawpal.bin')],check=True)
- else:print('Unsigned build: displays accept it over USB only, not as a Wi-Fi update')
+ else:print('Unsigned build: a display cannot start it, even over USB. Set CLAWPAL_SIGNING_KEY to sign it.')
  subprocess.run([sys.executable,str(root/'scripts/package-firmware.py'),'--board',board,'--build',str(build)],check=True)
 subprocess.run([sys.executable,str(root/'scripts/collect-sdk-licenses.py')],check=True)

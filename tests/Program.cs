@@ -27,6 +27,9 @@ var directory=args.Length>0?args[0]:Path.GetTempPath();Directory.CreateDirectory
 var path=Path.Combine(directory,"nvs-fixture.bin");File.WriteAllBytes(path,image);
 var hash=Convert.ToHexString(SHA256.HashData(image));Installer.CheckHash(path,hash);Check(true,"valid checksum accepted");
 try{Installer.CheckHash(path,new string('0',64));throw new Exception("corrupted hash accepted");}catch(IOException){Check(true,"corrupted checksum rejected");}
+byte[] AppImage(bool signedImage){var app=new byte[3*4096];app[0]=0xe9;if(signedImage){app[^4096]=0xe7;app[^4095]=0x02;}return app;}
+Check(Installer.IsSignedApp(AppImage(true)),"signed application image accepted for USB install");
+Check(!Installer.IsSignedApp(AppImage(false))&&!Installer.IsSignedApp(AppImage(true)[..^1])&&!Installer.IsSignedApp(new byte[4096]),"unsigned or truncated application image refused: it could not boot");
 var profile=new BoardProfile("test","Test board","esp32s3",800,480,16777216,"test","",[]);
 foreach(string scenario in new[]{"wrong-flash","no-mac","read-failure","truncated-backup","verification-failure"}) {
     var commands=new List<string[]>();

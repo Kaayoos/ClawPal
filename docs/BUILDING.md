@@ -64,11 +64,15 @@ years; other zones fall back to manual selection.
 
 ## Rebuilding and installing modified versions
 
-Normal USB flashing remains available for your builds, and no signing key is
-needed to run modified firmware that way. Wi-Fi updates only accept images signed
-with the key that signed the running firmware: official releases use the ClawPal
-release key, and a fork can install its own signed build over USB once, then
-update it over Wi-Fi with its own key (`scripts/sign-firmware.py`).
+Firmware has to be signed to run at all, including over USB. It accepts a Wi-Fi
+update only when the update is signed with the same key as itself, and ESP-IDF
+refuses to start an unsigned image under that setting, so the display stays dark.
+The PC app refuses to install an unsigned image for that reason. Official releases
+use the ClawPal release key. A fork makes its own key, replaces
+`firmware/release-signing-key.sha256` with it (`scripts/sign-firmware.py --init`)
+and builds with `CLAWPAL_SIGNING_KEY` set. Displays running that build then
+accept Wi-Fi updates signed with that key only; an official release goes back on
+over USB.
 Keep board/layout compatibility and checksums correct. For local packages,
 `ClawPal-Setup.exe --install-bundled-wifi result.json` installs its own bundled
 firmware onto an already-paired compatible display. Do not use the official
