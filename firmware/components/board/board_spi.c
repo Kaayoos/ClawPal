@@ -107,7 +107,7 @@ esp_err_t board_init(void){
     else{
         esp_lcd_touch_config_t tc={.x_max=swap?240:320,.y_max=swap?320:240,.rst_gpio_num=TOUCH_RST,.int_gpio_num=-1,.flags={.swap_xy=swap,.mirror_x=mirror_x}};
         touch_err=esp_lcd_touch_new_i2c_ft5x06(ti,&tc,&touch);
-        if(touch_err!=ESP_OK){touch=NULL;ESP_LOGE(TAG,"Touch driver failed: %s (0x%x)",esp_err_to_name(touch_err),(unsigned)touch_err);}
+        if(touch_err!=ESP_OK){touch=NULL;esp_lcd_panel_io_del(ti);ESP_LOGE(TAG,"Touch driver failed: %s (0x%x)",esp_err_to_name(touch_err),(unsigned)touch_err);}
     }
     lv_init();mutex=xSemaphoreCreateRecursiveMutex();ESP_RETURN_ON_FALSE(mutex,ESP_ERR_NO_MEM,TAG,"LVGL mutex");
     static lv_disp_draw_buf_t draw;lv_color_t *pixels=heap_caps_malloc(320*24*sizeof(lv_color_t),MALLOC_CAP_DMA|MALLOC_CAP_INTERNAL);ESP_RETURN_ON_FALSE(pixels,ESP_ERR_NO_MEM,TAG,"DMA buffer");
