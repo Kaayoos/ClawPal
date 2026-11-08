@@ -16,6 +16,8 @@
 #include "../../../boards/guition-esp32-4848s040c-i.h"
 #elif CLAWPAL_PROFILE == 6
 #include "../../../boards/m5stack-cores3.h"
+#elif CLAWPAL_PROFILE == 7
+#include "../../../boards/lcdwiki-es3c28p.h"
 #else
 #error Unknown ClawPal board profile
 #endif

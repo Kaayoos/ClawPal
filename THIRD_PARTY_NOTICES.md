@@ -147,6 +147,9 @@ artwork, binaries or dependency is included; ClawPal’s bridge is original code
   [Apache-2.0](LICENSES/Apache-2.0.txt). Source headers and driver licenses
   are retained. Local compatibility changes are described in
   [board documentation](firmware/components/board/README.md).
+- LCDWIKI's published ES3C28P pin table and ILI9341V register values
+  (https://www.lcdwiki.com/2.8inch_ESP32-S3_Display), used as hardware facts;
+  no LCDWIKI code is included.
 
 These credits describe upstream components; they do not imply that the vendors
 tested or endorsed ClawPal's experimental board support.

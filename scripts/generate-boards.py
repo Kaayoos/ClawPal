@@ -16,7 +16,9 @@ for b in boards:
  outputs['firmware/boards/'+b['Id']+'.h']='\n'.join(lines)+'\n'
  s=base
  if b['FlashBytes']==8388608:s=s.replace('FLASHSIZE_16MB','FLASHSIZE_8MB').replace('"partitions.csv"','"partitions-8mb.csv"')
- if b['Psram']=='quad':s=s.replace('SPIRAM_MODE_OCT','SPIRAM_MODE_QUAD').replace('CONFIG_EXAMPLE_LVGL_PORT_AVOID_TEAR_ENABLE=y','CONFIG_EXAMPLE_LVGL_PORT_AVOID_TEAR_ENABLE=n')
+ if b['Psram']=='quad':s=s.replace('SPIRAM_MODE_OCT','SPIRAM_MODE_QUAD')
+ # Tearing avoidance belongs to the RGB port; SPI panels stream from one DMA stripe.
+ if b['Driver'].endswith('-spi'):s=s.replace('CONFIG_EXAMPLE_LVGL_PORT_AVOID_TEAR_ENABLE=y','CONFIG_EXAMPLE_LVGL_PORT_AVOID_TEAR_ENABLE=n')
  if b['Driver']=='guition-square':s=s.replace('CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG=y','CONFIG_ESP_CONSOLE_UART_DEFAULT=y')
  outputs['firmware/boards/'+b['Id']+'.defaults']=s
 outputs['firmware/components/board/include/board_profile.h']='#pragma once\n#ifndef CLAWPAL_PROFILE\n#define CLAWPAL_PROFILE 0\n#endif\n'+''.join(('#if' if i==0 else '#elif')+f' CLAWPAL_PROFILE == {i}\n#include "../../../boards/{b["Id"]}.h"\n' for i,b in enumerate(boards))+'#else\n#error Unknown ClawPal board profile\n#endif\n'

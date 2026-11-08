@@ -62,8 +62,9 @@ Only the Waveshare 4.3B has been tested on real hardware. Its main features were
 | Waveshare ESP32-S3-Touch-LCD-2.8C | 480 × 480 | Experimental |
 | Guition ESP32-4848S040C_I (capacitive touch) | 480 × 480 | Experimental |
 | M5Stack CoreS3 | 320 × 240 | Experimental |
+| LCDWIKI 2.8-inch ESP32-S3 Display (ES3C28P, capacitive touch) | 320 × 240 | Experimental |
 
-Pick the exact model printed on your board, not one with the same chip or screen size. The Waveshare 5B (1024 × 600), non-B 4.3-inch boards, resistive-touch Guition boards and M5Stack Core/Core2 are different hardware and aren't supported. For the 7-inch board, choose the flash size the installer's USB check reports. [Board profiles](boards/README.md) lists sources, revisions, layout behavior and recovery steps.
+Pick the exact model printed on your board, not one with the same chip or screen size. The Waveshare 5B (1024 × 600), non-B 4.3-inch boards, resistive-touch Guition boards, the touchless ES3N28P and M5Stack Core/Core2 are different hardware and aren't supported. For the 7-inch board, choose the flash size the installer's USB check reports. [Board profiles](boards/README.md) lists sources, revisions, layout behavior and recovery steps.
 
 On square and smaller screens all apps still work. Content scrolls vertically above a fixed Apps/Home footer; swipe up for more Home shortcuts, forecast rows, task details or timer settings.
 

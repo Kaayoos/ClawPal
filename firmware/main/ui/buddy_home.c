@@ -42,7 +42,7 @@ static const home_quotes_t quotes[BUDDY_MASCOT_STATE_COUNT] = {
 };
 
 static struct {
-    lv_obj_t *page, *time, *date, *crab, *greeting, *wifi;
+    lv_obj_t *page, *time, *date, *crab, *greeting, *wifi, *rows_end;
     lv_obj_t *statuses[BUDDY_APP_COUNT], *rows[BUDDY_APP_COUNT], *titles[BUDDY_APP_COUNT], *weather_icon;
     /* Without a mascot the left side is a desk clock: the time, the day and month, and the week. */
     lv_obj_t *week, *week_days[7], *week_mark, *lines[BUDDY_APP_COUNT];
@@ -175,7 +175,8 @@ static void create_week(int x, int y, int width)
 
 lv_obj_t *buddy_home_create(lv_obj_t *screen, lv_event_cb_t open_app, lv_event_cb_t weather_icon)
 {
-    const bool crab = buddy_theme_has_mascot();
+    /* The 320 x 240 screen has no room for the crab: both looks share the centred clock there. */
+    const bool crab = buddy_theme_has_mascot() && BOARD_DISPLAY_HEIGHT >= 400;
     home.page = plain(screen, 0, 0, BOARD_DISPLAY_WIDTH, BOARD_DISPLAY_HEIGHT-44);
     lv_obj_set_style_bg_color(home.page, lv_color_hex(HOME_BG), 0); lv_obj_set_style_bg_opa(home.page, LV_OPA_COVER, 0);
     home.time = label(home.page, "--:--", 28, 28, 395, &buddy_clock_font, HOME_INK);
@@ -213,44 +214,68 @@ lv_obj_t *buddy_home_create(lv_obj_t *screen, lv_event_cb_t open_app, lv_event_c
     lv_obj_set_style_bg_color(seam, lv_color_hex(HOME_SEAM), 0); lv_obj_set_style_bg_opa(seam, LV_OPA_COVER, 0);
     home.wifi = plain(home.page, 744, 9, 38, 32); lv_obj_add_event_cb(home.wifi, draw_wifi, LV_EVENT_DRAW_MAIN, NULL);
     const char *names[] = { BT(BT_PC_MONITOR), BT(BT_CLOCK), BT(BT_MUSIC), BT(BT_TIMER), BT(BT_CODEX), BT(BT_HOME), BT(BT_WEATHER), BT(BT_CLAUDE) };
+    /* The smallest screen uses slimmer rows so three shortcuts fit a view. */
+    const bool tiny = BOARD_DISPLAY_HEIGHT < 400;
+    const int icon_box = tiny ? 44 : 66, text_x = tiny ? 58 : 82;
     for (unsigned app = 0; app < BUDDY_APP_COUNT; ++app) {
         if (app == BUDDY_APP_HOME) continue;
         lv_obj_t *row = plain(home.page, 464, 67, 316, 78); home.rows[app] = row;
         lv_obj_add_flag(row, LV_OBJ_FLAG_CLICKABLE); lv_obj_set_style_radius(row, 10, 0);
         lv_obj_set_style_bg_color(row, lv_color_hex(BUDDY_COLOR_PRESSED), LV_STATE_PRESSED); lv_obj_set_style_bg_opa(row, LV_OPA_COVER, LV_STATE_PRESSED);
         lv_obj_add_event_cb(row, open_app, LV_EVENT_CLICKED, (void *)(uintptr_t)app);
-        lv_obj_t *icon = plain(row, 0, 2, 66, 66);
-        lv_obj_set_style_border_width(icon, 1, 0); lv_obj_set_style_border_color(icon, lv_color_hex(HOME_SEAM), 0); lv_obj_set_style_radius(icon, 12, 0);
+        lv_obj_t *icon = plain(row, 0, tiny ? 7 : 2, icon_box, icon_box);
+        lv_obj_set_style_border_width(icon, 1, 0); lv_obj_set_style_border_color(icon, lv_color_hex(HOME_SEAM), 0); lv_obj_set_style_radius(icon, tiny ? 10 : 12, 0);
         if (app == BUDDY_APP_WEATHER) {
-            home.weather_icon = plain(icon, 5, 5, 56, 56);
+            /* The mark draws at 26 px per scale step: one step, centred, on the slimmer rows. */
+            home.weather_icon = tiny ? plain(icon, 9, 9, 26, 26) : plain(icon, 5, 5, 56, 56);
             lv_obj_add_event_cb(home.weather_icon, weather_icon, LV_EVENT_DRAW_MAIN, NULL);
-        } else buddy_app_icon_create(icon,(buddy_app_t)app,5,5,56);
-        home.titles[app] = label(row, names[app], 82, 4, 234, &buddy_language_font_24, HOME_INK);
-        home.statuses[app] = label(row, BT(BT_WAITING), 82, 38, 234, &buddy_language_font_20, HOME_SECONDARY);
-        lv_obj_set_height(home.statuses[app], 27);
+        } else if (tiny) buddy_app_icon_create(icon, (buddy_app_t)app, 6, 6, 32);
+        else buddy_app_icon_create(icon,(buddy_app_t)app,5,5,56);
+        home.titles[app] = label(row, names[app], text_x, tiny ? 6 : 4, 234, &buddy_language_font_24, HOME_INK);
+        home.statuses[app] = label(row, BT(BT_WAITING), text_x, tiny ? 32 : 38, 234, &buddy_language_font_20, HOME_SECONDARY);
+        lv_obj_set_height(home.statuses[app], tiny ? 20 : 27);
         if (!crab) {
             /* Hairlines separate the shortcuts instead of the crab's open spacing. */
             lv_obj_add_flag(row, LV_OBJ_FLAG_OVERFLOW_VISIBLE);
-            home.lines[app] = plain(row, 82, 0, 234, 1);
+            home.lines[app] = plain(row, text_x, 0, 234, 1);
             lv_obj_set_style_bg_color(home.lines[app], lv_color_hex(HOME_SEAM), 0); lv_obj_set_style_bg_opa(home.lines[app], LV_OPA_COVER, 0);
-            lv_obj_align(home.lines[app], LV_ALIGN_BOTTOM_LEFT, 82, 6);
+            lv_obj_align(home.lines[app], LV_ALIGN_BOTTOM_LEFT, text_x, tiny ? 3 : 6);
         }
     }
     if(BOARD_DISPLAY_WIDTH<800){
         int w=BOARD_DISPLAY_WIDTH;bool tiny=BOARD_DISPLAY_HEIGHT<400;
         lv_obj_add_flag(home.page,LV_OBJ_FLAG_SCROLLABLE|LV_OBJ_FLAG_CLICKABLE);lv_obj_set_scroll_dir(home.page,LV_DIR_VER);
         lv_obj_set_style_bg_color(home.page,lv_color_hex(HOME_ACCENT),LV_PART_SCROLLBAR);lv_obj_set_style_width(home.page,3,LV_PART_SCROLLBAR);
-        lv_obj_set_pos(home.time,12,tiny?4:30);lv_obj_set_width(home.time,tiny?w-120:260);lv_obj_set_style_text_font(home.time,&buddy_language_font_48,0);
-        lv_obj_set_pos(home.date,12,tiny?65:96);lv_obj_set_width(home.date,tiny?w-116:260);lv_obj_set_style_text_font(home.date,&buddy_language_font_16,0);
+        lv_obj_set_pos(home.time,12,30);lv_obj_set_width(home.time,260);lv_obj_set_style_text_font(home.time,&buddy_language_font_48,0);
+        lv_obj_set_pos(home.date,12,96);lv_obj_set_width(home.date,260);lv_obj_set_style_text_font(home.date,&buddy_language_font_16,0);
         if(crab){lv_obj_set_pos(home.crab,w-CRAB_SIZE-12,HOME_CRAB_Y);lv_obj_set_pos(pet,w-CRAB_SIZE-12,0);lv_obj_set_size(pet,CRAB_SIZE,CRAB_SIZE);}
-        else{/* Square screens keep the full clock face; the smallest drops the hour labels. */
-            lv_obj_set_style_text_font(home.time,tiny?&buddy_language_font_48:&buddy_clock_font,0);
-            lv_obj_set_pos(home.time,12,tiny?24:56);lv_obj_set_width(home.time,w-24);lv_obj_set_pos(home.date,12,tiny?4:18);if(!tiny)lv_obj_set_style_text_font(home.date,&buddy_language_font_20,0);lv_obj_set_width(home.date,w-24);
-            place_week(12,tiny?90:137,w-24,tiny?&buddy_language_font_14:&buddy_language_font_16);
-            home.rows_top=tiny?124:196;}
-        lv_obj_set_pos(home.greeting,12,tiny?94:190);lv_obj_set_width(home.greeting,w-24);lv_obj_set_height(home.greeting,30);lv_obj_set_style_text_font(home.greeting,&buddy_language_font_16,0);
+        else if(tiny){
+            /* The first view is the clock alone, centred: the date, large numerals and the week.
+             * The shortcuts wait one swipe below. */
+            lv_obj_set_style_text_font(home.time,&buddy_clock_font,0);lv_obj_set_style_text_align(home.time,LV_TEXT_ALIGN_CENTER,0);
+            lv_obj_set_pos(home.time,12,64);lv_obj_set_width(home.time,w-24);
+            lv_obj_set_style_text_align(home.date,LV_TEXT_ALIGN_CENTER,0);lv_obj_set_pos(home.date,12,28);lv_obj_set_width(home.date,w-24);
+            place_week(40,148,w-80,&buddy_language_font_14);
+            home.rows_top=BOARD_DISPLAY_HEIGHT-44+4;}
+        else{/* Square screens keep the full clock face. */
+            lv_obj_set_style_text_font(home.time,&buddy_clock_font,0);
+            lv_obj_set_pos(home.time,12,56);lv_obj_set_width(home.time,w-24);lv_obj_set_pos(home.date,12,18);lv_obj_set_style_text_font(home.date,&buddy_language_font_20,0);lv_obj_set_width(home.date,w-24);
+            place_week(12,137,w-24,&buddy_language_font_16);
+            home.rows_top=196;}
+        lv_obj_set_pos(home.greeting,12,190);lv_obj_set_width(home.greeting,w-24);lv_obj_set_height(home.greeting,30);lv_obj_set_style_text_font(home.greeting,&buddy_language_font_16,0);
         lv_obj_add_flag(seam,LV_OBJ_FLAG_HIDDEN);lv_obj_add_flag(home.wifi,LV_OBJ_FLAG_HIDDEN);
-        for(unsigned app=0;app<BUDDY_APP_COUNT;++app)if(home.rows[app]){lv_obj_set_x(home.rows[app],12);lv_obj_set_width(home.rows[app],w-24);lv_obj_set_width(home.titles[app],w-110);lv_obj_set_style_text_font(home.titles[app],&buddy_language_font_20,0);lv_obj_set_width(home.statuses[app],w-110);lv_obj_set_style_text_font(home.statuses[app],&buddy_language_font_16,0);if(home.lines[app])lv_obj_set_width(home.lines[app],w-24-82);}
+        int text_w=tiny?w-24-text_x-8:w-110;
+        for(unsigned app=0;app<BUDDY_APP_COUNT;++app)if(home.rows[app]){lv_obj_set_x(home.rows[app],12);lv_obj_set_width(home.rows[app],w-24);lv_obj_set_width(home.titles[app],text_w);lv_obj_set_style_text_font(home.titles[app],&buddy_language_font_20,0);lv_obj_set_width(home.statuses[app],text_w);lv_obj_set_style_text_font(home.statuses[app],tiny?&buddy_language_font_14:&buddy_language_font_16,0);if(home.lines[app])lv_obj_set_width(home.lines[app],w-24-text_x);}
+        if(tiny){
+            /* Scrolling settles on a shortcut row, or back on the clock: never half a row. The padding
+             * lets the last three rows reach the top of the view, and the end mark gives even one
+             * shortcut a whole view of its own. */
+            for(uint32_t i=0;i<lv_obj_get_child_cnt(home.page);++i)lv_obj_clear_flag(lv_obj_get_child(home.page,i),LV_OBJ_FLAG_SNAPPABLE);
+            lv_obj_t *start=plain(home.page,0,0,2,2);lv_obj_add_flag(start,LV_OBJ_FLAG_SNAPPABLE);
+            home.rows_end=plain(home.page,0,home.rows_top+BOARD_DISPLAY_HEIGHT-44-2,2,2);lv_obj_clear_flag(home.rows_end,LV_OBJ_FLAG_SNAPPABLE);
+            for(unsigned app=0;app<BUDDY_APP_COUNT;++app)if(home.rows[app])lv_obj_add_flag(home.rows[app],LV_OBJ_FLAG_SNAPPABLE);
+            lv_obj_set_scroll_snap_y(home.page,LV_SCROLL_SNAP_START);lv_obj_set_style_pad_bottom(home.page,10,0);
+        }
     }
     if (!crab) lv_obj_add_flag(home.greeting, LV_OBJ_FLAG_HIDDEN);
     buddy_theme_numerals(home.time);
@@ -343,16 +368,30 @@ void buddy_home_apply_settings(const buddy_settings_t *settings)
     if (!home.page) return;
     for (unsigned app = 0; app < BUDDY_APP_COUNT; ++app) if (home.rows[app]) lv_obj_add_flag(home.rows[app], LV_OBJ_FLAG_HIDDEN);
     lv_obj_t *last = NULL;
+    const bool tiny = BOARD_DISPLAY_HEIGHT < 400;
+    int shown = 0;
     for (unsigned i = 0; i < settings->home_count; ++i) {
         unsigned app = settings->home_order[i];
         if (app >= BUDDY_APP_COUNT || app == BUDDY_APP_HOME || !(settings->enabled_apps & (1U << app))) continue;
         lv_obj_t *row = home.rows[app];
-        lv_obj_set_y(row,BOARD_DISPLAY_WIDTH<800?(home.rows_top?home.rows_top:BOARD_DISPLAY_HEIGHT<400?124:228)+(int)i*76:(settings->home_count > 4 ? 49 + (int)i * 76 : 67 + (int)i * 89));
-        lv_obj_set_height(row, settings->home_count > 4 ? 70 : 78);
+        /* The smallest screen packs the rows it shows, 64 px apart. */
+        lv_obj_set_y(row,tiny?(home.rows_top?home.rows_top:132)+shown*64:BOARD_DISPLAY_WIDTH<800?(home.rows_top?home.rows_top:228)+(int)i*76:(settings->home_count > 4 ? 49 + (int)i * 76 : 67 + (int)i * 89));
+        lv_obj_set_height(row, tiny ? 58 : settings->home_count > 4 ? 70 : 78);
         lv_obj_clear_flag(row, LV_OBJ_FLAG_HIDDEN);
         if (home.lines[app]) { lv_obj_clear_flag(home.lines[app], LV_OBJ_FLAG_HIDDEN); last = home.lines[app]; }
+        ++shown;
     }
     if (last) lv_obj_add_flag(last, LV_OBJ_FLAG_HIDDEN);
+    /* A view holds three rows, so only the first row and rows with two more below them are places
+     * to settle. Without shortcuts there is nothing below the clock to scroll to. */
+    if (tiny) {
+        if (home.rows_end) { if (shown) lv_obj_clear_flag(home.rows_end, LV_OBJ_FLAG_HIDDEN); else lv_obj_add_flag(home.rows_end, LV_OBJ_FLAG_HIDDEN); }
+        for (unsigned app = 0; app < BUDDY_APP_COUNT; ++app) if (home.rows[app]) {
+            int row = (lv_obj_get_y(home.rows[app]) - home.rows_top) / 64;
+            if (!lv_obj_has_flag(home.rows[app], LV_OBJ_FLAG_HIDDEN) && (row == 0 || row <= shown - 3)) lv_obj_add_flag(home.rows[app], LV_OBJ_FLAG_SNAPPABLE);
+            else lv_obj_clear_flag(home.rows[app], LV_OBJ_FLAG_SNAPPABLE);
+        }
+    }
 }
 
 void buddy_home_tick(void)

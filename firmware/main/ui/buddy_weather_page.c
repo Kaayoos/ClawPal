@@ -32,7 +32,7 @@ static struct {
     lv_obj_t *page,*city,*note,*tab_track,*tabs[3],*tab_labels[3];
     lv_obj_t *now,*temperature,*unit,*description,*range,*crab,*tiles[4],*tile_names[4],*values[4];
     lv_obj_t *forecast,*cards[CARDS],*times[CARDS],*icons[CARDS],*temperatures[CARDS],*probabilities[CARDS],*rain[CARDS];
-    lv_obj_t *previous,*next,*page_range,*empty;
+    lv_obj_t *previous,*next,*page_range,*empty,*rule;
     unsigned view,offset[3];
     buddy_weather_t weather;
     buddy_mascot_state_t state;
@@ -111,6 +111,18 @@ static void layout_cards(int width,int height)
     unsigned count=columns();int gap=WIDE?12:8,cw=(width-gap*((int)count-1))/(int)count;
     const lv_font_t *temp_font=WIDE?&buddy_language_font_24:TINY?&buddy_language_font_16:&buddy_language_font_20;
     int icon=WIDE?78:52;
+    if(TINY){
+        /* Stacked to fit beside the pager: label, mark, temperature, then the rain chance as text. */
+        for(unsigned i=0;i<CARDS;i++){
+            place(weather_ui.cards[i],(int)i*(cw+gap),0,cw,height,NULL);
+            place(weather_ui.times[i],4,8,cw-8,18,&buddy_language_font_14);
+            place(weather_ui.icons[i],(cw-icon)/2,26,icon,icon,NULL);
+            place(weather_ui.temperatures[i],4,26+icon+1,cw-8,lv_font_get_line_height(temp_font),temp_font);
+            place(weather_ui.probabilities[i],4,height-21,cw-8,18,&buddy_language_font_14);
+            visible(weather_ui.rain[i],false);
+        }
+        return;
+    }
     for(unsigned i=0;i<CARDS;i++){
         place(weather_ui.cards[i],(int)i*(cw+gap),0,cw,height,NULL);
         place(weather_ui.times[i],4,12,cw-8,22,cw<90?&buddy_language_font_14:&buddy_language_font_16);
@@ -130,9 +142,41 @@ static void layout(void)
         lv_obj_set_style_text_color(weather_ui.tab_labels[i],lv_color_hex(i==weather_ui.view?ACCENT:MUTED),0);
     }
     if(WIDE){layout_cards(744,236);place(weather_ui.previous,0,252,48,44,NULL);place(weather_ui.next,696,252,48,44,NULL);place(weather_ui.page_range,60,264,624,22,NULL);return;}
-    int cards=TINY?168:200,top=cards+12;
+    if(TINY){
+        /* The place and update time belong to Now; the forecasts keep the pager in view instead. */
+        visible(weather_ui.city,now);visible(weather_ui.note,now);
+        int W=w-24;layout_cards(W,118);
+        place(weather_ui.previous,0,122,30,30,NULL);place(weather_ui.next,W-30,122,30,30,NULL);place(weather_ui.page_range,38,127,W-76,20,NULL);
+        return;
+    }
+    int cards=200,top=cards+12;
     layout_cards(w-24,cards);
     place(weather_ui.previous,0,top,48,44,NULL);place(weather_ui.next,w-72,top,48,44,NULL);place(weather_ui.page_range,56,top+12,w-136,22,NULL);
+}
+
+/* 320 x 240: the switch leads; Now fills the first view and a swipe brings its four tiles. */
+static void compact_tiny(void)
+{
+    int w=BOARD_DISPLAY_WIDTH,W=w-24,top=42,second=194,tab=(W-8)/3,text=W-SIZE-8;
+    place(weather_ui.tab_track,12,4,W,32,NULL);
+    for(int i=0;i<3;i++){place(weather_ui.tabs[i],4+i*tab,3,tab,26,NULL);lv_obj_set_width(weather_ui.tab_labels[i],tab-6);
+        lv_obj_set_style_text_font(weather_ui.tab_labels[i],&buddy_language_font_14,0);lv_obj_align(weather_ui.tab_labels[i],LV_ALIGN_CENTER,0,0);}
+    place(weather_ui.now,12,top,W,second+BOARD_DISPLAY_HEIGHT-44-top,NULL);place(weather_ui.forecast,12,top,W,154,NULL);
+    lv_obj_set_style_text_font(weather_ui.temperature,&buddy_language_font_48,0);lv_obj_set_pos(weather_ui.temperature,0,0);
+    lv_obj_set_style_text_font(weather_ui.unit,&buddy_language_font_20,0);
+    place(weather_ui.description,0,60,text,22,&buddy_language_font_16);
+    place(weather_ui.range,0,82,text,20,&buddy_language_font_14);
+    lv_obj_set_pos(weather_ui.crab,W-SIZE,-2);
+    place(weather_ui.city,12,top+106,W,20,&buddy_language_font_16);place(weather_ui.note,12,top+126,W,18,&buddy_language_font_14);
+    int tile_w=(W-8)/2,tile_h=84,tiles_top=second+8-top;
+    for(int i=0;i<4;i++){place(weather_ui.tiles[i],(i%2)*(tile_w+8),tiles_top+(i/2)*(tile_h+8),tile_w,tile_h,NULL);
+        place(weather_ui.tile_names[i],12,12,tile_w-24,20,&buddy_language_font_14);place(weather_ui.values[i],12,38,tile_w-24,30,&buddy_language_font_24);}
+    place(weather_ui.empty,0,40,W,60,&buddy_language_font_16);
+    /* Scrolling settles on Now or on its tiles, one view per swipe. */
+    for(uint32_t i=0;i<lv_obj_get_child_cnt(weather_ui.page);++i)lv_obj_clear_flag(lv_obj_get_child(weather_ui.page,i),LV_OBJ_FLAG_SNAPPABLE);
+    lv_obj_t *stops[]={box(weather_ui.page,0,0,2,2),box(weather_ui.page,0,second,2,2)};
+    for(int i=0;i<2;i++)lv_obj_add_flag(stops[i],LV_OBJ_FLAG_SNAPPABLE);
+    lv_obj_set_scroll_snap_y(weather_ui.page,LV_SCROLL_SNAP_START);lv_obj_add_flag(weather_ui.page,LV_OBJ_FLAG_SCROLL_ONE);
 }
 
 static void compact_weather(void)
@@ -140,20 +184,22 @@ static void compact_weather(void)
     if(WIDE)return;
     int w=BOARD_DISPLAY_WIDTH;
     lv_obj_add_flag(weather_ui.page,LV_OBJ_FLAG_SCROLLABLE|LV_OBJ_FLAG_CLICKABLE);lv_obj_set_scroll_dir(weather_ui.page,LV_DIR_VER);lv_obj_set_style_bg_color(weather_ui.page,lv_color_hex(ACCENT),LV_PART_SCROLLBAR);lv_obj_set_style_width(weather_ui.page,3,LV_PART_SCROLLBAR);
-    place(weather_ui.city,12,TINY?6:8,w-24,30,TINY?&buddy_language_font_20:&buddy_language_font_24);
-    place(weather_ui.note,12,TINY?32:40,w-24,20,&buddy_language_font_14);
-    int track=TINY?58:66,tab=(w-24-8)/3;place(weather_ui.tab_track,12,track,w-24,44,NULL);
+    /* The switch sits under the heading here, so the wide layout's rule would cross it. */
+    if(TINY){visible(weather_ui.rule,false);compact_tiny();return;}
+    place(weather_ui.city,12,8,w-24,30,&buddy_language_font_24);
+    place(weather_ui.note,12,40,w-24,20,&buddy_language_font_14);
+    int track=66,tab=(w-24-8)/3;place(weather_ui.tab_track,12,track,w-24,44,NULL);
     for(int i=0;i<3;i++){place(weather_ui.tabs[i],4+i*tab,4,tab,36,NULL);lv_obj_set_width(weather_ui.tab_labels[i],tab-8);lv_obj_align(weather_ui.tab_labels[i],LV_ALIGN_CENTER,0,0);}
     int top=track+56,text=w-24-SIZE-12;
-    place(weather_ui.now,12,top,w-24,TINY?260:400,NULL);place(weather_ui.forecast,12,top,w-24,TINY?240:270,NULL);
-    lv_obj_set_style_text_font(weather_ui.temperature,TINY?&buddy_language_font_48:&buddy_clock_font,0);lv_obj_set_pos(weather_ui.temperature,0,4);
-    lv_obj_set_style_text_font(weather_ui.unit,TINY?&buddy_language_font_20:&buddy_language_font_32,0);
-    place(weather_ui.description,0,TINY?62:90,text,28,TINY?&buddy_language_font_16:&buddy_language_font_20);
-    place(weather_ui.range,0,TINY?86:122,text,24,TINY?&buddy_language_font_14:&buddy_language_font_16);
-    lv_obj_set_pos(weather_ui.crab,w-24-SIZE,TINY?-4:-8);
-    int tile_w=(w-24-10)/2,tile_h=TINY?72:84,tiles_top=TINY?120:196;
+    place(weather_ui.now,12,top,w-24,400,NULL);place(weather_ui.forecast,12,top,w-24,270,NULL);
+    lv_obj_set_style_text_font(weather_ui.temperature,&buddy_clock_font,0);lv_obj_set_pos(weather_ui.temperature,0,4);
+    lv_obj_set_style_text_font(weather_ui.unit,&buddy_language_font_32,0);
+    place(weather_ui.description,0,90,text,28,&buddy_language_font_20);
+    place(weather_ui.range,0,122,text,24,&buddy_language_font_16);
+    lv_obj_set_pos(weather_ui.crab,w-24-SIZE,-8);
+    int tile_w=(w-24-10)/2,tile_h=84,tiles_top=196;
     for(int i=0;i<4;i++){place(weather_ui.tiles[i],(i%2)*(tile_w+10),tiles_top+(i/2)*(tile_h+10),tile_w,tile_h,NULL);
-        place(weather_ui.tile_names[i],12,10,tile_w-24,20,&buddy_language_font_14);place(weather_ui.values[i],12,TINY?34:40,tile_w-24,30,TINY?&buddy_language_font_20:&buddy_language_font_24);}
+        place(weather_ui.tile_names[i],12,10,tile_w-24,20,&buddy_language_font_14);place(weather_ui.values[i],12,40,tile_w-24,30,&buddy_language_font_24);}
     place(weather_ui.empty,0,60,w-24,100,&buddy_language_font_20);
 }
 
@@ -197,7 +243,7 @@ lv_obj_t *buddy_weather_page_create(lv_obj_t *parent)
         weather_ui.tab_labels[i]=label(tab,tabs[i],0,0,96,&buddy_language_font_16,MUTED);
         lv_obj_set_style_text_align(weather_ui.tab_labels[i],LV_TEXT_ALIGN_CENTER,0);lv_obj_align(weather_ui.tab_labels[i],LV_ALIGN_CENTER,0,0);
     }
-    lv_obj_t *rule=box(page,28,84,744,1);lv_obj_set_style_bg_color(rule,lv_color_hex(RULE),0);lv_obj_set_style_bg_opa(rule,LV_OPA_COVER,0);
+    lv_obj_t *rule=weather_ui.rule=box(page,28,84,744,1);lv_obj_set_style_bg_color(rule,lv_color_hex(RULE),0);lv_obj_set_style_bg_opa(rule,LV_OPA_COVER,0);
 
     /* Now: a large reading, today's range and the animated crab, with four detail tiles. */
     weather_ui.now=box(page,28,96,744,340);
@@ -294,6 +340,8 @@ static void refresh_forecast(void)
     enable(weather_ui.previous,*offset>0);enable(weather_ui.next,*offset+step<count);
     if(!count)value[0]=0;
     else if(hourly)snprintf(value,sizeof(value),BT(BT_U_U_OF_U_HOURS),*offset+1,*offset+step<count?*offset+step:count,count);
+    /* The smallest pager has no room for the days' legend; the cards read on their own. */
+    else if(TINY)value[0]=0;
     else snprintf(value,sizeof(value),BT(BT_HIGH_LOW_UNITS_PRECIPITATION_CHANCE),buddy_weather_unit(settings.weather_fahrenheit));
     set_text(weather_ui.page_range,value);
 }

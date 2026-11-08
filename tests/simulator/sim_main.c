@@ -473,7 +473,10 @@ int main(int argc,char **argv){
         if(!buddy_ui_select_app((buddy_app_t)app))return 3;live(1400);if(buddy_ui_get_state().active_app!=(unsigned)app)return 4;
         save_frame(names[app]);
         if(W<800){for(int i=0;i<4;++i)scroll_page();char name[60];snprintf(name,sizeof(name),"%s-scrolled",names[app]);save_frame(name);}
-        if(app==BUDDY_APP_TIMER){tap_label(BT(BT_START));if(!buddy_ui_get_state().timer_running)return 22;live(72000);save_frame("timer-running");
+        if(app==BUDDY_APP_TIMER){
+            // Start sits beside the ring on the first view; scroll back to it.
+            lv_obj_t *start=find_label(lv_scr_act(),BT(BT_START));if(start)lv_obj_scroll_to_y(lv_obj_get_parent(lv_obj_get_parent(start)),0,LV_ANIM_OFF);
+            tap_label(BT(BT_START));if(!buddy_ui_get_state().timer_running)return 22;live(72000);save_frame("timer-running");
             lv_obj_t *pause=find_label(lv_scr_act(),BT(BT_PAUSE));if(pause)lv_obj_scroll_to_view_recursive(pause,LV_ANIM_OFF);tap_label(BT(BT_PAUSE));if(buddy_ui_get_state().timer_running)return 23;}
         if(app==BUDDY_APP_MUSIC){
             tap_label(LV_SYMBOL_NEXT);if(music_command_pending!=2)return 24;music_reply();live(1000);

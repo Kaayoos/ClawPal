@@ -12,10 +12,11 @@ internal static class BoardChecks
         void Check(bool ok,string label){if(!ok)throw new Exception(label);count++;Console.WriteLine("PASS: "+label);}
         void Reject(Action action,string label){try{action();}catch(Exception e)when(e is IOException or ArgumentException or NotSupportedException){Check(true,label);return;}throw new Exception(label);}
         var models=BoardCatalog.All;
-        Check(models.Count==7,"Seven exact hardware profiles are available");
+        Check(models.Count==8,"Eight exact hardware profiles are available");
         Check(models.Count(b=>!b.Experimental)==1&&!BoardCatalog.Get(BoardCatalog.DefaultId).Experimental,"Only the physically tested 4.3B is marked tested");
         Check(models.Select(b=>b.AssetName).Distinct().Count()==models.Count,"Each board has a unique update asset");
         Check(models.Single(b=>b.Driver=="cores3-spi").Psram=="quad","CoreS3 uses quad PSRAM");
+        Check(models.Single(b=>b.Driver=="es3c28p-spi").Psram=="octal","ES3C28P (N16R8) uses octal PSRAM");
         Check(new Configuration().BoardId==BoardCatalog.DefaultId,"Existing settings retain the original hardware model");
         byte[] bytes=new byte[288];bytes[0]=0xe9;bytes[12]=9;
         FirmwareRelease Release(BoardDefinition b)=>new(1,"0.8.0",b.Id,b.Layout,"0.8.0",new(b.AssetName,bytes.Length,Convert.ToHexString(SHA256.HashData(bytes))));

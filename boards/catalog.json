@@ -106,6 +106,21 @@
       "MaxBytes": 4128768,
       "AssetName": "clawpal-m5stack-cores3.bin",
       "Profile": 6
+    },
+    {
+      "Id": "lcdwiki-es3c28p",
+      "Name": "LCDWIKI 2.8-inch ESP32-S3 Display (ES3C28P)",
+      "Chip": "esp32s3",
+      "Width": 320,
+      "Height": 240,
+      "FlashBytes": 16777216,
+      "Psram": "octal",
+      "Experimental": true,
+      "Driver": "es3c28p-spi",
+      "Layout": "ota-v1",
+      "MaxBytes": 4128768,
+      "AssetName": "clawpal-lcdwiki-es3c28p.bin",
+      "Profile": 7
     }
   ]
 }

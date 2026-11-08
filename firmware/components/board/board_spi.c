@@ -1,29 +1,50 @@
-/* CoreS3 adapter based on Espressif esp-bsp (Apache-2.0).
+/* SPI display adapters. CoreS3 is based on Espressif esp-bsp (Apache-2.0); the ES3C28P
+ * follows its LCDWIKI pin table and panel initialization.
  * See README.md for the pinned upstream revision and hardware status. */
 #include "board.h"
+#include "driver/gpio.h"
 #include "driver/i2c.h"
 #include "driver/spi_master.h"
 #include "esp_check.h"
 #include "esp_lcd_panel_ops.h"
 #include "esp_lcd_ili9341.h"
-#include "ili9342e_init_cmds.h"
 #include "esp_lcd_touch_ft5x06.h"
 #include "esp_timer.h"
 #include "freertos/semphr.h"
 #include "freertos/task.h"
 #include "lvgl.h"
+#if CLAWPAL_DRIVER_CORES3_SPI
+#include "ili9342e_init_cmds.h"
+// Native landscape panel; AW9523B owns the resets and the AXP2101 the backlight.
+enum{I2C_SDA=12,I2C_SCL=11,LCD_MOSI=37,LCD_SCLK=36,LCD_DC=35,LCD_CS=3,TOUCH_RST=-1};
+#define LCD_HOST SPI3_HOST
 static const char *TAG="cores3";
+#elif CLAWPAL_DRIVER_ES3C28P_SPI
+#include "es3c28p_init_cmds.h"
+// Native 240 x 320 portrait panel turned to landscape; the LCD shares the ESP32-S3 reset line.
+enum{I2C_SDA=16,I2C_SCL=15,LCD_MOSI=11,LCD_SCLK=12,LCD_DC=46,LCD_CS=10,TOUCH_RST=18,BACKLIGHT=45};
+#define LCD_HOST SPI2_HOST
+static const char *TAG="es3c28p";
+#else
+#error board_spi.c needs an SPI display profile
+#endif
 static SemaphoreHandle_t mutex;
 static bool initialized;
 static esp_lcd_touch_handle_t touch;
 static lv_disp_drv_t display_driver;
+#if CLAWPAL_DRIVER_CORES3_SPI
 static esp_err_t reg_read(uint8_t addr,uint8_t reg,uint8_t *value){return i2c_master_write_read_device(I2C_NUM_0,addr,&reg,1,value,1,pdMS_TO_TICKS(100));}
 static esp_err_t reg_write(uint8_t addr,uint8_t reg,uint8_t value){uint8_t b[]={reg,value};return i2c_master_write_to_device(I2C_NUM_0,addr,b,2,pdMS_TO_TICKS(100));}
 static esp_err_t reg_bits(uint8_t addr,uint8_t reg,uint8_t mask,bool on){uint8_t value;ESP_RETURN_ON_ERROR(reg_read(addr,reg,&value),TAG,"Read control register");return reg_write(addr,reg,on?value|mask:value&~mask);}
+#endif
 esp_err_t board_set_backlight(bool on){
     if(!initialized)return ESP_ERR_INVALID_STATE;
+#if CLAWPAL_DRIVER_CORES3_SPI
     if(on)ESP_RETURN_ON_ERROR(reg_write(0x34,0x99,28),TAG,"DLDO1 3.3V");
     return reg_bits(0x34,0x90,0x80,on);
+#else
+    return gpio_set_level(BACKLIGHT,on);
+#endif
 }
 static bool IRAM_ATTR transfer_done(esp_lcd_panel_io_handle_t io,esp_lcd_panel_io_event_data_t *ev,void *ctx){lv_disp_flush_ready(&display_driver);return false;}
 static void flush(lv_disp_drv_t *drv,const lv_area_t *area,lv_color_t *pixels){
@@ -44,26 +65,42 @@ void board_lvgl_unlock(void){xSemaphoreGiveRecursive(mutex);}
 static void task(void *ctx){while(1){board_lvgl_lock(-1);uint32_t wait=lv_timer_handler();board_lvgl_unlock();vTaskDelay(pdMS_TO_TICKS(wait<2?2:wait>20?20:wait));}}
 esp_err_t board_init(void){
     ESP_RETURN_ON_FALSE(!initialized,ESP_ERR_INVALID_STATE,TAG,"Already initialized");
-    i2c_config_t ic={.mode=I2C_MODE_MASTER,.sda_io_num=12,.scl_io_num=11,.sda_pullup_en=true,.scl_pullup_en=true,.master.clk_speed=400000};
+    i2c_config_t ic={.mode=I2C_MODE_MASTER,.sda_io_num=I2C_SDA,.scl_io_num=I2C_SCL,.sda_pullup_en=true,.scl_pullup_en=true,.master.clk_speed=400000};
     ESP_RETURN_ON_ERROR(i2c_param_config(I2C_NUM_0,&ic),TAG,"I2C config");ESP_RETURN_ON_ERROR(i2c_driver_install(I2C_NUM_0,I2C_MODE_MASTER,0,0,0),TAG,"I2C init");
+#if CLAWPAL_DRIVER_CORES3_SPI
     // AW9523B: switch only touch reset P0.0 and LCD reset P1.1 to GPIO outputs.
     ESP_RETURN_ON_ERROR(reg_bits(0x58,0x12,1,true),TAG,"Touch GPIO mode");ESP_RETURN_ON_ERROR(reg_bits(0x58,0x13,2,true),TAG,"LCD GPIO mode");
     ESP_RETURN_ON_ERROR(reg_bits(0x58,0x04,1,false),TAG,"Touch output");ESP_RETURN_ON_ERROR(reg_bits(0x58,0x05,2,false),TAG,"LCD output");
     ESP_RETURN_ON_ERROR(reg_bits(0x58,0x02,1,false),TAG,"Touch reset");ESP_RETURN_ON_ERROR(reg_bits(0x58,0x03,2,false),TAG,"LCD reset");vTaskDelay(pdMS_TO_TICKS(20));
     ESP_RETURN_ON_ERROR(reg_bits(0x58,0x02,1,true),TAG,"Touch release");ESP_RETURN_ON_ERROR(reg_bits(0x58,0x03,2,true),TAG,"LCD release");vTaskDelay(pdMS_TO_TICKS(300));
     uint8_t revision=0;reg_read(0x38,0xa6,&revision);
-    spi_bus_config_t bus={.mosi_io_num=37,.miso_io_num=-1,.sclk_io_num=36,.quadwp_io_num=-1,.quadhd_io_num=-1,.max_transfer_sz=320*24*2};
-    ESP_RETURN_ON_ERROR(spi_bus_initialize(SPI3_HOST,&bus,SPI_DMA_CH_AUTO),TAG,"SPI init");
-    esp_lcd_panel_io_handle_t io=NULL;esp_lcd_panel_io_spi_config_t pc={.dc_gpio_num=35,.cs_gpio_num=3,.pclk_hz=40000000,.lcd_cmd_bits=8,.lcd_param_bits=8,.spi_mode=0,.trans_queue_depth=10,.on_color_trans_done=transfer_done};
-    ESP_RETURN_ON_ERROR(esp_lcd_new_panel_io_spi((esp_lcd_spi_bus_handle_t)SPI3_HOST,&pc,&io),TAG,"Panel IO");
     const ili9341_vendor_config_t vendor={.init_cmds=ili9342e_init_cmds,.init_cmds_size=sizeof(ili9342e_init_cmds)/sizeof(ili9342e_init_cmds[0])};
-    esp_lcd_panel_dev_config_t dev={.reset_gpio_num=-1,.rgb_ele_order=LCD_RGB_ELEMENT_ORDER_BGR,.bits_per_pixel=16,.vendor_config=revision==0x12?(void*)&vendor:NULL};
+    const void *vendor_config=revision==0x12?&vendor:NULL;
+#else
+    // Keep the backlight off until the panel holds a picture.
+    gpio_config_t bl={.pin_bit_mask=1ULL<<BACKLIGHT,.mode=GPIO_MODE_OUTPUT};
+    ESP_RETURN_ON_ERROR(gpio_config(&bl),TAG,"Backlight GPIO");ESP_RETURN_ON_ERROR(gpio_set_level(BACKLIGHT,0),TAG,"Backlight off");
+    const ili9341_vendor_config_t vendor={.init_cmds=es3c28p_init_cmds,.init_cmds_size=sizeof(es3c28p_init_cmds)/sizeof(es3c28p_init_cmds[0])};
+    const void *vendor_config=&vendor;
+#endif
+    spi_bus_config_t bus={.mosi_io_num=LCD_MOSI,.miso_io_num=-1,.sclk_io_num=LCD_SCLK,.quadwp_io_num=-1,.quadhd_io_num=-1,.max_transfer_sz=320*24*2};
+    ESP_RETURN_ON_ERROR(spi_bus_initialize(LCD_HOST,&bus,SPI_DMA_CH_AUTO),TAG,"SPI init");
+    esp_lcd_panel_io_handle_t io=NULL;esp_lcd_panel_io_spi_config_t pc={.dc_gpio_num=LCD_DC,.cs_gpio_num=LCD_CS,.pclk_hz=40000000,.lcd_cmd_bits=8,.lcd_param_bits=8,.spi_mode=0,.trans_queue_depth=10,.on_color_trans_done=transfer_done};
+    ESP_RETURN_ON_ERROR(esp_lcd_new_panel_io_spi((esp_lcd_spi_bus_handle_t)LCD_HOST,&pc,&io),TAG,"Panel IO");
+    esp_lcd_panel_dev_config_t dev={.reset_gpio_num=-1,.rgb_ele_order=LCD_RGB_ELEMENT_ORDER_BGR,.bits_per_pixel=16,.vendor_config=(void*)vendor_config};
     esp_lcd_panel_handle_t panel=NULL;ESP_RETURN_ON_ERROR(esp_lcd_new_panel_ili9341(io,&dev,&panel),TAG,"Panel driver");
     ESP_RETURN_ON_ERROR(esp_lcd_panel_reset(panel),TAG,"Panel reset");ESP_RETURN_ON_ERROR(esp_lcd_panel_init(panel),TAG,"Panel init");
-    ESP_RETURN_ON_ERROR(esp_lcd_panel_invert_color(panel,true),TAG,"Color invert");ESP_RETURN_ON_ERROR(esp_lcd_panel_swap_xy(panel,false),TAG,"Orientation");ESP_RETURN_ON_ERROR(esp_lcd_panel_mirror(panel,false,false),TAG,"Mirror");ESP_RETURN_ON_ERROR(esp_lcd_panel_disp_on_off(panel,true),TAG,"Display on");
+#if CLAWPAL_DRIVER_CORES3_SPI
+    const bool swap=false,mirror_x=false;
+#else
+    // MADCTL MV|MX: LCDWIKI's first landscape direction. Touch reports portrait coordinates,
+    // so it gets the same exchange and mirror.
+    const bool swap=true,mirror_x=true;
+#endif
+    ESP_RETURN_ON_ERROR(esp_lcd_panel_invert_color(panel,true),TAG,"Color invert");ESP_RETURN_ON_ERROR(esp_lcd_panel_swap_xy(panel,swap),TAG,"Orientation");ESP_RETURN_ON_ERROR(esp_lcd_panel_mirror(panel,mirror_x,false),TAG,"Mirror");ESP_RETURN_ON_ERROR(esp_lcd_panel_disp_on_off(panel,true),TAG,"Display on");
     esp_lcd_panel_io_handle_t ti=NULL;const esp_lcd_panel_io_i2c_config_t tic=ESP_LCD_TOUCH_IO_I2C_FT5x06_CONFIG();
     ESP_RETURN_ON_ERROR(esp_lcd_new_panel_io_i2c((esp_lcd_i2c_bus_handle_t)I2C_NUM_0,&tic,&ti),TAG,"Touch IO");
-    esp_lcd_touch_config_t tc={.x_max=320,.y_max=240,.rst_gpio_num=-1,.int_gpio_num=-1};
+    esp_lcd_touch_config_t tc={.x_max=swap?240:320,.y_max=swap?320:240,.rst_gpio_num=TOUCH_RST,.int_gpio_num=-1,.flags={.swap_xy=swap,.mirror_x=mirror_x}};
     ESP_RETURN_ON_ERROR(esp_lcd_touch_new_i2c_ft5x06(ti,&tc,&touch),TAG,"Touch driver");
     lv_init();mutex=xSemaphoreCreateRecursiveMutex();ESP_RETURN_ON_FALSE(mutex,ESP_ERR_NO_MEM,TAG,"LVGL mutex");
     static lv_disp_draw_buf_t draw;lv_color_t *pixels=heap_caps_malloc(320*24*sizeof(lv_color_t),MALLOC_CAP_DMA|MALLOC_CAP_INTERNAL);ESP_RETURN_ON_FALSE(pixels,ESP_ERR_NO_MEM,TAG,"DMA buffer");

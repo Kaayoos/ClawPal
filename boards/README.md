@@ -14,6 +14,11 @@ not evidence of successful hardware operation. CoreS3 display revisions are
 selected using the touch-controller firmware ID (ILI9342C / ILI9342E).
 The Guition mapping is based on the upstream `ESP32_4848S040C_I_Y_3` definition;
 other revisions with different wiring may need a separate profile.
+The ES3C28P follows LCDWIKI's published pin table and ILI9341V initialization;
+its portrait panel is turned to landscape (MADCTL MV|MX), and the touch
+coordinates get the same exchange and mirror. Rotation, colour order and touch
+direction are unconfirmed until someone runs it. The touchless ES3N28P is a
+different board and isn't supported.
 
 | Adapter | Display / touch | Backlight / power | Source |
 | --- | --- | --- | --- |
@@ -22,11 +27,13 @@ other revisions with different wiring may need a separate profile.
 | Waveshare 2.8C | ST7701 RGB / GT911 | TCA9554 reset/CS; GPIO6 backlight | Same pinned upstream |
 | Guition C_I | ST7701 RGB / GT911 | GPIO38 backlight; USB-UART for programming | [Espressif Guition/Jingcai definition](https://github.com/esp-arduino-libs/ESP32_Display_Panel/blob/92b790ed6d24b0678e2f45b1fc85f0abd2d41b33/src/board/supported/jingcai/BOARD_JINGCAI_ESP32_4848S040C_I_Y_3.h) |
 | CoreS3 | ILI9342C/E SPI / FT5x06 | AW9523B resets; AXP2101 DLDO1 | [Espressif BSP](https://github.com/espressif/esp-bsp/tree/f259a6abd5808019b1903a422092a4234ca95a51/bsp/m5stack_core_s3) |
+| LCDWIKI ES3C28P | ILI9341V SPI / FT6336G (FT5x06 driver) | GPIO45 backlight; LCD reset shared with EN | [LCDWIKI 2.8inch ESP32-S3 Display](https://www.lcdwiki.com/2.8inch_ESP32-S3_Display) |
 
 All boards use a shared software shade for configured dimming and actual
 backlight power-off for night mode. RGB boards use two PSRAM framebuffers;
-CoreS3 uses one internal DMA stripe buffer and a transfer-completion callback.
-Native touch coordinates match each landscape/square panel's dimensions.
+the SPI boards (CoreS3, ES3C28P) use one internal DMA stripe buffer and a
+transfer-completion callback. Native touch coordinates match each
+landscape/square panel's dimensions, except the ES3C28P's portrait touch panel.
 
 ## Installation and recovery
 

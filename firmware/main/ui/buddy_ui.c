@@ -83,7 +83,7 @@ typedef struct {
     lv_obj_t *window_names[2], *countdowns[2], *resets[2], *paces[2];
     lv_obj_t *task_rows[3], *task_dots[3], *task_titles[3], *task_details[3], *task_states[3];
     int card_top, card_step, card_single_top, gauge_size;
-    bool working[3], chip_on_details, tasks_selected, tab_initialized, tab_manual;
+    bool working[3], chip_on_details, chip_below, tasks_selected, tab_initialized, tab_manual;
 } agent_view_t;
 
 /* A full-screen prompt: the approval request and the needs-you alert share this shape. */
@@ -591,12 +591,14 @@ static void refresh_activity(void)
 {
     if (!ui.music_link) return;
     refresh_game();
-    bool show = ui.active_app == BUDDY_APP_MONITOR && !ui.menu_open && !ui.startup && music_connected() && app_enabled(BUDDY_APP_MUSIC) &&
-        ui.stats.music.running && ui.stats.music.available && ui.stats.music.playing;
+    /* The smallest monitor header has no room for the now-playing link; Media is in Apps. */
+    bool show = BOARD_DISPLAY_HEIGHT >= 400 && ui.active_app == BUDDY_APP_MONITOR && !ui.menu_open && !ui.startup && music_connected() &&
+        app_enabled(BUDDY_APP_MUSIC) && ui.stats.music.running && ui.stats.music.available && ui.stats.music.playing;
     if (show != ui.music_link_shown) {
         ui.music_link_shown = show;
         visible(ui.music_link, show);
-        lv_obj_set_width(ui.monitor_title, BOARD_DISPLAY_WIDTH<800 ? (show?BOARD_DISPLAY_WIDTH-(BOARD_DISPLAY_HEIGHT<400?170:218):BOARD_DISPLAY_WIDTH-24) : (show ? 176 : 380));
+        lv_obj_set_width(ui.monitor_title, BOARD_DISPLAY_HEIGHT<400 ? BOARD_DISPLAY_WIDTH-160 :
+            BOARD_DISPLAY_WIDTH<800 ? (show?BOARD_DISPLAY_WIDTH-218:BOARD_DISPLAY_WIDTH-24) : (show ? 176 : 380));
         lv_obj_set_width(ui.host, BOARD_DISPLAY_WIDTH<800?BOARD_DISPLAY_WIDTH-72:(show ? 176 : 400));
         if (show) buddy_ui_motion_enter(ui.music_link, 6, 180, 0);
         else buddy_ui_motion_cancel(ui.music_link);
@@ -870,12 +872,13 @@ static void refresh_visibility(void)
     refresh_display_power();
 }
 
-/* The Apps menu is a launcher grid: four tiles across on the wide screen, three on the others. */
+/* The Apps menu is a launcher grid: four tiles across on the wide screen, three on the others.
+ * The smallest screen shows all eight at once in a 3 x 3 grid, without a heading. */
 typedef struct { int columns, margin, gap, top, width, height, icon, pad; } chooser_grid_t;
 static chooser_grid_t chooser_grid(void)
 {
     chooser_grid_t grid = BOARD_DISPLAY_WIDTH >= 800 ? (chooser_grid_t){ 4, 28, 16, 76, 0, 166, 48, 18 } :
-        BOARD_DISPLAY_HEIGHT < 400 ? (chooser_grid_t){ 3, 12, 6, 40, 0, 72, 32, 8 } : (chooser_grid_t){ 3, 12, 8, 52, 0, 120, 32, 10 };
+        BOARD_DISPLAY_HEIGHT < 400 ? (chooser_grid_t){ 3, 12, 6, 6, 0, 58, 28, 6 } : (chooser_grid_t){ 3, 12, 8, 52, 0, 120, 32, 10 };
     grid.width = (BOARD_DISPLAY_WIDTH - 2 * grid.margin - (grid.columns - 1) * grid.gap) / grid.columns;
     return grid;
 }
@@ -969,7 +972,9 @@ static void refresh_footer(void)
     }
     if(BOARD_DISPLAY_WIDTH<800){
         lv_obj_set_pos(ui.footer,104,BOARD_DISPLAY_HEIGHT-30);lv_obj_set_width(ui.footer,BOARD_DISPLAY_WIDTH-208);
-        visible(ui.footer,!monitor&&!shortcut);visible(ui.timer_link,shortcut&&!monitor);
+        /* The smallest footer has room only for the short hints: the menu's and Home's version. */
+        bool hint=BOARD_DISPLAY_HEIGHT>=400||ui.menu_open||ui.active_app==BUDDY_APP_HOME;
+        visible(ui.footer,!monitor&&!shortcut&&hint);visible(ui.timer_link,shortcut&&!monitor);
     }
     lv_obj_set_style_text_color(ui.footer,
         color(ui.active_app == BUDDY_APP_MONITOR && !ui.menu_open && ui.have_stats &&
@@ -1854,10 +1859,11 @@ static void refresh_agent_tasks(agent_view_t *view)
         uint32_t tone = recent_working && !stale ? view->copy->accent : attention && !stale ? C_WARNING : C_MUTED;
         view->working[i] = recent_working && !stale;
         set_label_if_changed(view->task_states[i], state);
-        /* The text beside the chip gets whatever width the chip leaves free. */
+        /* The text beside the chip gets whatever width the chip leaves free; a chip on its own line
+         * leaves both lines whole. */
         lv_coord_t chip = lv_txt_get_width(state, (uint32_t)strlen(state), &buddy_language_font_14, 0, LV_TEXT_FLAG_NONE) + 20;
         lv_obj_t *beside = view->chip_on_details ? view->task_details[i] : view->task_titles[i];
-        lv_obj_set_width(beside, lv_obj_get_width(view->task_rows[i]) - 36 - 14 - chip - 12);
+        if (!view->chip_below) lv_obj_set_width(beside, lv_obj_get_width(view->task_rows[i]) - 36 - 14 - chip - 12);
         lv_obj_set_style_text_color(view->task_states[i], color(tone), 0);
         lv_obj_set_style_bg_color(view->task_states[i], lv_color_mix(color(tone), color(BUDDY_COLOR_SURFACE), 44), 0);
         lv_obj_set_style_bg_color(view->task_dots[i], color(tone), 0);
@@ -2642,7 +2648,7 @@ static void create_app_surfaces(void)
      * screen keeps the icon and name, centred. */
     const chooser_grid_t grid = chooser_grid();
     const bool wide = BOARD_DISPLAY_WIDTH >= 800, tiny = BOARD_DISPLAY_HEIGHT < 400;
-    const int inner = grid.width - 2 * grid.pad, name_y = grid.pad + grid.icon + (wide ? 12 : 6);
+    const int inner = grid.width - 2 * grid.pad, name_y = grid.pad + grid.icon + (wide ? 12 : tiny ? 4 : 6);
     for (unsigned i = 0; i < sizeof(app_catalog) / sizeof(app_catalog[0]); ++i) {
         lv_obj_t *tile = surface_card(ui.chooser, wide ? 14 : 12);
         ui.app_rows[i] = tile;
@@ -3104,7 +3110,7 @@ void buddy_ui_set_weather(const buddy_weather_t *weather)
         lv_obj_set_style_text_font(ui.weather_text,font,0);
         lv_txt_get_size(&size, reading, font, 0, 0, 700, LV_TEXT_FLAG_NONE);
         int icon_width = weather->available ? 38 : 0;
-        int row_width=BOARD_DISPLAY_WIDTH<800?(BOARD_DISPLAY_HEIGHT<400?BOARD_DISPLAY_WIDTH-116:BOARD_DISPLAY_WIDTH-24):744;
+        int row_width=lv_obj_get_width(ui.weather_row);
         if(size.x>row_width-icon_width-2)size.x=row_width-icon_width-2;
         int left = (row_width - size.x - icon_width) / 2;
         lv_obj_set_pos(ui.weather_icon, left, 0);
