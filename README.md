@@ -6,8 +6,8 @@
 
 <p align="center">
   A little company for your desk.<br>
-  An animated pixel crab that shows PC stats, music controls, Codex and Claude Code usage,
-  weather, a clock and a timer on a Wi-Fi touch display.
+  An animated pixel crab that shows PC stats, music controls, a volume mixer, Codex and Claude Code
+  usage, weather, a clock and a timer on a Wi-Fi touch display.
 </p>
 
 <p align="center">
@@ -19,7 +19,7 @@
 <p align="center">
   <a href="https://github.com/Kaayoos/clawpal/releases/latest"><b>Download</b></a>
   &nbsp;·&nbsp;
-  <a href="https://makerworld.com/en/models/3430625-esp32-clawpal-your-desk-pc-buddy-for-daily-use#profileId-3911176">3D-printable case</a>
+  <a href="https://makerworld.com/en/models/3546648-esp32-s3-pc-monitor-spotify-weather-desk-buddy#profileId-4057099">3D-printable cases</a>
   &nbsp;·&nbsp;
   <a href="#hardware">Supported boards</a>
   &nbsp;·&nbsp;
@@ -42,6 +42,7 @@ The crab lives on the Home screen next to a clock and shortcuts to your apps:
 - A full-screen alert on any app when Claude Code or Codex is waiting for your answer; **Show on PC** brings that window to the front
 - Weather now, for the next 24 hours and for five days
 - A clock and a timer with quick presets and an end time
+- Audio: a fader and a mute button for your speakers, your microphone and every app playing sound, each app with its own icon
 - Shortcuts: a grid of tiles that run things on your PC. Mute your mic or sound, change the volume, control media, lock the PC, turn the screens off, take a screenshot, open an app, website or folder, or press a key combination. Mute tiles light up while muted, and app tiles show the app's own icon
 
 Media, Codex and Claude Code can open their apps on the display automatically, or you can keep Home on screen. When you lock the PC or it goes to sleep, the crab naps instead of reporting the PC offline. Tap your crab for a hello.
@@ -52,24 +53,29 @@ Media, Codex and Claude Code can open their apps on the display automatically, o
 
 ## Hardware
 
-Only the Waveshare 4.3B has been tested on real hardware. Its main features were exercised during development, but backup restore and wider Windows and hardware testing still need doing. The other boards are experimental: they may fail to boot, show an image, read touch or wake up. If you try one, please report your exact board revision.
+Three boards are known to work on real hardware: the Waveshare 4.3B, the Waveshare 4.3 (without the B) and the LCDWIKI ES3C28P. Backup restore and wider Windows testing still need doing. The other boards are experimental: they may fail to boot, show an image, read touch or wake up. If you try one, please report your exact board revision.
 
 | Board | Screen | Status |
 | --- | --- | --- |
 | Waveshare ESP32-S3-Touch-LCD-4.3B | 800 × 480 | Tested |
+| [Waveshare ESP32-S3-Touch-LCD-4.3](https://www.waveshare.com/esp32-s3-touch-lcd-4.3.htm) (without the B; choose the 4.3B in the installer) | 800 × 480 | Tested |
 | Waveshare ESP32-S3-Touch-LCD-5 (standard 800 × 480 model) | 800 × 480 | Experimental |
 | Waveshare ESP32-S3-Touch-LCD-7, 16 MB flash | 800 × 480 | Experimental |
 | Waveshare ESP32-S3-Touch-LCD-7, 8 MB flash | 800 × 480 | Experimental |
 | Waveshare ESP32-S3-Touch-LCD-2.8C | 480 × 480 | Experimental |
 | Guition ESP32-4848S040C_I (capacitive touch) | 480 × 480 | Experimental |
 | M5Stack CoreS3 | 320 × 240 | Experimental |
-| LCDWIKI 2.8-inch ESP32-S3 Display (ES3C28P, capacitive touch) | 320 × 240 | Experimental |
+| LCDWIKI 2.8-inch ESP32-S3 Display (ES3C28P, capacitive touch) | 320 × 240 | Tested |
 
-Pick the exact model printed on your board, not one with the same chip or screen size. The Waveshare 5B (1024 × 600), non-B 4.3-inch boards, resistive-touch Guition boards, the touchless ES3N28P and M5Stack Core/Core2 are different hardware and aren't supported. For the 7-inch board, choose the flash size the installer's USB check reports. [Board profiles](boards/README.md) lists sources, revisions, layout behavior and recovery steps.
+Pick the exact model printed on your board, not one with the same chip or screen size. The Waveshare 5B (1024 × 600), resistive-touch Guition boards, the touchless ES3N28P and M5Stack Core/Core2 are different hardware and aren't supported. For the 7-inch board, choose the flash size the installer's USB check reports. [Board profiles](boards/README.md) lists sources, revisions, layout behavior and recovery steps.
 
 On square and smaller screens all apps still work. Content scrolls vertically above a fixed Apps/Home footer; swipe up for more Home shortcuts, forecast rows, task details or timer settings.
 
-ClawPal has a ready-made 3D-printable case on [MakerWorld](https://makerworld.com/en/models/3430625-esp32-clawpal-your-desk-pc-buddy-for-daily-use#profileId-3911176).
+<p align="center">
+  <img src="assets/06_desk_setup.jpg" alt="ClawPal in its 3D-printed case on a desk, showing Home below a monitor with the PC app open">
+</p>
+
+ClawPal has two ready-made 3D-printable cases on MakerWorld: [the newer design](https://makerworld.com/en/models/3546648-esp32-s3-pc-monitor-spotify-weather-desk-buddy#profileId-4057099) and [the original](https://makerworld.com/en/models/3430625-esp32-clawpal-your-desk-pc-buddy-for-daily-use#profileId-3911176).
 
 ## Install
 
@@ -90,7 +96,7 @@ After the first install, settings and firmware updates go over Wi-Fi, and firmwa
 
 In the companion you can:
 
-- Reorder Home shortcuts and choose which apps appear
+- Reorder Home shortcuts, choose which apps appear, and show the ClawPal version at the bottom of Home
 - Set English or Polish separately on the PC and the display
 - Switch between 12- and 24-hour time and Celsius or Fahrenheit, and set your location and weather preferences
 - Set idle dimming, brightness, night hours and the app shown while the PC is offline
@@ -119,7 +125,7 @@ With live limits enabled, the existing access token is decoded in memory and sen
 
 The PC and the display talk over your local network using plain HTTP. Every request is signed with your pairing key, which itself never crosses the network, so another device on the LAN can't send commands or replay old ones. The traffic isn't encrypted, though, so keep the display on a network you trust. Wi-Fi firmware updates must be signed by the ClawPal release key; your own builds need their own signing key (see [Build from source](docs/BUILDING.md)).
 
-Your location coordinates go to Open-Meteo for forecasts (location search uses its geocoding API too), and update checks contact GitHub. If you enable Live Claude limits, ClawPal sends an authenticated usage request to Anthropic. Codex data comes from your local Codex installation and may stop working if Codex changes. Music controls use Windows' local media session and the player's own entry in the Windows volume mixer, so the Media app never changes system volume. Shortcuts tiles do change system volume, mute and the microphone, but only the ones you add. What a tile runs stays on your PC; the display only receives its label, icon and colour, and a tap sends back only which tile it was. While the PC is locked, only sound, media, lock and screens-off tiles run. The album cover is shrunk to 160 × 160 pixels on the PC and sent only to your paired display, which keeps the current one in memory.
+Your location coordinates go to Open-Meteo for forecasts (location search uses its geocoding API too), and update checks contact GitHub. If you enable Live Claude limits, ClawPal sends an authenticated usage request to Anthropic. Codex data comes from your local Codex installation and may stop working if Codex changes. Music controls use Windows' local media session and the player's own entry in the Windows volume mixer, so the Media app never changes system volume. Shortcuts tiles do change system volume, mute and the microphone, but only the ones you add. What a tile runs stays on your PC; the display only receives its label, icon and colour, and a tap sends back only which tile it was. While the PC is locked, only sound, media, lock and screens-off tiles run. The Audio app changes the same volumes and mutes as the Windows volume mixer, for the output, the microphone and each app; the display receives each app's name and icon, and a move sends back only which channel and the new level. The album cover is shrunk to 160 × 160 pixels on the PC and sent only to your paired display, which keeps the current one in memory.
 
 FPS tracking is optional. It uses the bundled Intel PresentMon console helper and Windows ETW events, and it doesn't modify games or inject an overlay. Results and overhead depend on the game and your Windows permissions; when FPS isn't available, the field stays blank. There's no promise about how any game's anti-cheat treats it.
 

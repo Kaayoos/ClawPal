@@ -19,5 +19,7 @@ void buddy_shortcuts_page_set_connected(bool connected);
 /* Clears a reply the page was waiting for when another command takes the slot. */
 bool buddy_shortcuts_page_pending(void);
 void buddy_shortcuts_page_tick(void);
+/* Draws one of the shared line icons (buddy_shortcut_icon_id_t) to fill a square area. */
+void buddy_shortcut_icon_draw(lv_draw_ctx_t *ctx, const lv_area_t *area, unsigned id, lv_color_t ink);
 /* A short line for Home: what needs attention, or that the deck is ready. */
 const char *buddy_shortcuts_page_status(void);

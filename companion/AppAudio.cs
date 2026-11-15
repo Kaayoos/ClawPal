@@ -9,7 +9,8 @@ internal readonly record struct AppVolume(bool Available, int Volume, bool Muted
 // System volume and other applications are never touched.
 internal static class AppAudio
 {
-    internal static AppVolume Read(string process)
+    internal static AppVolume Read(string process) => CoreAudio.Run(() => ReadNow(process));
+    private static AppVolume ReadNow(string process)
     {
         AppVolume volume = default;
         Visit(process, audio =>
@@ -21,7 +22,8 @@ internal static class AppAudio
         return volume;
     }
 
-    internal static bool SetVolume(string process, int percent)
+    internal static bool SetVolume(string process, int percent) => CoreAudio.Run(() => SetVolumeNow(process, percent));
+    private static bool SetVolumeNow(string process, int percent)
     {
         float level = Math.Clamp(percent, 0, 100) / 100f;
         var context = Guid.Empty;
@@ -29,7 +31,8 @@ internal static class AppAudio
         return Visit(process, audio => audio.SetMasterVolume(level, ref context) == 0 && (level == 0 || audio.SetMute(false, ref context) == 0)) > 0;
     }
 
-    internal static bool ToggleMute(string process)
+    internal static bool ToggleMute(string process) => CoreAudio.Run(() => ToggleMuteNow(process));
+    private static bool ToggleMuteNow(string process)
     {
         var current = Read(process);
         var context = Guid.Empty;

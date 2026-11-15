@@ -45,7 +45,8 @@ static bool settings_look(const char *city, const char *timezone, int schema, in
 
 static bool settings(const char *city, const char *timezone, int schema, int apps, buddy_settings_t *out)
 {
-    return settings_look(city, timezone, schema, apps, schema >= 7 ? "\"theme\":\"crab\",\"accent\":\"champagne\"," : "", out);
+    return settings_look(city, timezone, schema, apps, schema >= 9 ? "\"theme\":\"crab\",\"accent\":\"champagne\",\"show_version\":false," :
+                         schema >= 7 ? "\"theme\":\"crab\",\"accent\":\"champagne\"," : "", out);
 }
 
 static void settings_checks(void)
@@ -61,7 +62,18 @@ static void settings_checks(void)
     check(!settings("Warsaw", "UTC0;rm", 6, 255, NULL), "time zone outside the POSIX character set is rejected");
     check(!settings("", "UTC0", 6, 255, NULL), "empty city is rejected");
     check(!settings("Warsaw", "UTC0", 6, 255 & ~32, NULL), "Home app cannot be disabled");
-    check(!settings("Warsaw", "UTC0", 9, 511, NULL), "unknown settings schema is rejected");
+    check(!settings("Warsaw", "UTC0", 10, 1023, NULL), "unknown settings schema is rejected");
+    check(settings("Warsaw", "UTC0", 9, 1023, &parsed) && (parsed.enabled_apps & 512) && !parsed.show_version, "schema 9 settings carry the Audio app");
+    check(settings("Warsaw", "UTC0", 9, 511, &parsed) && !(parsed.enabled_apps & 512), "schema 9 settings can turn Audio off");
+    check(!settings("Warsaw", "UTC0", 9, 2047, NULL), "schema 9 settings cannot name an eleventh app");
+    check(settings("Warsaw", "UTC0", 8, 511, &parsed) && (parsed.enabled_apps & 512) && !parsed.show_version, "older settings gain Audio and hide the version");
+    check(!settings_look("Warsaw", "UTC0", 9, 1023, "\"theme\":\"crab\",\"accent\":\"champagne\",", NULL), "schema 9 says whether Home shows the version");
+    check(!settings_look("Warsaw", "UTC0", 9, 1023, "\"theme\":\"crab\",\"accent\":\"champagne\",\"show_version\":1,", NULL), "the version choice is a boolean");
+    check(settings_look("Warsaw", "UTC0", 9, 1023, "\"theme\":\"crab\",\"accent\":\"champagne\",\"show_version\":true,", &parsed) && parsed.show_version,
+          "Home can show the version");
+    cJSON *shown = buddy_settings_json(&parsed); buddy_settings_t again = {0};
+    check(shown && buddy_settings_parse(shown, &again) && again.show_version && (again.enabled_apps & 512), "the version choice round-trips");
+    cJSON_Delete(shown);
     check(settings("Warsaw", "UTC0", 8, 511, &parsed) && (parsed.enabled_apps & 256), "schema 8 settings carry the Shortcuts app");
     check(settings("Warsaw", "UTC0", 8, 255, &parsed) && !(parsed.enabled_apps & 256), "schema 8 settings can turn Shortcuts off");
     check(!settings("Warsaw", "UTC0", 7, 511, NULL), "schema 7 settings cannot name a ninth app");

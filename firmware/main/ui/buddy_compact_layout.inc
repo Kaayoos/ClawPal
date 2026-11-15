@@ -187,7 +187,7 @@ static void compact_layout(void){
     place(ui.nav_button,w-100,body,100,44);small_text(ui.nav_text,0,13,88,24,&buddy_language_font_16);
     // The running-timer shortcut is a slim pill between Apps and Home.
     if(tiny){place(ui.timer_link,100,body+6,w-200,32);small_text(ui.timer_link_title,8,5,w-216,20,&buddy_language_font_14);place(ui.timer_link_progress,8,27,w-216,2);}
-    else{place(ui.timer_link,100,body,w-200,44);small_text(ui.timer_link_title,4,12,w-208,24,&buddy_language_font_14);place(ui.timer_link_progress,4,40,w-208,2);}
+    else{place(ui.timer_link,100,body+7,w-200,30);small_text(ui.timer_link_title,10,4,w-220,18,&buddy_language_font_14);place(ui.timer_link_progress,10,23,w-220,2);}
 }
 #else
 static void compact_layout(void){}

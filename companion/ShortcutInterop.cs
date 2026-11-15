@@ -8,11 +8,12 @@ internal static class EndpointAudio
 {
     private const int Render = 0, Capture = 1, Console = 0, Communications = 2;
 
-    internal static bool MicrophoneMuted() => Read(Capture, Console) is { } muted && muted;
-    internal static bool SpeakersMuted() => Read(Render, Console) is { } muted && muted;
+    internal static bool MicrophoneMuted() => CoreAudio.Run(() => Read(Capture, Console) is { } muted && muted);
+    internal static bool SpeakersMuted() => CoreAudio.Run(() => Read(Render, Console) is { } muted && muted);
 
     // A call app may use the communications microphone; muting means both, when they differ.
-    internal static bool ToggleMicrophone()
+    internal static bool ToggleMicrophone() => CoreAudio.Run(ToggleMicrophoneNow);
+    private static bool ToggleMicrophoneNow()
     {
         if (Read(Capture, Console) is not { } muted) return false;
         bool changed = false;
@@ -20,7 +21,8 @@ internal static class EndpointAudio
             using (volume) { var context = Guid.Empty; changed |= volume.Value.SetMute(!muted, ref context) == 0; }
         return changed;
     }
-    internal static bool ToggleSpeakers()
+    internal static bool ToggleSpeakers() => CoreAudio.Run(ToggleSpeakersNow);
+    private static bool ToggleSpeakersNow()
     {
         if (Read(Render, Console) is not { } muted) return false;
         bool changed = false;
@@ -29,7 +31,8 @@ internal static class EndpointAudio
         return changed;
     }
     // Like the keyboard's volume keys, a step also unmutes.
-    internal static bool Step(float delta)
+    internal static bool Step(float delta) => CoreAudio.Run(() => StepNow(delta));
+    private static bool StepNow(float delta)
     {
         bool changed = false;
         foreach (var volume in Volumes(Render, [Console]))

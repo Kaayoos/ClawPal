@@ -14,6 +14,7 @@ typedef enum {
     BUDDY_APP_WEATHER = 6,
     BUDDY_APP_CLAUDE = 7,
     BUDDY_APP_SHORTCUTS = 8,
+    BUDDY_APP_AUDIO = 9,
     BUDDY_APP_COUNT
 } buddy_app_t;
 

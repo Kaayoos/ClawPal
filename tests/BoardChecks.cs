@@ -13,7 +13,7 @@ internal static class BoardChecks
         void Reject(Action action,string label){try{action();}catch(Exception e)when(e is IOException or ArgumentException or NotSupportedException){Check(true,label);return;}throw new Exception(label);}
         var models=BoardCatalog.All;
         Check(models.Count==8,"Eight exact hardware profiles are available");
-        Check(models.Count(b=>!b.Experimental)==1&&!BoardCatalog.Get(BoardCatalog.DefaultId).Experimental,"Only the physically tested 4.3B is marked tested");
+        Check(models.Where(b=>!b.Experimental).Select(b=>b.Id).Order().SequenceEqual(new[]{"lcdwiki-es3c28p",BoardCatalog.DefaultId}.Order())&&!BoardCatalog.Get(BoardCatalog.DefaultId).Experimental,"Only the hardware-tested 4.3B and ES3C28P are marked tested");
         Check(models.Select(b=>b.AssetName).Distinct().Count()==models.Count,"Each board has a unique update asset");
         Check(models.Single(b=>b.Driver=="cores3-spi").Psram=="quad","CoreS3 uses quad PSRAM");
         Check(models.Single(b=>b.Driver=="es3c28p-spi").Psram=="octal","ES3C28P (N16R8) uses octal PSRAM");

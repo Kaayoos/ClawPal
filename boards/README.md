@@ -5,10 +5,11 @@ values are stable; append new entries. `scripts/generate-boards.py` generates
 firmware identities, dimensions, memory defaults and the CMake index. CI checks
 that generated files match. Hardware adapters live in `firmware/components/board`.
 
-## Experimental status
+## Tested and experimental boards
 
-The 4.3B is the only physically exercised target. Every other profile is
-experimental and has not been flashed onto that hardware by this project.
+Three boards run on real hardware: the 4.3B, the Waveshare 4.3 without the B
+(it uses the 4.3B profile) and the ES3C28P. Every other profile is experimental
+and has not been flashed onto that hardware by this project.
 Published pin maps and initialization sequences are the basis of these ports,
 not evidence of successful hardware operation. CoreS3 display revisions are
 selected using the touch-controller firmware ID (ILI9342C / ILI9342E).
@@ -16,9 +17,9 @@ The Guition mapping is based on the upstream `ESP32_4848S040C_I_Y_3` definition;
 other revisions with different wiring may need a separate profile.
 The ES3C28P follows LCDWIKI's published pin table and ILI9341V initialization;
 its portrait panel is turned to landscape (MADCTL MV|MX), and the touch
-coordinates get the same exchange and mirror. Rotation, colour order and touch
-direction are unconfirmed until someone runs it. The touchless ES3N28P is a
-different board and isn't supported.
+coordinates get the same exchange and mirror. Its rotation, colour order and
+touch direction are confirmed on hardware. The touchless ES3N28P is a different
+board and isn't supported.
 
 | Adapter | Display / touch | Backlight / power | Source |
 | --- | --- | --- | --- |

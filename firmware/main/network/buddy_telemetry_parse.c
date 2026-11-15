@@ -295,6 +295,39 @@ static bool parse_shortcuts(const cJSON *root, buddy_shortcuts_state_t *shortcut
         get_optional_uint32(value, "on", (1U << BUDDY_SHORTCUT_SLOTS) - 1, &shortcuts->on);
 }
 
+/* Channels are a short list of known kinds; an ID appears once, so a tap names one channel. */
+static bool parse_mixer(const cJSON *root, buddy_mixer_t *mixer)
+{
+    memset(mixer, 0, sizeof(*mixer));
+    const cJSON *value = cJSON_GetObjectItemCaseSensitive(root, "mixer");
+    if (!value || cJSON_IsNull(value)) return true;
+    mixer->present = true;
+    const cJSON *channels = cJSON_GetObjectItemCaseSensitive(value, "channels");
+    if (!cJSON_IsObject(value) || !cJSON_IsArray(channels) || cJSON_GetArraySize(channels) > BUDDY_MIXER_CHANNELS) return false;
+    uint32_t seen[(BUDDY_MIXER_MAX_ID + 32) / 32] = {0};
+    const cJSON *item;
+    cJSON_ArrayForEach(item, channels) {
+        buddy_mixer_channel_t *channel = &mixer->channels[mixer->count];
+        uint32_t id, kind, volume, color = 0;
+        bool muted = false;
+        if (!cJSON_IsObject(item) || !cJSON_IsNumber(cJSON_GetObjectItemCaseSensitive(item, "id")) ||
+            !cJSON_IsNumber(cJSON_GetObjectItemCaseSensitive(item, "kind")) || !cJSON_IsNumber(cJSON_GetObjectItemCaseSensitive(item, "volume")) ||
+            !get_optional_uint32(item, "id", BUDDY_MIXER_MAX_ID, &id) || !get_optional_uint32(item, "kind", BUDDY_MIXER_APP, &kind) ||
+            !get_optional_uint32(item, "volume", 100, &volume) || !get_optional_uint32(item, "color", 15, &color) ||
+            !get_optional_boolean(item, "muted", &muted) ||
+            !copy_json_string(item, "name", channel->name, sizeof(channel->name)) ||
+            (kind == BUDDY_MIXER_APP && !channel->name[0]) || (seen[id / 32] & (1U << (id % 32)))) return false;
+        seen[id / 32] |= 1U << (id % 32);
+        channel->id = (uint8_t)id;
+        channel->kind = (uint8_t)kind;
+        channel->volume = (uint8_t)volume;
+        channel->color = (uint8_t)color;
+        channel->muted = muted;
+        ++mixer->count;
+    }
+    return true;
+}
+
 bool buddy_telemetry_parse(const char *payload, size_t length, buddy_stats_t *stats)
 {
     if (!bounded_json(payload, length)) return false;
@@ -337,7 +370,7 @@ bool buddy_telemetry_parse(const char *payload, size_t length, buddy_stats_t *st
                  get_metric(network, "tx_bps", 0, 1e15, &stats->network_tx_bps) &&
                  parse_music(root, &stats->music) &&
                  parse_codex(root, "codex", &stats->codex) && parse_codex(root, "claude", &stats->claude) && parse_game(root, &stats->game) &&
-                 parse_shortcuts(root, &stats->shortcuts);
+                 parse_shortcuts(root, &stats->shortcuts) && parse_mixer(root, &stats->mixer);
     if (valid) stats->timestamp_ms = (int64_t)timestamp;
     cJSON_Delete(root);
     return valid;

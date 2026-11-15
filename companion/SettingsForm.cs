@@ -195,21 +195,23 @@ internal sealed class SettingsForm : ClawWindow
         var hint=ClawTheme.Label(L.Text("apps_stay_available_in_the_display_s_apps_menu"),395,10,false,65);
         var addCaption=ClawTheme.Label(L.Text("add_to_home"),300,13,true,30);
         addNote=ClawTheme.Label("",330,9,false,38);addApps=new ClawWrap(){ItemWidth=146,ItemHeight=50,Gap=8};
-        p.Controls.AddRange([previewCaption,listCaption,instruction,hint,addCaption,addNote,addApps]);
+        // Home's footer is quiet unless the version is asked for.
+        var version=Switch(L.Text("show_the_clawpal_version_on_home"),draft.ShowVersion,value=>SetDraft(draft with{ShowVersion=value}));
+        p.Controls.AddRange([previewCaption,listCaption,instruction,hint,version,addCaption,addNote,addApps]);
         orderList.Changed+=SetDraft;
         void Layout(){
             if(homePreview is null||orderList is null||addApps is null||addNote is null)return;
             bool sideBySide=p.Width>=790;
             int left=sideBySide?Math.Min(700,(int)(p.Width*.59)):Math.Min(560,p.Width);
             var model=BoardCatalog.Get(config.BoardId);homePreview.SetBounds(0,28,left,left*model.Height/model.Width);previewCaption.SetBounds(0,0,left,24);
-            hint.SetBounds(0,homePreview.Bottom+18,left,58);
+            hint.SetBounds(0,homePreview.Bottom+18,left,58);version.SetBounds(0,hint.Bottom+6,left,40);
             int x=sideBySide?left+28:0,y=sideBySide?0:hint.Bottom+24,right=sideBySide?p.Width-x:left;
             listCaption.SetBounds(x,y,right,30);instruction.SetBounds(x,y+34,right,40);
             int listHeight=Math.Max(62,draft.HomeOrder.Length*62);orderList.SetBounds(x,y+80,right,listHeight);
             int addTop=orderList.Bottom+22;addCaption.SetBounds(x,addTop,right,30);
             addNote.SetBounds(x,addTop+34,right,ClawStack.TextHeight(addNote,right));
             addApps.SetBounds(x,addNote.Bottom+8,right,addApps.Height);addApps.PerformLayout();
-            p.Height=Math.Max(hint.Bottom,addApps.Bottom)+24;
+            p.Height=Math.Max(version.Bottom,addApps.Bottom)+24;
         }
         addApps.Resize+=(_,_)=>Layout();p.Resize+=(_,_)=>Layout();orderList.Changed+=_=>Layout();RefreshAddApps();Layout();
     }
@@ -244,6 +246,7 @@ internal sealed class SettingsForm : ClawWindow
                 card.Add(Note(L.Text("uses_windows_frame_events_through_presentmon_game_files_stay")));
             }
             else if(app.Id==7)ClaudeOptions(card);
+            else if(app.Id==9)card.Add(Note(L.Text("audio_app_note")));
             else if(app.Id==8){var edit=new ClawButton{Text=L.Text("edit_shortcut_tiles"),Height=40};edit.Click+=(_,_)=>ShowPage(SettingsPage.Shortcuts);card.Add(Row(0,(edit,220)));}
             else if(app.Id is 1 or 6){var edit=new ClawButton{Text=L.Text("clock_weather_settings"),Height=40};edit.Click+=(_,_)=>ShowPage(SettingsPage.Clock);card.Add(Row(0,(edit,260)));}
         }

@@ -117,6 +117,31 @@ typedef struct {
     uint32_t on;
 } buddy_shortcuts_state_t;
 
+/* The Audio app's mixer: the PC's output, its microphone and each app playing sound. The PC
+ * names every channel with an ID it keeps while that app runs; the display only echoes it. */
+#define BUDDY_MIXER_CHANNELS 10
+#define BUDDY_MIXER_MAX_ID 255
+#define BUDDY_MIXER_NAME_BYTES 32
+typedef enum {
+    BUDDY_MIXER_OUTPUT = 0, /* the default speakers or headphones */
+    BUDDY_MIXER_MIC = 1,    /* the default microphone */
+    BUDDY_MIXER_SYSTEM = 2, /* Windows' own sounds */
+    BUDDY_MIXER_APP = 3,
+} buddy_mixer_kind_t;
+typedef struct {
+    uint8_t id, kind, color, volume; /* color: a Shortcuts palette index, 0 for the look's accent */
+    bool muted;
+    char name[BUDDY_MIXER_NAME_BYTES];
+} buddy_mixer_channel_t;
+typedef struct {
+    bool present; /* false when an older companion has no mixer */
+    uint8_t count;
+    buddy_mixer_channel_t channels[BUDDY_MIXER_CHANNELS];
+} buddy_mixer_t;
+/* mixer_volume carries (id << 7) | percent and mixer_mute (id << 1) | muted. */
+#define BUDDY_MIXER_VOLUME_VALUE(id, percent) (((uint32_t)(id) << 7) | (uint32_t)(percent))
+#define BUDDY_MIXER_MUTE_VALUE(id, muted) (((uint32_t)(id) << 1) | ((muted) ? 1U : 0U))
+
 typedef struct {
     char hostname[64];
     char cpu_name[96];
@@ -147,4 +172,5 @@ typedef struct {
     buddy_game_t game;
     /* present is false when an older companion has no Shortcuts. */
     buddy_shortcuts_state_t shortcuts;
+    buddy_mixer_t mixer;
 } buddy_stats_t;

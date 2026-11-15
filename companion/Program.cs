@@ -62,6 +62,17 @@ internal static class Program
                 var scan = args.Contains("--wifi-scan") ? Task.Run(() => WifiNetworks.ScanAsync(CancellationToken.None)).GetAwaiter().GetResult() : WifiNetworks.Read();
                 File.WriteAllText(wifiPath, JsonSerializer.Serialize(new { networks = scan.Networks.Length, band24 = scan.Networks.Count(n => n.Has24GHz), connected = scan.Networks.Count(n => n.Connected), open = scan.Networks.Count(n => !n.Secured), scan.Problem }, Protocol.Json)); return 0;
             }
+            // Reads the Audio app's channels as the display would get them; changes no volume.
+            if (Value(args, "--mixer-diagnostics") is { } mixerPath) {
+                var mixer = new AudioMixer(); var mixerStats = mixer.Snapshot(); var icons = mixer.IconPaths;
+                var channels = mixerStats.Channels.Select(c => new { c.Id, c.Kind, c.Name, c.Volume, c.Muted, c.Color,
+                    Icon = icons.TryGetValue(c.Id, out var iconPath) && AppIcons.DisplayPixels(iconPath) is not null });
+                // The connection loop runs on pool threads, so read once there too.
+                string Probe(Func<object> read) { try { return JsonSerializer.Serialize(read()); } catch (Exception error) { return error.GetType().Name + ": " + error.Message; } }
+                var background = Task.Run(() => new { mixer = Probe(() => new AudioMixer().Snapshot().Channels.Count), mic = Probe(() => EndpointAudio.MicrophoneMuted()) }).GetAwaiter().GetResult();
+                File.WriteAllText(mixerPath, JsonSerializer.Serialize(new { channels, telemetryBytes = JsonSerializer.SerializeToUtf8Bytes(mixerStats, Protocol.Json).Length,
+                    mainMic = Probe(() => EndpointAudio.MicrophoneMuted()), background }, Protocol.Json)); return 0;
+            }
             if (Value(args, "--shortcut-diagnostics") is { } shortcutPath) { ShortcutDiagnostics(shortcutPath, Value(args, "--shortcut-run")).GetAwaiter().GetResult(); return 0; }
             if (Value(args, "--music-diagnostics") is { } musicPath) { MusicDiagnostics(musicPath, Value(args, "--music-command")).GetAwaiter().GetResult(); return 0; }
             if (Value(args, "--claude-diagnostics") is { } claudePath) {

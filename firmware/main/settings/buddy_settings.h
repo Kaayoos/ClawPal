@@ -4,7 +4,7 @@
 #include "esp_err.h"
 #include "cJSON.h"
 
-#define BUDDY_SETTINGS_SCHEMA 8
+#define BUDDY_SETTINGS_SCHEMA 9
 #define BUDDY_HOME_SLOTS 5
 typedef struct {
     uint32_t revision;
@@ -15,6 +15,7 @@ typedef struct {
     uint8_t theme, accent; /* buddy_theme_id_t and buddy_accent_id_t */
     uint16_t dim_after_seconds;
     bool night_enabled;
+    bool show_version; /* Home's footer names the firmware version */
     char language[16];
     char city[64], timezone[128];
     double latitude, longitude;

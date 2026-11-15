@@ -20,6 +20,7 @@
 #include "buddy_settings.h"
 #include "buddy_weather.h"
 #include "buddy_shortcuts_page.h"
+#include "buddy_audio_page.h"
 #include "buddy_shortcut_data.h"
 #define BUDDY_LANGUAGE_LVGL
 #include "buddy_language.h"
@@ -192,7 +193,7 @@ static void base_settings(const uint8_t *order, unsigned count)
 {
     memset(&settings, 0, sizeof(settings));
     settings.revision = 1;
-    settings.enabled_apps = 511;
+    settings.enabled_apps = 1023;
     settings.home_count = (uint8_t)count;
     memcpy(settings.home_order, order, count);
     settings.use_24h = true;
@@ -238,6 +239,28 @@ static void base_weather(void)
     }
 }
 
+/* The Audio mixer as the companion reports it: the output first, apps in the order they
+ * started playing, the microphone last. Colour indexes follow shortcuts.json. */
+static void mixer_channel(unsigned id, unsigned kind, const char *name, unsigned volume, bool muted, unsigned color)
+{
+    buddy_mixer_channel_t *c = &stats.mixer.channels[stats.mixer.count++];
+    *c = (buddy_mixer_channel_t){ .id = (uint8_t)id, .kind = (uint8_t)kind, .volume = (uint8_t)volume, .muted = muted, .color = (uint8_t)color };
+    snprintf(c->name, sizeof(c->name), "%s", name);
+}
+static void base_mixer(unsigned count)
+{
+    memset(&stats.mixer, 0, sizeof(stats.mixer));
+    stats.mixer.present = true;
+    mixer_channel(0, BUDDY_MIXER_OUTPUT, "", 62, false, 0);
+    mixer_channel(3, BUDDY_MIXER_APP, "Spotify", 38, false, 4);
+    mixer_channel(4, BUDDY_MIXER_APP, "Google Chrome", 80, false, 3);
+    mixer_channel(5, BUDDY_MIXER_APP, "Discord", 45, true, 7);
+    if (count > 5) mixer_channel(6, BUDDY_MIXER_APP, "Steam", 100, false, 6);
+    if (count > 6) mixer_channel(2, BUDDY_MIXER_SYSTEM, "", 24, false, 9);
+    if (count > 7) mixer_channel(7, BUDDY_MIXER_APP, "Firefox", 55, false, 2);
+    mixer_channel(1, BUDDY_MIXER_MIC, "", 70, false, 5);
+}
+
 static void base_stats(void)
 {
     memset(&stats, 0, sizeof(stats));
@@ -276,6 +299,7 @@ static void base_stats(void)
     /* Spotify metadata: fictional track. */
     buddy_music_t *m = &stats.music;
     m->running = false;
+    base_mixer(5);
 }
 
 static void music_playing(const char *title, const char *artist, const char *album, uint32_t position, uint32_t duration)
@@ -405,6 +429,35 @@ static uint8_t *sample_icon(void)
     return pixels;
 }
 
+/* Stand-ins for the program icons the PC sends with each Audio channel: a disc, a rounded
+ * square or a ring in an app-like colour, with a light mark. Fictional, not real logos. */
+static uint16_t rgb565(uint32_t c) { return (uint16_t)(((c >> 19) & 31) << 11 | ((c >> 10) & 63) << 5 | ((c >> 3) & 31)); }
+static uint8_t *mock_app_icon(unsigned shape, uint32_t fill, uint32_t mark)
+{
+    uint8_t *pixels = malloc(BUDDY_SHORTCUT_ICON_BYTES);
+    if (!pixels) exit(1);
+    for (int y = 0; y < BUDDY_SHORTCUT_ICON_SIZE; ++y) for (int x = 0; x < BUDDY_SHORTCUT_ICON_SIZE; ++x) {
+        int dx = x - 24, dy = y - 24, r2 = dx * dx + dy * dy;
+        int cx = x < 12 ? 12 - x : x > 35 ? x - 35 : 0, cy = y < 12 ? 12 - y : y > 35 ? y - 35 : 0;
+        bool inside = shape == 1 ? x >= 2 && x < 46 && y >= 2 && y < 46 && cx * cx + cy * cy <= 100 : r2 <= 22 * 22;
+        bool marked = shape == 0 ? (dy == -6 || dy == 0 || dy == 6) && dx > -12 && dx < 12 - (dy + 6) / 2 :
+            shape == 1 ? (dx * dx + (dy + 2) * (dy + 2) <= 49 && dy < 4) || (dy >= 5 && dy <= 8 && dx > -11 && dx < 11) :
+            r2 <= 10 * 10 && r2 >= 6 * 6;
+        uint16_t c = rgb565(marked ? mark : fill);
+        uint8_t *p = pixels + (y * BUDDY_SHORTCUT_ICON_SIZE + x) * 3;
+        p[0] = (uint8_t)c; p[1] = (uint8_t)(c >> 8); p[2] = inside ? 255 : 0;
+    }
+    return pixels;
+}
+static void mixer_icons(void)
+{
+    buddy_audio_page_set_icon(3, mock_app_icon(0, 0x1ED760, 0x101010));
+    buddy_audio_page_set_icon(4, mock_app_icon(2, 0xF2B233, 0x2F7DE1));
+    buddy_audio_page_set_icon(5, mock_app_icon(1, 0x5865F2, 0xFFFFFF));
+    buddy_audio_page_set_icon(6, mock_app_icon(1, 0x1B2838, 0x66C0F4));
+    buddy_audio_page_set_icon(7, mock_app_icon(2, 0xFF7139, 0x7542E5));
+}
+
 /* Feed telemetry and the clock like main.c while time passes. */
 static double since_stats;
 static void live(double ms)
@@ -529,7 +582,7 @@ int main(int argc,char **argv){
     tap_overlay_label(BT(BT_SHOW_ON_PC));if(strcmp(music_last_action,"focus")||music_last_value!=BUDDY_APP_CLAUDE||buddy_ui_get_state().needs_you)return 41;
     music_reply();live(1000);if(buddy_ui_get_state().needs_you)return 42;
     starter_deck(7,8);send_stats();
-    const char *names[]={"monitor","clock","music","timer","codex","home","weather","claude","shortcuts"};
+    const char *names[]={"monitor","clock","music","timer","codex","home","weather","claude","shortcuts","audio"};
     _Static_assert(sizeof(names)/sizeof(names[0])==BUDDY_APP_COUNT,"a frame name for every app");
     for(int app=0;app<BUDDY_APP_COUNT;++app){
         if(!buddy_ui_select_app((buddy_app_t)app))return 3;live(1400);if(buddy_ui_get_state().active_app!=(unsigned)app)return 4;
@@ -616,6 +669,40 @@ int main(int argc,char **argv){
             memset(&sim_deck,0,sizeof(sim_deck));send_deck(11,12);send_stats();live(400);
             if(!find_label(lv_scr_act(),BT(BT_ADD_SHORTCUTS_IN_CLAWPAL_ON_YOUR_PC)))return 60;save_frame("shortcuts-empty");
             starter_deck(12,8);send_stats();live(400);
+        }
+        if(app==BUDDY_APP_AUDIO){
+            // The generic swipe above moved a fader on the smaller screens; let its hold run out.
+            base_mixer(5);send_stats();live(2400);send_stats();live(400);
+            if(!buddy_audio_page_set_icon(3,sample_icon()))return 61;mixer_icons();live(100);save_frame("audio");
+            // A finger dragged up a fader raises that app alone; the page sends the newest level.
+            lv_obj_t *level=find_label(lv_scr_act(),"80%");if(!level)return 69;
+            lv_obj_t *strip=lv_obj_get_parent(level);
+            lv_area_t a;lv_obj_get_coords(strip,&a);int x=(a.x1+a.x2)/2,y=(a.y1+a.y2)/2;
+            music_last_action[0]=0;touch_x=x;touch_y=y;touch_state=LV_INDEV_STATE_PRESSED;step(60);
+            for(int i=1;i<=12;++i){touch_y=y-i*4;step(16);}
+            touch_state=LV_INDEV_STATE_RELEASED;step(200);
+            if(strcmp(music_last_action,"mixer_volume")||(music_last_value>>7)!=4U||(music_last_value&127U)<=80U)return 62;
+            unsigned raised=music_last_value&127U;char shown[8];snprintf(shown,sizeof(shown),"%u%%",raised);
+            // Telemetry still reporting the old level does not pull the fader back while it is held.
+            send_stats();live(300);if(!find_label(lv_scr_act(),shown))return 63;save_frame("audio-dragged");
+            stats.mixer.channels[2].volume=(uint8_t)raised;send_stats();live(2200);if(!find_label(lv_scr_act(),shown))return 64;
+            // Mute sits under each fader; Discord is muted, so its button unmutes it.
+            lv_obj_t *muted=find_label(lv_scr_act(),BT(BT_MUTED));if(!muted)return 65;
+            lv_obj_t *discord=lv_obj_get_parent(muted);lv_obj_t *button=lv_obj_get_child(discord,(int32_t)lv_obj_get_child_cnt(discord)-1);
+            lv_obj_get_coords(button,&a);music_last_action[0]=0;tap((a.x1+a.x2)/2,(a.y1+a.y2)/2,90);live(200);
+            if(strcmp(music_last_action,"mixer_mute")||music_last_value!=(5U<<1))return 66;
+            stats.mixer.channels[3].muted=false;send_stats();live(2400);
+            stats.mixer.channels[0].muted=true;send_stats();live(400);save_frame("audio-muted");
+            if(strcmp(buddy_audio_page_status(),BT(BT_SOUND_MUTED)))return 67;
+            stats.mixer.channels[0].muted=false;
+            // More channels than fit leave the next strip peeking in; the row scrolls sideways.
+            base_mixer(8);send_stats();live(500);save_frame("audio-many");
+            lv_obj_t *row=lv_obj_get_parent(lv_obj_get_parent(find_label(lv_scr_act(),"62%")));
+            lv_obj_scroll_to_x(row,LV_COORD_MAX,LV_ANIM_OFF);live(300);save_frame("audio-many-scrolled");lv_obj_scroll_to_x(row,0,LV_ANIM_OFF);
+            // Nothing playing: the output and the microphone alone, centred.
+            base_mixer(5);stats.mixer.count=1;mixer_channel(1,BUDDY_MIXER_MIC,"",70,false,5);send_stats();live(500);save_frame("audio-two");
+            stats.mixer.present=false;send_stats();live(400);if(!find_label(lv_scr_act(),BT(BT_UPDATE_CLAWPAL_ON_YOUR_PC)))return 68;save_frame("audio-old-pc");
+            base_mixer(5);send_stats();live(400);
         }
         if(app==BUDDY_APP_CLAUDE){
             // A nearly spent window turns amber and projects when it runs out.

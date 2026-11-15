@@ -16,7 +16,7 @@ First installation creates the ESP-IDF v2 NVS image in C#, using byte-based vali
 
 The companion protects its pairing token with Windows DPAPI. Discovery uses a random nonce and HMAC proof. Since protocol 2 (discovery hello `v:2`) the reply also carries a fresh challenge, covered by the proof, and every HTTP and WebSocket request is signed instead of sending the token: `Authorization: ClawPal-HMAC c=<challenge>,n=<counter>,s=<HMAC-SHA256(token, "clawpal-auth-v2\n" method \n path \n challenge \n counter \n body-SHA-256)>` with the body hash in `X-ClawPal-Body-SHA256`. The display accepts each counter once per challenge (it must increase), keeps 16 challenges for ten minutes and forgets them on restart, so captured requests cannot be replayed. Handlers that read a body check it against the signed hash; a firmware upload is signed with its declared image SHA-256, which the update path already verifies. Protocol 2 firmware refuses the bearer token; the companion still sends it to protocol 1 firmware, whose hello cannot be forged without the token. `buddy_auth.c` and `DeviceAuth.cs` implement the two sides and share test vectors. Weather is fetched by the ESP over verified HTTPS independently of the PC. Credentials never go to the weather service. PC preferences are saved locally and take effect without a firmware write.
 
-Firmware 0.7.0 exposes authenticated `GET /settings` and `POST /settings` using schema 6 (schemas 2–5 NVS records migrate on boot). Settings include dim behavior/delay/brightness, night enabled/start/end, offline app, and: `enabled_apps`, `home_order`, `use_24h`, `weather_enabled`, city, latitude, longitude, and POSIX timezone. IDs are Monitor 0, Clock 1, Spotify 2, Timer 3, Codex 4, Home 5, Weather 6, Claude Code 7, Shortcuts 8. Home's bit is mandatory. Schema 8 widens `enabled_apps` to nine bits; older records gain the Shortcuts bit when they migrate, and Shortcuts can never be the offline app. Home order contains zero to five distinct enabled app IDs, excluding Home itself. The complete validated record is committed to one NVS string, `buddy/display_cfg`, before publishing the in-memory revision. Boot migrates the original location keys when no saved record exists. The UI applies revisions under its LVGL lock; weather invalidates its cache after a location change. No restart is required.
+Firmware 0.7.0 exposes authenticated `GET /settings` and `POST /settings` using schema 6 (schemas 2–5 NVS records migrate on boot). Settings include dim behavior/delay/brightness, night enabled/start/end, offline app, and: `enabled_apps`, `home_order`, `use_24h`, `weather_enabled`, city, latitude, longitude, and POSIX timezone. IDs are Monitor 0, Clock 1, Spotify 2, Timer 3, Codex 4, Home 5, Weather 6, Claude Code 7, Shortcuts 8, Audio 9. Home's bit is mandatory. Schema 8 widens `enabled_apps` to nine bits; older records gain the Shortcuts bit when they migrate, and Shortcuts can never be the offline app. Schema 9 adds the Audio bit, which older records gain the same way, and a required `show_version` boolean: whether Home's footer names the firmware version. It defaults to off, including for older records; Audio can never be the offline app either. Home order contains zero to five distinct enabled app IDs, excluding Home itself. The complete validated record is committed to one NVS string, `buddy/display_cfg`, before publishing the in-memory revision. Boot migrates the original location keys when no saved record exists. The UI applies revisions under its LVGL lock; weather invalidates its cache after a location change. No restart is required.
 
 The PC persists unsent display preferences and retries them after reconnecting. JSON writes use buffered UTF-8 content with an explicit Content-Length: the ESP-IDF server does not decode chunked request bodies. Request rejection and pairing errors are reported separately from offline retries. It checks the device's schema before writing, requires a save acknowledgment, then reads the settings back. A reference check prevents an older completed request from clearing a newer pending edit. Display configuration also syncs while PC monitoring is paused. Disabled Spotify/Codex/Claude integrations stop discovery/collection; disabling Monitor stops optional FPS collection.
 
@@ -112,6 +112,31 @@ the tile is not safe to run then (only sound, media, lock and screens-off tiles 
 `failed` when Windows refused. The display shows the reply in its header and flashes the
 tile. Older companions never advertise `shortcuts`, so older firmware and companions never
 see an action they do not know.
+
+Audio (app 9) is a mixer: a fader and a mute button for the PC's default output, each app
+with an entry in the Windows volume mixer, Windows' own sounds and the default microphone.
+Each telemetry frame carries `mixer: {channels:[{id, kind, name, volume, muted, color}]}`,
+at most ten channels in display order: the output first, then apps in the order the PC first
+saw them (apps playing sound win a place when there are too many), Windows' sounds, and the
+microphone last. `kind` is 0 output, 1 microphone, 2 Windows' sounds or 3 app; only apps
+carry a `name` (at most 31 UTF-8 bytes the display fonts cover). `id` is 0, 1 and 2 for the
+fixed channels; apps get IDs from 3 to 255 that stay put while the companion runs. `color`
+is a Shortcuts palette index picked from the app's icon (0 follows the look's accent);
+`muted` and `color` are left out when false or 0. If a frame would exceed the display's
+limit, apps drop off the mixer first. Each app channel's 48 × 48 icon goes once per
+connection to authenticated `POST /mixer-icon` (the Shortcuts icon format, with an
+`X-ClawPal-Mixer-Id` header); the display keeps up to twelve in RAM and evicts icons of
+channels it no longer shows. Firmware without `/mixer-icon` answers 404 and that connection
+stops sending icons.
+
+A fader sends `buddy.control` `mixer_volume` with `value` = `id << 7 | percent`, and the mute
+button `mixer_mute` with `value` = `id << 1 | muted`, asking for a state rather than toggling.
+While dragging, the display sends the newest level at most every 80 ms without waiting for a
+reply, and shows its own value for two seconds after the last move so an older frame cannot
+pull the fader back. The companion applies a level to every session of that app on every
+active output (or to the default endpoint for the output and microphone) and unmutes on any
+level above zero. Its answer is `unavailable` when the channel has gone. The display offers
+the mixer only while telemetry carries `mixer`.
 
 Authenticated `GET /health` includes a `system` object: reset reason, uptime, free and
 minimum-free internal and PSRAM heap, the largest internal block, stack low-water marks for

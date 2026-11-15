@@ -131,16 +131,11 @@ static uint32_t icon_ink(unsigned slot)
     return tile_on(slot) && !buddy_theme.outlined_cards ? BUDDY_COLOR_BG : tile_color(tile);
 }
 
-static void draw_icon(lv_event_t *event)
+void buddy_shortcut_icon_draw(lv_draw_ctx_t *ctx, const lv_area_t *area, unsigned id, lv_color_t ink)
 {
-    lv_obj_t *obj = lv_event_get_target(event);
-    unsigned slot = (unsigned)(uintptr_t)lv_event_get_user_data(event);
-    if (!tile_at(slot) || (sc.pixels[slot] && tile_at(slot)->app_icon)) return;
-    lv_draw_ctx_t *ctx = lv_event_get_draw_ctx(event);
-    lv_area_t a;
-    lv_obj_get_coords(obj, &a);
-    int size = lv_obj_get_width(obj);
-    lv_color_t ink = lv_color_hex(icon_ink(slot));
+    if (id >= BUDDY_SHORTCUT_ICON_COUNT) return;
+    lv_area_t a = *area;
+    int size = lv_area_get_width(&a);
     lv_draw_line_dsc_t line;
     lv_draw_line_dsc_init(&line);
     line.color = ink;
@@ -156,7 +151,7 @@ static void draw_icon(lv_event_t *event)
     arc.color = ink;
     arc.width = line.width;
     arc.rounded = 1;
-    const buddy_shortcut_icon_t *icon = &buddy_shortcut_icons[shown_icon(slot)];
+    const buddy_shortcut_icon_t *icon = &buddy_shortcut_icons[id];
 #define X(v) (a.x1 + (v) * size / 100)
 #define Y(v) (a.y1 + (v) * size / 100)
     for (unsigned s = 0; s < icon->count; ++s) {
@@ -181,6 +176,16 @@ static void draw_icon(lv_event_t *event)
     }
 #undef X
 #undef Y
+}
+
+static void draw_icon(lv_event_t *event)
+{
+    lv_obj_t *obj = lv_event_get_target(event);
+    unsigned slot = (unsigned)(uintptr_t)lv_event_get_user_data(event);
+    if (!tile_at(slot) || (sc.pixels[slot] && tile_at(slot)->app_icon)) return;
+    lv_area_t a;
+    lv_obj_get_coords(obj, &a);
+    buddy_shortcut_icon_draw(lv_event_get_draw_ctx(event), &a, shown_icon(slot), lv_color_hex(icon_ink(slot)));
 }
 
 static void restore_border(lv_obj_t *tile, bool on, uint32_t color)
@@ -628,6 +633,8 @@ bool buddy_shortcuts_page_set_icon(uint32_t rev, unsigned slot, uint8_t *pixels)
     };
     lv_img_cache_invalidate_src(&sc.image_dsc[slot]);
     lv_img_set_src(sc.images[slot], &sc.image_dsc[slot]);
+    /* A new source re-centres the pivot; the zoom scales from the corner. */
+    lv_img_set_pivot(sc.images[slot], 0, 0);
     lv_img_set_zoom(sc.images[slot], (uint16_t)(256 * lv_obj_get_width(sc.icons[slot]) / BUDDY_SHORTCUT_ICON_SIZE));
     style_tile(slot);
     return true;

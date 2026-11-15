@@ -10,6 +10,7 @@
 #include "buddy_weather.h"
 #include "buddy_shortcuts.h"
 #include "buddy_shortcuts_page.h"
+#include "buddy_audio_page.h"
 
 #include <ctype.h>
 #include <errno.h>
@@ -69,6 +70,9 @@ typedef enum {
     MUSIC_FOCUS = 256,
     /* Not media: runs a Shortcuts tile; the value names the deck revision and slot. */
     MUSIC_SHORTCUT = 512,
+    /* Not media: sets one Audio channel's level or mute; the value names the channel. */
+    MUSIC_MIXER_VOLUME = 1024,
+    MUSIC_MIXER_MUTE = 2048,
 } music_action_t;
 
 typedef struct {
@@ -286,14 +290,18 @@ static const char *music_action_name(music_action_t action)
     case MUSIC_MUTE: return "mute";
     case MUSIC_FOCUS: return "focus";
     case MUSIC_SHORTCUT: return "shortcut";
+    case MUSIC_MIXER_VOLUME: return "mixer_volume";
+    case MUSIC_MIXER_MUTE: return "mixer_mute";
     default: return NULL;
     }
 }
 
-/* Seek carries seconds, volume a percentage, focus an app ID and shortcut a tile; the rest are toggles. */
+/* Seek carries seconds, volume a percentage, focus an app ID, shortcut a tile and the mixer
+ * actions a channel; the rest are toggles. */
 static bool music_action_valued(music_action_t action)
 {
-    return action == MUSIC_SEEK || action == MUSIC_VOLUME || action == MUSIC_FOCUS || action == MUSIC_SHORTCUT;
+    return action == MUSIC_SEEK || action == MUSIC_VOLUME || action == MUSIC_FOCUS || action == MUSIC_SHORTCUT ||
+        action == MUSIC_MIXER_VOLUME || action == MUSIC_MIXER_MUTE;
 }
 
 static bool activity_waiting(const buddy_codex_activity_t *activity)
@@ -383,10 +391,14 @@ bool buddy_network_music_control(const char *action, uint32_t value)
     else if (strcmp(action, "mute") == 0) selected = MUSIC_MUTE;
     else if (strcmp(action, "focus") == 0) selected = MUSIC_FOCUS;
     else if (strcmp(action, "shortcut") == 0) selected = MUSIC_SHORTCUT;
+    else if (strcmp(action, "mixer_volume") == 0) selected = MUSIC_MIXER_VOLUME;
+    else if (strcmp(action, "mixer_mute") == 0) selected = MUSIC_MIXER_MUTE;
     else return false;
     if ((selected == MUSIC_SEEK && value > BUDDY_MUSIC_MAX_SECONDS) || (selected == MUSIC_VOLUME && value > 100) ||
         (selected == MUSIC_FOCUS && value != BUDDY_APP_CODEX && value != BUDDY_APP_CLAUDE) ||
-        (selected == MUSIC_SHORTCUT && ((value & 31U) >= BUDDY_SHORTCUT_SLOTS || (value >> 5) < 1 || (value >> 5) > BUDDY_SHORTCUT_MAX_REV))) return false;
+        (selected == MUSIC_SHORTCUT && ((value & 31U) >= BUDDY_SHORTCUT_SLOTS || (value >> 5) < 1 || (value >> 5) > BUDDY_SHORTCUT_MAX_REV)) ||
+        (selected == MUSIC_MIXER_VOLUME && ((value & 127U) > 100 || (value >> 7) > BUDDY_MIXER_MAX_ID)) ||
+        (selected == MUSIC_MIXER_MUTE && (value >> 1) > BUDDY_MIXER_MAX_ID)) return false;
     if (!music_action_valued(selected)) value = 0;
     if (!(xEventGroupGetBits(events) & CONNECTED_BIT) || xSemaphoreTake(state_lock, 0) != pdTRUE) return false;
     int64_t now = esp_timer_get_time();
@@ -496,6 +508,7 @@ static esp_err_t websocket_handler(httpd_req_t *request)
     }
     if (activity_waiting(&stats.codex.activity) || activity_waiting(&stats.claude.activity)) music_capabilities |= MUSIC_FOCUS;
     if (stats.shortcuts.present) music_capabilities |= MUSIC_SHORTCUT;
+    if (stats.mixer.present) music_capabilities |= MUSIC_MIXER_VOLUME | MUSIC_MIXER_MUTE;
     xSemaphoreGive(state_lock);
     if (callbacks.on_stats) callbacks.on_stats(&stats);
     char acknowledgement[96];
@@ -589,6 +602,7 @@ static esp_err_t health_handler(httpd_req_t *request)
     case BUDDY_APP_HOME: app_name = "home"; break;
     case BUDDY_APP_WEATHER: app_name = "weather"; break;
     case BUDDY_APP_SHORTCUTS: app_name = "shortcuts"; break;
+    case BUDDY_APP_AUDIO: app_name = "audio"; break;
     default: app_name = "unknown"; break;
     }
     buddy_weather_t weather = buddy_weather_get();
@@ -807,6 +821,26 @@ static esp_err_t shortcut_icon_handler(httpd_req_t *request)
     return httpd_resp_sendstr(request, kept ? "{\"saved\":true}" : "{\"saved\":false}");
 }
 
+/* An Audio channel's app icon, sent once per channel per connection. */
+static esp_err_t mixer_icon_handler(httpd_req_t *request)
+{
+    if (require_auth(request) != ESP_OK) return ESP_FAIL;
+    unsigned long id;
+    if (!header_number(request, "X-ClawPal-Mixer-Id", 0, BUDDY_MIXER_MAX_ID, &id) ||
+        request->content_len != BUDDY_SHORTCUT_ICON_BYTES)
+        return httpd_resp_send_err(request, HTTPD_400_BAD_REQUEST, "Invalid icon");
+    uint8_t *pixels = read_signed_body(request, 0);
+    if (!pixels) return httpd_resp_send_err(request, HTTPD_400_BAD_REQUEST, "Icon does not match its signature");
+    if (!board_lvgl_lock(1000)) {
+        free(pixels);
+        return httpd_resp_send_err(request, HTTPD_500_INTERNAL_SERVER_ERROR, BT(BT_DISPLAY_BUSY));
+    }
+    bool kept = buddy_audio_page_set_icon((unsigned)id, pixels);
+    board_lvgl_unlock();
+    httpd_resp_set_type(request, "application/json");
+    return httpd_resp_sendstr(request, kept ? "{\"saved\":true}" : "{\"saved\":false}");
+}
+
 static esp_err_t snapshot_handler(httpd_req_t *request)
 {
     if (require_auth(request) != ESP_OK) return ESP_FAIL;
@@ -994,7 +1028,7 @@ static esp_err_t start_monitor_server(void)
     config.ctrl_port = MONITOR_PORT + 1;
     config.stack_size = 8192;
     config.max_open_sockets = 4;
-    config.max_uri_handlers = 14;
+    config.max_uri_handlers = 16;
     config.lru_purge_enable = true;
     config.close_fn = close_session;
     config.recv_wait_timeout = 3;
@@ -1029,6 +1063,8 @@ static esp_err_t start_monitor_server(void)
     const httpd_uri_t shortcut_icon = {.uri = "/shortcut-icon", .method = HTTP_POST, .handler = shortcut_icon_handler};
     ESP_RETURN_ON_ERROR(httpd_register_uri_handler(monitor_server, &shortcuts), TAG, "Shortcuts URI");
     ESP_RETURN_ON_ERROR(httpd_register_uri_handler(monitor_server, &shortcut_icon), TAG, "Shortcut icon URI");
+    const httpd_uri_t mixer_icon = {.uri = "/mixer-icon", .method = HTTP_POST, .handler = mixer_icon_handler};
+    ESP_RETURN_ON_ERROR(httpd_register_uri_handler(monitor_server, &mixer_icon), TAG, "Mixer icon URI");
     return httpd_register_uri_handler(monitor_server, &snapshot);
 }
 

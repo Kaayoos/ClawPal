@@ -113,6 +113,54 @@ static void telemetry_checks(void)
           !telemetry_with("\"auto_open_apps\":false", "\"auto_open_apps\":false,\"shortcuts\":{\"rev\":65536}") &&
           !telemetry_with("\"auto_open_apps\":false", "\"auto_open_apps\":false,\"shortcuts\":{\"rev\":9,\"on\":65536}"),
           "telemetry: Shortcuts carry a revision and a 16-tile mask");
+    check(telemetry(telemetry_full, &s) && !s.mixer.present && !s.mixer.count, "telemetry: an older companion has no mixer");
+#define MIXER(body) "\"auto_open_apps\":false,\"mixer\":" body
+#define OPEN "\"auto_open_apps\":false"
+    check(telemetry_with(OPEN, MIXER("{\"channels\":[{\"id\":0,\"kind\":0,\"name\":\"\",\"volume\":62,\"muted\":false},"
+                                     "{\"id\":3,\"kind\":3,\"name\":\"Spotify\",\"volume\":38,\"muted\":true,\"color\":4}]}")),
+          "telemetry: mixer channels parse");
+    {
+        char frame[sizeof(telemetry_full) + 512];
+        const char *at = strstr(telemetry_full, OPEN);
+        snprintf(frame, sizeof(frame), "%.*s%s%s", (int)(at - telemetry_full), telemetry_full,
+                 MIXER("{\"channels\":[{\"id\":0,\"kind\":0,\"volume\":62},{\"id\":7,\"kind\":3,\"name\":\"Discord\",\"volume\":100,\"muted\":true,\"color\":7}]}"),
+                 at + strlen(OPEN));
+        check(telemetry(frame, &s) && s.mixer.present && s.mixer.count == 2 && s.mixer.channels[0].volume == 62 &&
+              s.mixer.channels[1].id == 7 && s.mixer.channels[1].muted && s.mixer.channels[1].color == 7 && !strcmp(s.mixer.channels[1].name, "Discord"),
+              "telemetry: mixer values reach the display");
+    }
+    check(telemetry_with(OPEN, MIXER("{\"channels\":[]}")), "telemetry: a PC without sound devices sends an empty mixer");
+    check(!telemetry_with(OPEN, MIXER("{\"channels\":[{\"id\":3,\"kind\":3,\"name\":\"A\",\"volume\":1},{\"id\":3,\"kind\":3,\"name\":\"B\",\"volume\":1}]}")) &&
+          !telemetry_with(OPEN, MIXER("{\"channels\":[{\"id\":3,\"kind\":3,\"name\":\"A\",\"volume\":101}]}")) &&
+          !telemetry_with(OPEN, MIXER("{\"channels\":[{\"id\":256,\"kind\":3,\"name\":\"A\",\"volume\":1}]}")) &&
+          !telemetry_with(OPEN, MIXER("{\"channels\":[{\"id\":3,\"kind\":4,\"name\":\"A\",\"volume\":1}]}")) &&
+          !telemetry_with(OPEN, MIXER("{\"channels\":[{\"id\":3,\"kind\":3,\"name\":\"\",\"volume\":1}]}")) &&
+          !telemetry_with(OPEN, MIXER("{\"channels\":[{\"id\":3,\"kind\":3,\"name\":\"A\"}]}")) &&
+          !telemetry_with(OPEN, MIXER("{\"channels\":[{\"id\":3,\"kind\":3,\"name\":\"A\",\"volume\":1,\"muted\":1}]}")) &&
+          !telemetry_with(OPEN, MIXER("{\"channels\":[{\"id\":3,\"kind\":3,\"name\":\"A\",\"volume\":1,\"color\":16}]}")) &&
+          !telemetry_with(OPEN, MIXER("{\"channels\":[{\"id\":3,\"kind\":3,\"name\":\"0123456789012345678901234567890123\",\"volume\":1}]}")) &&
+          !telemetry_with(OPEN, MIXER("{\"channels\":{}}")) && !telemetry_with(OPEN, MIXER("[]")),
+          "telemetry: mixer channels are unique, bounded and well formed");
+    {
+        char many[1024] = "{\"channels\":[";
+        for (int i = 0; i < 11; ++i) {
+            char one[80];
+            snprintf(one, sizeof(one), "%s{\"id\":%d,\"kind\":3,\"name\":\"App\",\"volume\":5}", i ? "," : "", i + 3);
+            strcat(many, one);
+        }
+        strcat(many, "]}");
+        static char frame[sizeof(telemetry_full) + 1200];
+        const char *at = strstr(telemetry_full, OPEN);
+        snprintf(frame, sizeof(frame), "%.*s%s,\"mixer\":%s%s", (int)(at - telemetry_full), telemetry_full, OPEN, many, at + strlen(OPEN));
+        check(!telemetry(frame, NULL), "telemetry: at most ten mixer channels");
+        strstr(many, ",{\"id\":13")[0] = ']';
+        strstr(many, "]{\"id\":13")[1] = '\0';
+        strcat(many, "}");
+        snprintf(frame, sizeof(frame), "%.*s%s,\"mixer\":%s%s", (int)(at - telemetry_full), telemetry_full, OPEN, many, at + strlen(OPEN));
+        check(telemetry(frame, &s) && s.mixer.count == 10, "telemetry: ten mixer channels fit");
+    }
+#undef MIXER
+#undef OPEN
     check(telemetry_with("\"control_error\":null}", "\"control_error\":null,\"source\":\"Apple Music\",\"art_id\":77}") &&
           !telemetry_with("\"control_error\":null}", "\"control_error\":null,\"art_id\":-1}") &&
           !telemetry_with("\"control_error\":null}", "\"control_error\":null,\"source\":\"0123456789012345678901234567890123\"}"),

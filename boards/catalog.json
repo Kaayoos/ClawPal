@@ -115,7 +115,7 @@
       "Height": 240,
       "FlashBytes": 16777216,
       "Psram": "octal",
-      "Experimental": true,
+      "Experimental": false,
       "Driver": "es3c28p-spi",
       "Layout": "ota-v1",
       "MaxBytes": 4128768,

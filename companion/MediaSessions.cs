@@ -258,15 +258,16 @@ public sealed class MusicControlQueue
             if (previous.Id >= value.Id) return;
         } while (!ReferenceEquals(Interlocked.CompareExchange(ref result, value, previous), previous));
     }
-    // Focus requests from the needs-you alert and Shortcuts taps share the queue, ordering and replay checks.
+    // Focus requests from the needs-you alert, Shortcuts taps and Audio faders share the queue, ordering and replay checks.
     public async Task RunAsync(MediaSessions media, Func<DeviceControl, MusicControlResult> focus, CancellationToken cancellationToken,
-        Func<DeviceControl, CancellationToken, Task<MusicControlResult>>? shortcut = null)
+        Func<DeviceControl, CancellationToken, Task<MusicControlResult>>? shortcut = null, Func<DeviceControl, MusicControlResult>? mixer = null)
     {
         await foreach (var command in queue.Reader.ReadAllAsync(cancellationToken))
         {
             cancellationToken.ThrowIfCancellationRequested();
             var outcome = command.Action == "focus" ? focus(command) :
                 command.Action == "shortcut" ? (shortcut is null ? new(command.Id, false, "unsupported") : await shortcut(command, cancellationToken)) :
+                command.Action is "mixer_volume" or "mixer_mute" ? (mixer is null ? new(command.Id, false, "unsupported") : mixer(command)) :
                 await media.ExecuteAsync(command, cancellationToken);
             cancellationToken.ThrowIfCancellationRequested();
             SetResult(outcome);

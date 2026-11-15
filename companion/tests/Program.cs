@@ -102,6 +102,37 @@ Check(Protocol.ParseControl(Control(1, "shortcut")) is null && Protocol.ParseCon
 using (var shortcutsJson = JsonDocument.Parse(JsonSerializer.Serialize(sample with { Shortcuts = new ShortcutStats(9, 5) }, Protocol.Json)))
     Check(shortcutsJson.RootElement.GetProperty("shortcuts").GetProperty("rev").GetInt32() == 9 && shortcutsJson.RootElement.GetProperty("shortcuts").GetProperty("on").GetInt32() == 5 &&
           !serialized.RootElement.TryGetProperty("shortcuts", out _), "Shortcuts telemetry carries only the deck revision and lit tiles");
+Check(Protocol.ParseControl(Valued("mixer_volume", MixerContract.VolumeValue(4, 80))) == new DeviceControl(4, "mixer_volume", 4 << 7 | 80) &&
+    MixerContract.Volume(4 << 7 | 80) == (4, 80) && Protocol.ParseControl(Valued("mixer_volume", MixerContract.VolumeValue(255, 100))) is not null &&
+    Protocol.ParseControl(Valued("mixer_volume", 0)) is not null, "an Audio fader names its channel and level");
+Check(Protocol.ParseControl(Valued("mixer_volume", MixerContract.VolumeValue(4, 101))) is null && Protocol.ParseControl(Valued("mixer_volume", MixerContract.VolumeValue(256, 0))) is null &&
+    Protocol.ParseControl(Valued("mixer_volume", MixerContract.VolumeValue(4, 127))) is null && Protocol.ParseControl(Control(1, "mixer_volume")) is null &&
+    Protocol.ParseControl(Valued("mixer_volume", -1)) is null, "an Audio level past 100 percent or a channel past 255 is rejected");
+Check(Protocol.ParseControl(Valued("mixer_mute", MixerContract.MuteValue(5, true))) == new DeviceControl(4, "mixer_mute", 11) && MixerContract.Mute(11) == (5, true) &&
+    MixerContract.Mute(MixerContract.MuteValue(5, false)) == (5, false) && Protocol.ParseControl(Valued("mixer_mute", MixerContract.MuteValue(256, false))) is null &&
+    Protocol.ParseControl(Control(1, "mixer_mute")) is null, "an Audio mute names its channel and the state it asks for");
+{
+    var many = new List<MixerChannel> { new(0, MixerContract.Output, null, 50, false) };
+    for (int i = 0; i < 12; ++i) many.Add(new(MixerContract.FirstApp + i, MixerContract.App, "App " + i, 10, false, 4));
+    many.Add(new(MixerContract.SystemId, MixerContract.System, null, 20, false, MixerContract.Grey));
+    many.Add(new(MixerContract.MicId, MixerContract.Mic, null, 70, true, MixerContract.Teal));
+    var kept = MixerContract.Limit(many, new HashSet<int> { MixerContract.FirstApp + 11 });
+    Check(kept.Count == MixerContract.MaxChannels && kept[0].Kind == MixerContract.Output && kept[^1].Kind == MixerContract.Mic &&
+          kept.Any(c => c.Id == MixerContract.FirstApp + 11) && kept.All(c => c.Kind != MixerContract.System) &&
+          kept.Skip(1).Take(kept.Count - 2).Select(c => c.Id).SequenceEqual(kept.Skip(1).Take(kept.Count - 2).Select(c => c.Id).Order()),
+          "the mixer keeps the output and microphone, prefers apps playing now and keeps apps in a steady order");
+    var few = MixerContract.Limit(many.Take(3).Concat(many.Skip(13)), new HashSet<int>());
+    Check(few.Select(c => c.Kind).SequenceEqual([MixerContract.Output, MixerContract.App, MixerContract.App, MixerContract.System, MixerContract.Mic]),
+          "Windows' own sounds sit after the apps, the microphone last");
+    Check(MixerContract.Nearest(140) == 4 && MixerContract.Nearest(230) == 6 && MixerContract.Nearest(358) == 1 && MixerContract.ColorFor("Discord") == MixerContract.ColorFor("discord") &&
+          MixerContract.ColorFor("Discord") is >= 1 and <= 8, "channel colours come from Shortcuts' palette");
+    using var mixerJson = JsonDocument.Parse(JsonSerializer.Serialize(sample with { Mixer = new MixerStats([new(0, 0, null, 62), new(3, 3, "Spotify", 38, true, 4)]) }, Protocol.Json));
+    var channels = mixerJson.RootElement.GetProperty("mixer").GetProperty("channels");
+    Check(channels.GetArrayLength() == 2 && !channels[0].TryGetProperty("name", out _) && !channels[0].TryGetProperty("muted", out _) && !channels[0].TryGetProperty("color", out _) &&
+          channels[1].GetProperty("name").GetString() == "Spotify" && channels[1].GetProperty("muted").GetBoolean() && channels[1].GetProperty("color").GetInt32() == 4 &&
+          channels[1].GetProperty("volume").GetInt32() == 38 && channels[1].GetProperty("kind").GetInt32() == 3 && !serialized.RootElement.TryGetProperty("mixer", out _),
+          "mixer telemetry uses the firmware's field names and leaves out defaults");
+}
 using (var awayJson = JsonDocument.Parse(JsonSerializer.Serialize(sample with { Away = true }, Protocol.Json)))
     Check(awayJson.RootElement.GetProperty("away").GetBoolean() && !serialized.RootElement.TryGetProperty("away", out _), "away is sent only while locked or going to sleep");
 using (var playerJson = JsonDocument.Parse(JsonSerializer.Serialize(new MusicStats(true, true, "T", "A", "B", true, 1, 2, true, true, true, Source: "Apple Music", ArtId: 12345), Protocol.Json)))

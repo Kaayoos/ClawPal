@@ -23,6 +23,14 @@ internal static class AppArtwork
         if(id==0){g.DrawRectangle(pen,x+w*.12f,y+h*.16f,w*.76f,h*.52f);g.DrawLine(pen,x+w*.5f,y+h*.68f,x+w*.5f,y+h*.84f);g.DrawLine(pen,x+w*.3f,y+h*.86f,x+w*.7f,y+h*.86f);}
         else if(id==2){using var frame=ClawTheme.Round(new RectangleF(x+w*.13f,y+h*.17f,w*.74f,h*.66f),w*.16f);g.DrawPath(pen,frame);
             g.DrawPolygon(pen,new[]{new PointF(x+w*.43f,y+h*.36f),new PointF(x+w*.64f,y+h*.5f),new PointF(x+w*.43f,y+h*.64f)});}
+        // Three faders at different levels, the display's own Audio mark.
+        else if(id==9){
+            using var knob=new SolidBrush(ClawTheme.Accent);
+            foreach(var (cx,ky) in new[]{(.26f,.54f),(.5f,.24f),(.74f,.64f)}){
+                g.DrawLine(pen,x+w*cx,y+h*.14f,x+w*cx,y+h*.86f);
+                using var cap=ClawTheme.Round(new RectangleF(x+w*(cx-.1f),y+h*ky,w*.2f,h*.14f),w*.06f);g.FillPath(knob,cap);
+            }
+        }
         else if(id==6){g.DrawEllipse(pen,x+w*.14f,y+h*.08f,w*.38f,h*.38f);g.DrawArc(pen,x+w*.18f,y+h*.4f,w*.32f,h*.34f,90,180);g.DrawArc(pen,x+w*.35f,y+h*.3f,w*.4f,h*.4f,180,180);g.DrawArc(pen,x+w*.64f,y+h*.47f,w*.25f,h*.27f,270,180);g.DrawLine(pen,x+w*.34f,y+h*.74f,x+w*.77f,y+h*.74f);}
         else {g.DrawEllipse(pen,x+w*.16f,y+h*.16f,w*.68f,h*.68f);g.DrawLine(pen,x+w*.5f,y+h*.5f,x+w*.5f,y+h*.3f);g.DrawLine(pen,x+w*.5f,y+h*.5f,x+w*.68f,y+h*.6f);if(id==3)g.DrawLine(pen,x+w*.4f,y+h*.05f,x+w*.6f,y+h*.05f);}
     }
@@ -132,8 +140,8 @@ internal sealed class HomePreview : Panel
         int rowHeight=Math.Min(98,412/Math.Max(1,settings.HomeOrder.Length));
         for(int i=0;i<settings.HomeOrder.Length;i++){
             int id=settings.HomeOrder[i],y=34+i*rowHeight;AppArtwork.Draw(e.Graphics,id,R(466,y+15,46,46));
-            ClawTheme.Text(e.Graphics,L.DisplayText(settings.Language,id switch{0=>"pc_monitor",1=>"clock",2=>"music",3=>"timer",4=>"codex",7=>"claude",8=>"shortcuts",_=>"weather"}),rowFont,ClawTheme.Ink,R(528,y+8,254,34));
-            string note=id switch{0=>L.DisplayText(settings.Language,"live_pc_readings"),1=>L.DisplayText(settings.Language,"local_time"),6=>settings.City,2=>L.DisplayText(settings.Language,"spotify_playback"),3=>L.DisplayText(settings.Language,"a_countdown_for_anything"),8=>L.DisplayText(settings.Language,"your_pc_at_a_tap"),_=>L.DisplayText(settings.Language,"account_limits")};
+            ClawTheme.Text(e.Graphics,L.DisplayText(settings.Language,id switch{0=>"pc_monitor",1=>"clock",2=>"music",3=>"timer",4=>"codex",7=>"claude",8=>"shortcuts",9=>"audio",_=>"weather"}),rowFont,ClawTheme.Ink,R(528,y+8,254,34));
+            string note=id switch{0=>L.DisplayText(settings.Language,"live_pc_readings"),1=>L.DisplayText(settings.Language,"local_time"),6=>settings.City,2=>L.DisplayText(settings.Language,"spotify_playback"),3=>L.DisplayText(settings.Language,"a_countdown_for_anything"),8=>L.DisplayText(settings.Language,"your_pc_at_a_tap"),9=>L.DisplayText(settings.Language,"every_app_s_volume"),_=>L.DisplayText(settings.Language,"account_limits")};
             ClawTheme.Text(e.Graphics,note,small,ClawTheme.Muted,R(528,y+43,254,30));
         }
     }

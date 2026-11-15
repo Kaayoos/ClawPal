@@ -55,6 +55,8 @@ public sealed class Connection : IDisposable
         _ = gameWorker.ContinueWith(task => Log.Write("Game activity worker stopped: " + task.Exception?.GetBaseException().GetType().Name), TaskContinuationOptions.OnlyOnFaulted);
         var media = new MediaSessions { Enabled=()=>config.DisplaySettings?.Enabled(2)??true };
         var mediaWorker = Task.Run(() => media.RunAsync(shutdown.Token));
+        // Channel IDs outlive a reconnect, so the display's faders keep their places.
+        var mixer = new AudioMixer();
         var claude = new ClaudeUsage { Enabled = () => config.DisplaySettings?.Enabled(7) ?? true, LiveUsageEnabled = () => config.ClaudeLiveUsage };
         var claudeWorker = Task.Run(() => claude.RunAsync(shutdown.Token));
         var codex = new CodexUsage { Enabled=()=>config.DisplaySettings?.Enabled(4)??true };
@@ -91,9 +93,16 @@ public sealed class Connection : IDisposable
                 string DisplayLanguage() => config.DisplaySettings?.Language ?? "en";
                 ShortcutDeck Deck() => config.Shortcuts ?? ShortcutDeck.Starter(DisplayLanguage());
                 var shortcuts = new ShortcutRunner(Deck, DisplayLanguage, () => away, media);
-                var controlWorker = controls.RunAsync(media, WindowFocus.Execute, attempt.Token, shortcuts.ExecuteAsync);
+                var controlWorker = controls.RunAsync(media, WindowFocus.Execute, attempt.Token, shortcuts.ExecuteAsync, mixer.Execute);
+                // App icons for the Audio app: one upload per channel per connection, again if it leaves and returns.
+                var uploadedIcons = new HashSet<int>();
+                bool iconsSupported = true;
+                long iconRetryAt = 0;
+                Task<bool?>? iconTask = null;
+                int iconId = -1;
                 // Like the cover, the deck lives in the display's memory, so a reconnect sends it again.
                 int uploadedDeck = 0;
+                bool shortcutStateLogged = false;
                 bool deckSupported = true;
                 long deckRetryAt = 0;
                 Task<bool?>? deckTask = null;
@@ -111,7 +120,12 @@ public sealed class Connection : IDisposable
                         var deck = Deck();
                         int deckRev = deck.Revision(DisplayLanguage()), lit = 0;
                         try { lit = ShortcutRunner.OnMask(deck); }
-                        catch (Exception error) when (error is System.Runtime.InteropServices.COMException or InvalidCastException) { Log.Write("Shortcut state unavailable: " + error.GetType().Name); }
+                        catch (Exception error) when (error is System.Runtime.InteropServices.COMException or InvalidCastException)
+                        {
+                            // Once per connection: the same failure every second says nothing new.
+                            if (!shortcutStateLogged) Log.Write("Shortcut state unavailable: " + error);
+                            shortcutStateLogged = true;
+                        }
                         var sample = metrics.Sample(Interlocked.Increment(ref sequence)) with
                         {
                             Music = media.Snapshot with { ControlId = controlResult.Id, ControlOk = controlResult.Ok, ControlError = controlResult.Error },
@@ -119,14 +133,22 @@ public sealed class Connection : IDisposable
                             Claude = config.DisplaySettings?.Enabled(7)!=false && Settings.FirmwareVersion.Length>0 && Version.TryParse(Settings.FirmwareVersion,out var firmwareVersion) && firmwareVersion>=new Version(0,7,0) ? claude.Snapshot : null,
                             AutoOpenApps = autoOpenApps,
                             Away = away ? true : null,
-                            Shortcuts = deckSupported ? new ShortcutStats(deckRev, lit) : null
+                            Shortcuts = deckSupported ? new ShortcutStats(deckRev, lit) : null,
+                            Mixer = config.DisplaySettings?.Enabled(9) != false ? MixerSnapshot(mixer) : null
                         };
                         gaming.SetGpuUsage(sample.Gpu.Usage);
                         sample = sample with { Game = gaming.Snapshot };
                         using var sendTimeout = CancellationTokenSource.CreateLinkedTokenSource(attempt.Token);
                         sendTimeout.CancelAfter(TimeSpan.FromSeconds(4));
+                        int limit = sample.Claude is null ? 4096 : 6144;
                         var payload = JsonSerializer.SerializeToUtf8Bytes(sample, Protocol.Json);
-                        if (payload.Length > (sample.Claude is null ? 4096 : 6144)) throw new IOException(L.Text("telemetry_exceeds_the_device_message_limit"));
+                        // The mixer gives way first: apps drop off its end until the frame fits.
+                        while (payload.Length > limit && sample.Mixer is { } trimmed)
+                        {
+                            sample = sample with { Mixer = trimmed.Channels.Count > 2 ? new MixerStats(trimmed.Channels.Where((_, i) => i != trimmed.Channels.Count - 2).ToList()) : null };
+                            payload = JsonSerializer.SerializeToUtf8Bytes(sample, Protocol.Json);
+                        }
+                        if (payload.Length > limit) throw new IOException(L.Text("telemetry_exceeds_the_device_message_limit"));
                         acknowledgements.RecordSent(sample.Seq);
                         await socket.SendAsync(payload, WebSocketMessageType.Text, true, sendTimeout.Token);
                         if (sample.Away == true) awaySent.Set();
@@ -155,6 +177,25 @@ public sealed class Connection : IDisposable
                             uploadedDeck = deckRev;
                             deckTask = UploadShortcutsAsync(deck, DisplayLanguage(), attempt.Token);
                         }
+                        if (iconTask is { IsCompleted: true })
+                        {
+                            var uploaded = await iconTask;
+                            if (uploaded is null) iconsSupported = false;
+                            else if (uploaded == false) { uploadedIcons.Remove(iconId); iconRetryAt = Environment.TickCount64 + 30000; }
+                            iconTask = null;
+                        }
+                        if (sample.Mixer is { } shown)
+                        {
+                            // A channel that left may lose its icon on the display; send it again when it returns.
+                            uploadedIcons.IntersectWith(shown.Channels.Select(channel => channel.Id));
+                            if (iconTask is null && iconsSupported && Environment.TickCount64 >= iconRetryAt &&
+                                shown.Channels.FirstOrDefault(channel => channel.Kind == MixerContract.App && !uploadedIcons.Contains(channel.Id)) is { } next)
+                            {
+                                uploadedIcons.Add(next.Id);
+                                iconId = next.Id;
+                                if (mixer.IconPaths.TryGetValue(next.Id, out var path)) iconTask = UploadMixerIconAsync(next.Id, path, attempt.Token);
+                            }
+                        }
                         var delay = nudge.WaitAsync(1000, attempt.Token);
                         if (await Task.WhenAny(receiver, delay) == receiver) { await receiver; throw new IOException(L.Text("buddy_closed_its_connection")); }
                         await delay;
@@ -169,6 +210,7 @@ public sealed class Connection : IDisposable
                     try { await controlWorker; } catch (OperationCanceledException) { }
                     if (artTask is not null) try { await artTask; } catch (OperationCanceledException) { }
                     if (deckTask is not null) try { await deckTask; } catch (OperationCanceledException) { }
+                    if (iconTask is not null) try { await iconTask; } catch (OperationCanceledException) { }
                 }
             }
             catch (OperationCanceledException) when (shutdown.IsCancellationRequested) { break; }
@@ -254,6 +296,41 @@ public sealed class Connection : IDisposable
             return false;
         }
     }
+    private static MixerStats? MixerSnapshot(AudioMixer mixer)
+    {
+        try { return mixer.Snapshot(); }
+        catch (Exception error) when (error is System.Runtime.InteropServices.COMException or InvalidCastException or UnauthorizedAccessException or System.ComponentModel.Win32Exception)
+        {
+            Log.Write("Audio mixer unavailable: " + error.GetType().Name);
+            return null;
+        }
+    }
+
+    // An Audio channel's app icon. Returns null when the firmware has no Audio app, so this
+    // connection stops trying, and true when there was no icon to send.
+    private async Task<bool?> UploadMixerIconAsync(int id, string path, CancellationToken cancellationToken)
+    {
+        try
+        {
+            if (await Task.Run(() => AppIcons.DisplayPixels(path), cancellationToken) is not { } pixels) return true;
+            var endpoint = await DiscoverAsync(config, cancellationToken);
+            if (endpoint is null) return false;
+            using var http = DeviceAuth.For(endpoint, config.Token).CreateClient(TimeSpan.FromSeconds(10));
+            using var content = new ByteArrayContent(pixels);
+            content.Headers.ContentType = new MediaTypeHeaderValue("application/octet-stream");
+            using var request = new HttpRequestMessage(HttpMethod.Post, $"http://{endpoint.Address}:{Protocol.MonitorPort}/mixer-icon") { Content = content };
+            request.Headers.Add("X-ClawPal-Mixer-Id", id.ToString(CultureInfo.InvariantCulture));
+            using var response = await http.SendAsync(request, cancellationToken);
+            if (response.StatusCode is HttpStatusCode.NotFound or HttpStatusCode.MethodNotAllowed) return null;
+            return response.IsSuccessStatusCode;
+        }
+        catch (Exception error) when (error is IOException or HttpRequestException or SocketException || (error is TaskCanceledException && !cancellationToken.IsCancellationRequested))
+        {
+            Log.Write("Mixer icon upload failed: " + error.GetType().Name);
+            return false;
+        }
+    }
+
     public static async Task<ClientWebSocket> ConnectAsync(DeviceEndpoint endpoint, string token, CancellationToken cancellationToken)
     {
         var socket = new ClientWebSocket();

@@ -80,14 +80,19 @@ public static class Protocol
             if (fields.Count != (valued ? 5 : 4) || root.GetProperty("type").GetString() != "buddy.control" ||
                 root.GetProperty("v").GetInt32() != 1 || !root.GetProperty("id").TryGetInt32(out var id) || id <= 0) return null;
             var action = root.GetProperty("action").GetString();
-            // Seek (seconds), volume (percent), focus (app ID) and shortcut (deck and tile) carry a value; toggles never do.
-            if (valued != (action is "seek" or "volume" or "focus" or "shortcut")) return null;
+            // Seek (seconds), volume (percent), focus (app ID), shortcut (deck and tile) and the mixer
+            // actions (channel and level, or channel and mute) carry a value; toggles never do.
+            if (valued != (action is "seek" or "volume" or "focus" or "shortcut" or "mixer_volume" or "mixer_mute")) return null;
             int value = 0;
             if (valued && (!root.GetProperty("value").TryGetInt32(out value) || value < 0 ||
-                value > (action == "volume" ? 100 : action == "shortcut" ? ShortcutValue(ShortcutMaxRev, ShortcutSlots - 1) : 604800))) return null;
+                value > (action == "volume" ? 100 : action == "shortcut" ? ShortcutValue(ShortcutMaxRev, ShortcutSlots - 1) :
+                    action == "mixer_volume" ? MixerContract.VolumeValue(MixerContract.MaxId, 100) :
+                    action == "mixer_mute" ? MixerContract.MuteValue(MixerContract.MaxId, true) : 604800))) return null;
             if (action == "focus" && value is not (CodexApp or ClaudeApp)) return null;
             if (action == "shortcut" && (ShortcutTarget(value).Rev < 1 || ShortcutTarget(value).Slot >= ShortcutSlots)) return null;
-            return action is "play_pause" or "next" or "previous" or "shuffle" or "repeat" or "mute" or "seek" or "volume" or "focus" or "shortcut" ? new DeviceControl(id, action, value) : null;
+            if (action == "mixer_volume" && !MixerContract.ValidVolume(value)) return null;
+            return action is "play_pause" or "next" or "previous" or "shuffle" or "repeat" or "mute" or "seek" or "volume" or "focus" or "shortcut" or "mixer_volume" or "mixer_mute" ?
+                new DeviceControl(id, action, value) : null;
         }
         catch (Exception error) when (error is JsonException or InvalidOperationException or KeyNotFoundException or FormatException or OverflowException) { return null; }
     }
@@ -148,7 +153,16 @@ public sealed record PcStats(string Type, int V, long Seq, string Hostname, long
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] bool? AutoOpenApps = null,
     // Locked or about to sleep; omitted otherwise. The display then naps instead of reporting offline.
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] bool? Away = null,
-    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] ShortcutStats? Shortcuts = null);
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] ShortcutStats? Shortcuts = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] MixerStats? Mixer = null);
+// The Audio app's channels: output first, then apps and Windows' sounds, then the microphone.
+public sealed record MixerStats(IReadOnlyList<MixerChannel> Channels);
+// Kind follows MixerContract; the display names the output, microphone and Windows' sounds itself.
+// Color indexes Shortcuts' palette, 0 for the look's accent.
+public sealed record MixerChannel(int Id, int Kind,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? Name, int Volume,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)] bool Muted = false,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)] int Color = 0);
 // The Shortcuts deck the display should hold (POST /shortcuts) and which toggle tiles are lit, one bit per slot.
 public sealed record ShortcutStats(int Rev, int On);
 // Repeat follows MediaPlaybackAutoRepeatMode: 0 off, 1 track, 2 list. ArtColor is
@@ -160,6 +174,55 @@ public sealed record MusicStats(bool Running, bool Available, string Title, stri
     bool CanVolume = false, int Volume = 0, bool Muted = false, int ArtColor = 0, string Source = "", int ArtId = 0);
 public sealed record DeviceControl(int Id, string Action, int Value = 0);
 public sealed record MusicControlResult(int Id, bool Ok, string Error);
+
+// The display's Audio app, seen from the PC: the default output, Windows' own sounds, every app
+// with an entry in the Windows volume mixer and the default microphone. Each channel gets an ID
+// that stays put while its app runs, so a fader on the display names one channel. The display
+// only ever sends an ID with a level or a mute; it never names a process.
+public static class MixerContract
+{
+    public const int Output = 0, Mic = 1, System = 2, App = 3;
+    // IDs 0-2 are the fixed channels; apps count up from FirstApp.
+    public const int OutputId = 0, MicId = 1, SystemId = 2, FirstApp = 3, MaxId = 255;
+    public const int MaxChannels = 10, MaxNameBytes = 31;
+    // Shortcuts' palette (shortcuts/shortcuts.json): 0 follows the look's accent.
+    public const int Accent = 0, Teal = 5, Grey = 9;
+    internal static readonly (int Index, double Hue)[] Palette = [(1, 0), (2, 29), (3, 43), (4, 142), (5, 174), (6, 212), (7, 255), (8, 335)];
+
+    public static (int Id, int Percent) Volume(int value) => (value >> 7, value & 127);
+    public static (int Id, bool Muted) Mute(int value) => (value >> 1, (value & 1) != 0);
+    public static int VolumeValue(int id, int percent) => (id << 7) | percent;
+    public static int MuteValue(int id, bool muted) => (id << 1) | (muted ? 1 : 0);
+    public static bool ValidVolume(int value) => value >= 0 && Volume(value).Id <= MaxId && Volume(value).Percent <= 100;
+    public static bool ValidMute(int value) => value >= 0 && Mute(value).Id <= MaxId;
+
+    // An app without an icon still gets a steady colour of its own.
+    public static int ColorFor(string name)
+    {
+        uint hash = 2166136261;
+        foreach (char c in name.ToLowerInvariant()) hash = (hash ^ c) * 16777619;
+        return Palette[hash % (uint)Palette.Length].Index;
+    }
+
+    public static int Nearest(double hue)
+    {
+        static double Distance(double a, double b) { double d = Math.Abs(a - b) % 360; return Math.Min(d, 360 - d); }
+        return Palette.MinBy(p => Distance(p.Hue, hue)).Index;
+    }
+
+    // Keeps the output, the microphone and as many apps as fit; apps playing now come first.
+    public static List<MixerChannel> Limit(IEnumerable<MixerChannel> channels, ISet<int> active)
+    {
+        var all = channels.ToList();
+        var output = all.Where(c => c.Kind == Output).Take(1).ToList();
+        var mic = all.Where(c => c.Kind == Mic).Take(1).ToList();
+        int room = MaxChannels - output.Count - mic.Count;
+        var others = all.Where(c => c.Kind is System or App)
+            .OrderByDescending(c => active.Contains(c.Id)).ThenBy(c => c.Kind == System).ThenBy(c => c.Id)
+            .Take(room).OrderBy(c => c.Kind == System).ThenBy(c => c.Id);
+        return [.. output, .. others, .. mic];
+    }
+}
 
 public sealed class ControlSequence
 {
