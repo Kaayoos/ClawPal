@@ -129,7 +129,7 @@ Your location coordinates go to Open-Meteo for forecasts (location search uses i
 
 FPS tracking is optional. It uses the bundled Intel PresentMon console helper and Windows ETW events, and it doesn't modify games or inject an overlay. Results and overhead depend on the game and your Windows permissions; when FPS isn't available, the field stays blank. There's no promise about how any game's anti-cheat treats it.
 
-Don't publish your pairing token, network passwords, local logs or device backups. [Architecture](docs/ARCHITECTURE.md) covers how all of this works.
+Don't publish your pairing token, network passwords, local logs or device backups. [Architecture](docs/ARCHITECTURE.md) covers how all of this works, and the [protocol reference](docs/PROTOCOL.md) lists every message.
 
 ## Building from source
 
@@ -139,6 +139,7 @@ You need ESP-IDF 5.5.2, .NET SDK 8.0.425 and Python 3.12. Firmware binaries and 
 - [Release format and publishing](docs/UPDATES.md)
 - [Translations](languages/README.md)
 - [Screen and weather settings](docs/SCREEN-AND-WEATHER.md)
+- [Display and PC app protocol](docs/PROTOCOL.md), for hardware mods
 - [Contributing](CONTRIBUTING.md)
 
 ## License and credits

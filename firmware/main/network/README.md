@@ -6,10 +6,12 @@ The station reconnects automatically. With no saved SSID, or after 60 seconds wi
 
 ## Discovery and transport
 
+[docs/PROTOCOL.md](../../../docs/PROTOCOL.md) is the full reference for these messages.
+
 - UDP 42170 accepts `BUDDYOS_DISCOVER_V1 <32-hex nonce>`.
-- Reply fields: `type=buddy.hello`, `v=1`, `id=<12 lower-case MAC hex digits>`, `name=ClawPal`, `port=42171`, `nonce`, `proof`.
-- Proof: lower-case HMAC-SHA256 hex over `<nonce>|<id>|42171`, with the UTF-8 bytes of the 64-character shared token as the key.
-- `ws://<device IP>:42171/monitor` requires `Authorization: Bearer <token>` before the WebSocket upgrade.
+- Reply fields: `type=buddy.hello`, `v=2`, `id=<12 lower-case MAC hex digits>`, `name=ClawPal`, `port=42171`, `nonce`, `challenge`, `proof`.
+- Proof: lower-case HMAC-SHA256 hex over `<nonce>|<id>|42171|<challenge>`, with the UTF-8 bytes of the 64-character shared token as the key.
+- `ws://<device IP>:42171/monitor` and every HTTP request require a `ClawPal-HMAC` signature bound to that challenge (see `buddy_auth.h`); the bearer token is refused.
 - A newly authenticated session replaces the previous companion. Ten seconds without valid telemetry closes the session and marks the PC offline.
 - Stats must be an unfragmented JSON text frame <=6144 bytes (the companion keeps frames without Claude data <=4096 bytes), version 1 and type `pc.stats`, with the agreed nested CPU/GPU/memory/network fields. Numeric values have finite bounds; unavailable sensors become `NAN`. Nesting >8, embedded NULs, invalid field types and malformed data close the connection.
 - Every valid telemetry frame receives `{"type":"buddy.ack","v":1,"seq":<same sequence>}` on its WebSocket. The companion uses this acknowledgement to detect a stalled connection.

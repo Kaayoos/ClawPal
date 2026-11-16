@@ -17,7 +17,7 @@ This checks the clean main branch, the publication audit, the release notes and
 any existing tag, then pushes main and the matching annotated tag. It reuses your
 Git Credential Manager login. GitHub then:
 
-1. builds all seven firmware profiles and checks the parsers;
+1. builds the firmware for every board profile and checks the parsers;
 2. waits for approval in the `release` environment, then signs the firmware in
    a separate job that is the only one to receive the signing key;
 3. runs the display simulations and companion tests, builds the installer
@@ -132,15 +132,15 @@ artifact; the repair command will not substitute an unrelated SDK package.
 **Users download only ClawPal-Setup.exe.** Firmware for every supported board,
 the runtime, flashing tools, PresentMon and notices are already included.
 
-There are eleven deliberately selected upload assets:
+These upload assets are deliberately selected:
 
 - `ClawPal-Setup.exe` and `ClawPal-Setup.exe.sha256`.
 - `clawpal-release.json`.
-- Seven `clawpal-*.bin` files, one for each board profile.
+- One `clawpal-*.bin` file for each board profile (eight as of 0.14.0).
 - `ClawPal-Source-and-Licenses.zip` containing ClawPal source, licenses, the
   matching SDK with submodules, tool/stub source archives and their checksums.
 
-Keep these eleven files together. Do not manually prune release assets.
+Keep these files together. Do not manually prune release assets.
 The separate firmware filenames and JSON are required by existing updaters;
 source/license materials are combined so they no longer clutter the asset list.
 Source archives are made from committed tracked files; local promo projects,
