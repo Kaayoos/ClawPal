@@ -72,7 +72,7 @@ Pick the exact model printed on your board, not one with the same chip or screen
 On square and smaller screens all apps still work. Content scrolls vertically above a fixed Apps/Home footer; swipe up for more Home shortcuts, forecast rows, task details or timer settings.
 
 <p align="center">
-  <img src="assets/06_desk_setup.jpg" alt="ClawPal in its 3D-printed case on a desk, showing Home below a monitor with the PC app open">
+  <img src="assets/ClawPalWhiteCase.webp" alt="ClawPal in a white 3D-printed case on a desk, showing the Home screen in the Studio look">
 </p>
 
 ClawPal has two ready-made 3D-printable cases on MakerWorld: [the newer design](https://makerworld.com/en/models/3546648-esp32-s3-pc-monitor-spotify-weather-desk-buddy#profileId-4057099) and [the original](https://makerworld.com/en/models/3430625-esp32-clawpal-your-desk-pc-buddy-for-daily-use#profileId-3911176).
