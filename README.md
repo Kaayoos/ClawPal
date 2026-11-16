@@ -29,7 +29,7 @@
 </p>
 
 <p align="center">
-  <img src="assets/05_black_and_orange_cover.png" alt="ClawPal's Home screen on displays in a black and an orange 3D-printed case">
+  <img src="assets/ClawPalDeskShoot.jpg" alt="ClawPal on a desk in its black 3D-printed case, showing the Home screen in the Studio look below a monitor">
 </p>
 
 ## What it does
