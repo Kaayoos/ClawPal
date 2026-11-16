@@ -149,7 +149,7 @@ static void draw_well(lv_event_t *event)
     lv_draw_ctx_t *ctx = lv_event_get_draw_ctx(event);
     lv_area_t a;
     lv_obj_get_coords(obj, &a);
-    int width = lv_area_get_width(&a), height = lv_area_get_height(&a), radius = width * 32 / 100;
+    int width = lv_area_get_width(&a), height = lv_area_get_height(&a), radius = buddy_theme_round(width * 32 / 100);
     bool outlined = buddy_theme.outlined_cards;
     lv_draw_rect_dsc_t rect;
     lv_draw_rect_dsc_init(&rect);
@@ -268,7 +268,7 @@ static void style_strip(int index)
     lv_obj_t *button = au.buttons[index];
     lv_obj_set_style_border_color(button, lv_color_hex(channel->muted ? BUDDY_COLOR_WARNING : BUDDY_COLOR_RULE), 0);
     lv_obj_set_style_bg_color(button, channel->muted ? lv_color_mix(lv_color_hex(BUDDY_COLOR_WARNING), lv_color_hex(BUDDY_COLOR_BG), 56) :
-        lv_color_hex(buddy_theme.outlined_cards ? BUDDY_COLOR_BG : BUDDY_COLOR_SURFACE), 0);
+        lv_color_hex(buddy_theme.outlined_cards ? BUDDY_COLOR_BG : buddy_theme.square ? BUDDY_COLOR_PRESSED : BUDDY_COLOR_SURFACE), 0);
     lv_obj_invalidate(au.icons[index]);
     lv_obj_invalidate(au.wells[index]);
     lv_obj_invalidate(au.glyphs[index]);
@@ -534,7 +534,7 @@ lv_obj_t *buddy_audio_page_create(lv_obj_t *parent)
         void *index = (void *)(uintptr_t)i;
         lv_obj_t *strip = au.strips[i] = box(au.row, 0, 0, 10, 10);
         lv_obj_add_flag(strip, LV_OBJ_FLAG_CLICKABLE | LV_OBJ_FLAG_HIDDEN);
-        lv_obj_set_style_radius(strip, g.radius, 0);
+        lv_obj_set_style_radius(strip, buddy_theme_round(g.radius), 0);
         lv_obj_set_style_bg_color(strip, lv_color_hex(BUDDY_COLOR_SURFACE), 0);
         lv_obj_set_style_bg_opa(strip, outlined ? LV_OPA_TRANSP : LV_OPA_COVER, 0);
         lv_obj_set_style_border_width(strip, outlined ? 1 : 0, 0);
@@ -556,10 +556,11 @@ lv_obj_t *buddy_audio_page_create(lv_obj_t *parent)
         lv_obj_t *button = au.buttons[i] = box(strip, 0, 0, 10, 10);
         lv_obj_add_flag(button, LV_OBJ_FLAG_CLICKABLE);
         lv_obj_clear_flag(button, LV_OBJ_FLAG_PRESS_LOCK);
-        lv_obj_set_style_radius(button, WIDE ? 12 : TINY ? 8 : 10, 0);
+        lv_obj_set_style_radius(button, buddy_theme_round(WIDE ? 12 : TINY ? 8 : 10), 0);
         lv_obj_set_style_bg_opa(button, LV_OPA_COVER, 0);
-        lv_obj_set_style_border_width(button, TINY ? 1 : 2, 0);
-        lv_obj_set_style_bg_color(button, lv_color_hex(BUDDY_COLOR_PRESSED), LV_STATE_PRESSED);
+        /* Square looks draw the button as a raised block, like the PC app's, without an outline. */
+        lv_obj_set_style_border_width(button, buddy_theme.square ? 0 : TINY ? 1 : 2, 0);
+        lv_obj_set_style_bg_color(button, lv_color_hex(buddy_theme.square ? BUDDY_COLOR_RULE : BUDDY_COLOR_PRESSED), LV_STATE_PRESSED);
         lv_obj_add_event_cb(button, mute_event, LV_EVENT_CLICKED, index);
         au.glyphs[i] = box(button, 0, 0, 10, 10);
         lv_obj_add_event_cb(au.glyphs[i], draw_glyph, LV_EVENT_DRAW_MAIN, index);

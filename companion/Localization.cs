@@ -30,12 +30,13 @@ public static class L
         string next=Normalize(code);if(next==Language)return;
         Volatile.Write(ref current,next);Changed?.Invoke();
     }
-    /* Studio's calmer wording replaces individual keys; everything else keeps the base text. */
+    /* Studio's calmer wording replaces individual keys in every look without the crab; everything else keeps the base text. */
     public static void SetVariant(string? theme)
     {
-        string? next=theme=="studio"?theme:null;if(next==Volatile.Read(ref variant))return;
+        string? next=theme is not null&&Themes.Ids.Contains(theme)&&!Themes.Get(theme,null).Mascot?"studio":null;if(next==Volatile.Read(ref variant))return;
         Volatile.Write(ref variant,next);Changed?.Invoke();
     }
+    internal static string? Variant=>Volatile.Read(ref variant);
     private static string? Studio(Dictionary<string,string> section,string key)=>Volatile.Read(ref variant) is null?null:section.GetValueOrDefault(key);
     public static string Text(string key,params object?[] args)
     {

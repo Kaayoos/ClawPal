@@ -9,3 +9,14 @@ sampling. The original colors are retained.
 Regenerate: powershell -NoProfile -File companion/Assets/generate-icon.ps1
 Outputs: crab-tray.png and BuddyOS.ico (the legacy filename is internal).
 See NOTICE and LICENSE for copyright and redistribution terms.
+
+ClawPal slim case pictures
+
+Both are Cycles renders of the project owner's slim case model,
+BuddyOS/hardware/slim-case/ClawPal_Slim_Case_Renders.blend, with the case recoloured to black PLA
+and the screen showing the display's own crab Home (the firmware simulator's frame, with the timer
+pill removed). The source .blend files were not changed.
+welcome-display.jpg   front three-quarter view on a grey studio sweep, 1000 x 864, JPEG quality 88.
+slim-case-front.png   straight-on orthographic view on a transparent background, 1331 x 911; the
+                      opening inside the rim (45, 45, 1219 x 813) is transparent so previews show
+                      through it.

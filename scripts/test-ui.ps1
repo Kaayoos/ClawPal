@@ -6,7 +6,7 @@ foreach($profile in @(0,4,6)){
     & $Python (Join-Path $repo 'tests/simulator/build.py') $profile
     if($LASTEXITCODE -ne 0){throw "Simulator build failed: $profile"}
     # The look is chosen at runtime, so one build renders every theme.
-    foreach($theme in @('crab','studio')){
+    foreach($theme in @('crab','studio','crabv2','crastudio')){
         $frames=Join-Path $repo ".sim-output/$profile/frames/$theme"
         New-Item -ItemType Directory -Force -Path $frames | Out-Null
         & (Join-Path $repo ".sim-output/$profile/clawpal_sim.exe") $frames $theme

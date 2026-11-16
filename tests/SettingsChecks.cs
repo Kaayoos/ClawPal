@@ -92,7 +92,17 @@ internal static class SettingsChecks
         bool incompleteUnits=false;try{DeviceSettingsClient.Parse(fahrenheitJson.Replace("\"weather_fahrenheit\":true,",""));}catch(IOException){incompleteUnits=true;}Check(incompleteUnits,"new settings require a temperature unit field");
         bool invalidUnits=false;try{DeviceSettingsClient.Parse(fahrenheitJson.Replace("\"weather_fahrenheit\":true","\"weather_fahrenheit\":\"fahrenheit\""));}catch(JsonException){invalidUnits=true;}Check(invalidUnits,"untyped temperature preferences are rejected");
         // Looks: the display and companion share themes/themes.json; older displays keep the crab.
-        Check(Themes.Ids.SequenceEqual(new[]{"crab","studio"})&&Themes.AccentIds.Contains("champagne"),"the companion reads the same theme catalog as the firmware");
+        Check(Themes.Ids.SequenceEqual(new[]{"crab","studio","crabv2","crastudio"})&&Themes.AccentIds.Contains("champagne"),"the companion reads the same theme catalog as the firmware");
+        // The cased looks wear this app's case: its orange, the crab only in Crab v2, and no accent to choose.
+        var crabTwo=Themes.Get("crabv2","sage");var crastudio=Themes.Get("crastudio","sage");
+        Check(crabTwo.Cased&&crastudio.Cased&&!Themes.Get("crab",null).Cased&&!Themes.Get("studio",null).Cased,"only Crab v2 and Crastudio sit in the orange case");
+        Check(crabTwo.Mascot&&!crastudio.Mascot&&!crabTwo.HasAccents&&!crastudio.HasAccents&&crabTwo.Frame==ClawTheme.Case&&crastudio.Accent==ClawTheme.Case,"Crab v2 keeps the crab, Crastudio drops it, and both wear the app's orange");
+        var cased=custom with{Theme="crastudio",Accent="champagne"};string casedJson=JsonSerializer.Serialize(cased,DeviceSettingsClient.Json);
+        Check(casedJson.Contains("\"schema\":10")&&casedJson.Contains("\"theme\":\"crastudio\"")&&DeviceSettingsClient.Equivalent(cased,DeviceSettingsClient.Parse(casedJson).Settings),"a cased look round-trips with schema 10 settings");
+        var beforeCases=DeviceSettingsClient.Parse(JsonSerializer.Serialize(custom with{Theme="studio",Accent="sage",Schema=9},DeviceSettingsClient.Json));
+        Check(beforeCases.ProtocolSchema==9&&beforeCases.Settings.Schema==DeviceSettings.CurrentSchema&&beforeCases.Settings.Theme=="studio","schema 9 displays keep their look and ask for a firmware update");
+        L.SetVariant("crastudio");bool calm=L.Variant=="studio";L.SetVariant("crabv2");bool crabby=L.Variant is null;L.SetVariant("crab");
+        Check(calm&&crabby,"looks without the crab use the wording that never mentions it");
         Check(new DeviceSettings().Theme=="crab"&&!Themes.Get("crab","sage").HasAccents&&Themes.Get("crab","sage").Accent==Themes.Get("crab",null).Accent,"the crab keeps its own accent");
         Check(Themes.Get("studio","ice").Accent==Themes.AccentColor("ice")&&!Themes.Get("studio","ice").Mascot,"Studio takes the chosen accent and has no mascot");
         var studio=custom with{Theme="studio",Accent="sage"};string studioJson=JsonSerializer.Serialize(studio,DeviceSettingsClient.Json);

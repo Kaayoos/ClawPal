@@ -15,20 +15,44 @@
       "colors": {
         "bg": "#101010", "surface": "#191919", "pressed": "#282522", "text": "#F5F1EB", "muted": "#B1A9A0",
         "rule": "#39342F", "accent": "#FF8B4F", "warning": "#F5BD73", "clock_bg": "#0C0C0C", "clock_text": "#CFC7BE",
-        "weather_app": "#55D5EC", "weather_mark": "#96A7AB"
+        "weather_app": "#55D5EC", "weather_mark": "#96A7AB", "frame": "#FF8B4F", "frame_ink": "#101010"
       },
       "shape": {"border_w": 2, "gauge_div": 10, "ring_div": 20, "chart_w": 3, "track_h": 4, "motion_pct": 100},
-      "flags": {"mascot": true, "accents": false, "outlined_cards": false, "light_numerals": false, "prompt_tile": true, "app_flourish": true}
+      "flags": {"mascot": true, "accents": false, "outlined_cards": false, "light_numerals": false, "prompt_tile": true, "app_flourish": true,
+                "cased": false, "square": false, "heavy_type": false}
     },
     {
       "id": "studio",
       "colors": {
         "bg": "#0E0E10", "surface": "#151517", "pressed": "#1F1F22", "text": "#ECEBE8", "muted": "#8D8C89",
         "rule": "#2A2A2E", "accent": "#D8C3A0", "warning": "#E8B86B", "clock_bg": "#0A0A0B", "clock_text": "#D9D8D4",
-        "weather_app": "#9DBFCB", "weather_mark": "#8D8C89"
+        "weather_app": "#9DBFCB", "weather_mark": "#8D8C89", "frame": "#D8C3A0", "frame_ink": "#0E0E10"
       },
       "shape": {"border_w": 1, "gauge_div": 18, "ring_div": 40, "chart_w": 2, "track_h": 3, "motion_pct": 70},
-      "flags": {"mascot": false, "accents": true, "outlined_cards": true, "light_numerals": true, "prompt_tile": false, "app_flourish": false}
+      "flags": {"mascot": false, "accents": true, "outlined_cards": true, "light_numerals": true, "prompt_tile": false, "app_flourish": false,
+                "cased": false, "square": false, "heavy_type": false}
+    },
+    {
+      "id": "crabv2",
+      "colors": {
+        "bg": "#101010", "surface": "#1E1C1A", "pressed": "#2C2926", "text": "#F5F1EB", "muted": "#AEA69D",
+        "rule": "#38342F", "accent": "#F26B2A", "warning": "#FFBD55", "clock_bg": "#101010", "clock_text": "#F5F1EB",
+        "weather_app": "#55D5EC", "weather_mark": "#96A7AB", "frame": "#F26B2A", "frame_ink": "#161210"
+      },
+      "shape": {"border_w": 4, "gauge_div": 8, "ring_div": 14, "chart_w": 3, "track_h": 6, "motion_pct": 100},
+      "flags": {"mascot": true, "accents": false, "outlined_cards": false, "light_numerals": false, "prompt_tile": true, "app_flourish": true,
+                "cased": true, "square": true, "heavy_type": true}
+    },
+    {
+      "id": "crastudio",
+      "colors": {
+        "bg": "#101010", "surface": "#1E1C1A", "pressed": "#2C2926", "text": "#F5F1EB", "muted": "#AEA69D",
+        "rule": "#38342F", "accent": "#F26B2A", "warning": "#FFBD55", "clock_bg": "#101010", "clock_text": "#F5F1EB",
+        "weather_app": "#55D5EC", "weather_mark": "#96A7AB", "frame": "#F26B2A", "frame_ink": "#161210"
+      },
+      "shape": {"border_w": 4, "gauge_div": 8, "ring_div": 14, "chart_w": 3, "track_h": 6, "motion_pct": 100},
+      "flags": {"mascot": false, "accents": false, "outlined_cards": false, "light_numerals": false, "prompt_tile": false, "app_flourish": false,
+                "cased": true, "square": true, "heavy_type": true}
     }
   ]
 }

@@ -2,6 +2,7 @@ idf_component_register(
     SRCS "language/buddy_language_font_14.c" "language/buddy_language_font_16.c" "language/buddy_language_font_20.c" "language/buddy_language_font_24.c" "language/buddy_language_font_32.c" "language/buddy_language_font_48.c" "main.c" "language/buddy_language.c" "language/buddy_language_data.c" "update/buddy_update.c" "settings/buddy_settings.c" "ui/buddy_ui.c" "ui/buddy_ui_motion.c" "network/buddy_network.c" "network/buddy_telemetry_parse.c" "network/buddy_auth.c" "network/buddy_shortcuts_parse.c" "assets/buddy_mascot.c" "assets/buddy_clock_font.c"
          "assets/buddy_music_font_20.c" "assets/buddy_music_font_32.c"
          "assets/buddy_numeral_font_96.c" "assets/buddy_numeral_font_48.c" "assets/buddy_numeral_font_32.c" "assets/buddy_numeral_font_24.c" "assets/buddy_numeral_font_128.c"
+         "assets/buddy_display_font_20.c" "assets/buddy_display_font_24.c" "assets/buddy_display_font_32.c" "assets/buddy_display_font_48.c" "assets/buddy_display_font_96.c" "assets/buddy_display_font_128.c"
          "weather/buddy_weather.c" "weather/buddy_weather_parse.c"
          "ui/buddy_home.c" "ui/buddy_theme.c" "ui/buddy_theme_data.c" "ui/buddy_weather_page.c" "ui/buddy_weather_icon.c" "ui/buddy_app_icons.c" "ui/buddy_shortcut_data.c" "ui/buddy_shortcuts_page.c" "ui/buddy_audio_page.c" "assets/buddy_home_logos.c"
          "../tests/display_power_policy.c" "../tests/weather_animation_policy.c" "../tests/weather_units.cpp"

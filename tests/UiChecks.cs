@@ -20,23 +20,42 @@ internal static class UiChecks
                 using (var setup = new SetupForm(new Configuration(), connection, true) { ShowInTaskbar = false })
                 {
                     setup.Show(); Application.DoEvents();
-                    var steps = Descendants(setup).OfType<StepList>().Single(); var crab = Descendants(setup).OfType<CrabView>().Single();
+                    var poster = Descendants(setup).OfType<WelcomePoster>().Single(); var steps = Descendants(setup).OfType<StepList>().Single();
                     var version = Descendants(setup).OfType<Label>().Single(l => l.Parent == steps.Parent && l.Text.StartsWith("ClawPal 0", StringComparison.Ordinal));
-                    foreach (var size in new[] { new Size(960, 700), new Size(1040, 760), new Size(1500, 960) })
+                    Check(poster.Visible && !steps.Parent!.Visible, "Setup opens on the welcome poster, without the rail of steps");
+                    var strip = Descendants(poster).Where(c => c is ChoiceBox or ClawButton).ToArray();
+                    Check(strip.OfType<ChoiceBox>().Count(c => c.Items.Any(i => i is LanguageChoice)) == 2 && strip.OfType<ClawButton>().Count(b => b.Primary) == 1, "The welcome strip offers both languages and one way in");
+                    foreach (var size in new[] { new Size(960, 700), new Size(1080, 760), new Size(1500, 960) })
                     {
                         setup.ClientSize = size; Application.DoEvents();
-                        Check(!crab.Visible || (!crab.Bounds.IntersectsWith(steps.Bounds) && crab.Bottom <= version.Top), $"Setup's crab stays clear of the steps and version at {size.Width}x{size.Height}");
+                        Check(!poster.Crab.Visible || (poster.Crab.Top >= poster.SentenceBounds.Bottom && poster.Crab.Bottom <= poster.Seam + poster.Crab.Height / 4), $"The welcome crab stands under the words, on the strip, at {size.Width}x{size.Height}");
+                        Check(strip.All(c => c.Top >= poster.Seam && c.Bottom <= poster.Height && !c.Bounds.IntersectsWith(poster.PhotoArea)), $"The strip's fields and button sit on the strip, clear of the picture, at {size.Width}x{size.Height}");
+                        Check(!poster.HeadlineBounds.IntersectsWith(poster.PhotoArea) && poster.HeadlineBounds.Height <= poster.HeadlineBounds.Width, $"The welcome headline stays clear of the picture at {size.Width}x{size.Height}");
                     }
-                    ClawTheme.Use("studio", "blue"); Application.DoEvents();
-                    Check(!crab.Visible, "Studio setup has no crab beside the steps");
-                    ClawTheme.Use(Themes.Default, Themes.DefaultAccent); Application.DoEvents();
-                    Check(crab.Visible, "Crab setup brings the crab back");
 
                     var stepField = typeof(SetupForm).GetField("step", BindingFlags.NonPublic | BindingFlags.Instance)!;
                     void Go(int index) { stepField.SetValue(setup, Enum.ToObject(stepField.FieldType, index)); typeof(SetupForm).GetMethod("ShowStep", BindingFlags.NonPublic | BindingFlags.Instance)!.Invoke(setup, null); Application.DoEvents(); }
                     Go(1);
                     var back = Field<ClawButton>(setup, "back"); var next = Field<ClawButton>(setup, "next"); var status = Field<Label>(setup, "status");
                     Check(back.Visible && !back.Bounds.IntersectsWith(status.Bounds) && !back.Bounds.IntersectsWith(next.Bounds), "Back stays visible and clear of the status line on later steps");
+                    Check(steps.Parent!.Visible && !poster.Visible, "Later steps show the rail of steps beside the screen");
+                    var crab = Descendants(setup).OfType<CrabView>().Single(c => c.Parent != poster); var title = Descendants(setup).OfType<ClawHeading>().Single();
+                    foreach (var size in new[] { new Size(960, 700), new Size(1080, 760), new Size(1500, 960) })
+                    {
+                        setup.ClientSize = size; Application.DoEvents();
+                        Check(!crab.Bounds.IntersectsWith(title.Bounds) && !version.Bounds.IntersectsWith(steps.Bounds) && version.Bottom <= steps.Parent.ClientSize.Height, $"The page's crab, the steps and the version keep clear of each other at {size.Width}x{size.Height}");
+                    }
+                    Go(3);
+                    var lookPicker = Descendants(setup).OfType<LookPicker>().Single();
+                    Descendants(lookPicker).OfType<ThemeCard>().Single(c => c.ThemeId == "studio").PerformClick(); Application.DoEvents();
+                    Check(lookPicker.Theme == "studio" && setup.BackColor == ClawTheme.Case && steps.Parent.BackColor == ClawTheme.Case && Descendants(setup).OfType<ClawHeading>().Single().ForeColor == ClawTheme.Ink, "Choosing Studio for the display leaves this app's own look as it is");
+                    // Four looks, two to a row: every card whole, none overlapping, the accent title below them all.
+                    var cards = Descendants(lookPicker).OfType<ThemeCard>().ToArray();
+                    Check(cards.Length == Themes.Ids.Count && cards.All(c => c.Visible && c.Right <= lookPicker.ClientSize.Width && c.Bottom <= lookPicker.Height)
+                        && cards.SelectMany((a, i) => cards.Skip(i + 1).Select(b => (a, b))).All(p => !p.a.Bounds.IntersectsWith(p.b.Bounds)), "Every look has a whole card of its own, two to a row");
+                    Descendants(lookPicker).OfType<ThemeCard>().Single(c => c.ThemeId == "crastudio").PerformClick(); Application.DoEvents();
+                    Check(lookPicker.Theme == "crastudio" && L.Variant == "studio" && setup.BackColor == ClawTheme.Case, "Choosing Crastudio uses the crab-free wording and leaves this app's own look as it is");
+                    L.SetVariant(Themes.Default); Application.DoEvents();
 
                     Go(2);
                     var picker = Descendants(setup).OfType<WifiPicker>().Single(); var ssid = Field<ClawTextField>(setup, "ssid");

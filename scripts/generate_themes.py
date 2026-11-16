@@ -2,9 +2,10 @@
 from pathlib import Path
 import argparse,json,re,sys
 ROOT=Path(__file__).resolve().parents[1]
-COLORS=['bg','surface','pressed','text','muted','rule','accent','warning','clock_bg','clock_text','weather_app','weather_mark']
+COLORS=['bg','surface','pressed','text','muted','rule','accent','warning','clock_bg','clock_text','weather_app','weather_mark','frame','frame_ink']
 SHAPE={'border_w':(1,4),'gauge_div':(6,30),'ring_div':(10,60),'chart_w':(1,4),'track_h':(2,6),'motion_pct':(0,100)}
-FLAGS=['mascot','accents','outlined_cards','light_numerals','prompt_tile','app_flourish']
+# cased: the screen sits in an orange case with a footer rail; square: flat, square-cornered shapes; heavy_type: heavy display numerals and headings.
+FLAGS=['mascot','accents','outlined_cards','light_numerals','prompt_tile','app_flourish','cased','square','heavy_type']
 def rgb(value,where):
     if not isinstance(value,str) or not re.fullmatch('#[0-9A-Fa-f]{6}',value):raise ValueError(f'{where}: colours are #RRGGBB')
     return int(value[1:],16)
@@ -18,7 +19,7 @@ def contrast(a,b):
 def rgb565(c):return ((c>>19)&31,(c>>10)&63,(c>>3)&31)
 def check_theme(theme,accents):
     name=theme['id']
-    if not re.fullmatch('[a-z]{2,15}',name):raise ValueError(f'{name}: theme ids are 2-15 lowercase letters')
+    if not re.fullmatch('[a-z][a-z0-9]{1,14}',name):raise ValueError(f'{name}: theme ids are 2-15 lowercase letters and digits, starting with a letter')
     if set(theme['colors'])!=set(COLORS):raise ValueError(f'{name}: colour roles must be exactly '+', '.join(COLORS))
     if set(theme['shape'])!=set(SHAPE) or set(theme['flags'])!=set(FLAGS):raise ValueError(f'{name}: shape and flag keys are fixed')
     c={k:rgb(v,f'{name}/{k}') for k,v in theme['colors'].items()}
@@ -28,6 +29,8 @@ def check_theme(theme,accents):
     inks=[c['accent']]+([rgb(a['color'],a['id']) for a in accents] if theme['flags']['accents'] else [])
     for label,ink,ground,minimum in [('text',c['text'],c['bg'],7),('text',c['text'],c['surface'],7),('muted',c['muted'],c['bg'],4.5),('warning',c['warning'],c['bg'],3),('clock_text',c['clock_text'],c['clock_bg'],7)]+[('accent',ink,c['bg'],3) for ink in inks]:
         if contrast(ink,ground)<minimum:raise ValueError(f'{name}/{label}: contrast {contrast(ink,ground):.2f} is below {minimum}')
+    # The case's rail carries labels and the footer's state.
+    if theme['flags']['cased'] and contrast(c['frame_ink'],c['frame'])<4.5:raise ValueError(f'{name}/frame_ink: contrast {contrast(c["frame_ink"],c["frame"]):.2f} is below 4.5')
     for a,b in [('rule','bg'),('surface','bg'),('pressed','surface'),('rule','surface')]:
         if rgb565(c[a])==rgb565(c[b]):raise ValueError(f'{name}: {a} and {b} are identical on an RGB565 panel')
     return c

@@ -26,7 +26,8 @@ public static class DisplayApps
 
 public sealed record DeviceSettings
 {
-    public const int CurrentSchema=9;
+    // 10 adds the cased looks, Crab v2 and Crastudio, which older displays cannot draw.
+    public const int CurrentSchema=10;
     // One bit per display app; 5 is Home, which always stays on.
     public const int AllApps=1023, LastApp=9;
     public int Schema { get; init; } = CurrentSchema;
@@ -59,7 +60,9 @@ public sealed record DeviceSettings
         // Shortcuts arrive switched on, with the starter deck; Home stays as it was.
         if(Schema is >=2 and <8)value=value with {EnabledApps=value.EnabledApps|256};
         // Audio arrives switched on too, and Home's footer stops naming the version.
-        return Schema is >=2 and <9 ? value with {Schema=CurrentSchema,EnabledApps=value.EnabledApps|512,ShowVersion=false} : value;
+        if(Schema is >=2 and <9)value=value with {EnabledApps=value.EnabledApps|512,ShowVersion=false};
+        // The cased looks change nothing else; the display keeps the look it had.
+        return Schema is >=2 and <CurrentSchema ? value with {Schema=CurrentSchema} : value;
     }
     public bool Enabled(int app) => app is >= 0 and <= LastApp && (EnabledApps & (1 << app)) != 0;
     public DeviceSettings SetEnabled(int app, bool enabled)
@@ -162,7 +165,7 @@ public sealed class DeviceSettingsClient(Configuration config)
     {
         using var json=JsonDocument.Parse(response);
         var settings=JsonSerializer.Deserialize<DeviceSettings>(response,Json) ?? throw new IOException(L.Text("the_display_returned_empty_settings"));
-        if (!json.RootElement.TryGetProperty("schema",out var schema) || schema.GetInt32() is not (2 or 3 or 4 or 5 or 6 or 7 or 8 or 9)) throw new NotSupportedException(L.Text("update_the_display_firmware_to_use_wireless_configuration"));
+        if (!json.RootElement.TryGetProperty("schema",out var schema) || schema.GetInt32() is not (2 or 3 or 4 or 5 or 6 or 7 or 8 or 9 or 10)) throw new NotSupportedException(L.Text("update_the_display_firmware_to_use_wireless_configuration"));
         foreach(string key in new[]{"enabled_apps","home_order","use_24h","weather_enabled","city","latitude","longitude","timezone"})
             if(!json.RootElement.TryGetProperty(key,out _))throw new IOException(L.Text("the_display_returned_incomplete_settings"));
         if(schema.GetInt32()>=3)

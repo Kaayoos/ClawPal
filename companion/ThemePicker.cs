@@ -3,10 +3,12 @@ using System.Drawing.Text;
 
 namespace ClawPal.Companion;
 
-/* A card showing a small display in its own look; the companion's current look frames it. */
+/* One of the display's looks: its Home screen drawn in its own colours, its name and what it is like.
+   The chosen one sits on an orange block. */
 internal sealed class ThemeCard : ClawButton
 {
-    private static readonly Lazy<Bitmap?> crab = new(() => {
+    private static readonly Lazy<Bitmap?> crab = new(() =>
+    {
         var assembly = typeof(ThemeCard).Assembly;
         var name = assembly.GetManifestResourceNames().FirstOrDefault(n => n.EndsWith("crab_idle_sheet.png"));
         if (name is null) return null;
@@ -18,52 +20,61 @@ internal sealed class ThemeCard : ClawButton
     internal ThemeCard(string theme) { ThemeId = theme; Text = Themes.Get(theme, null).Name; Size = new(292, 248); AccessibleDescription = Themes.Get(theme, null).Description; }
     protected override void OnPaint(PaintEventArgs e)
     {
-        var g = e.Graphics; g.SmoothingMode = SmoothingMode.AntiAlias; g.Clear(Parent?.BackColor ?? ClawTheme.Background);
+        var g = e.Graphics; g.SmoothingMode = SmoothingMode.AntiAlias; g.Clear(Parent?.BackColor ?? ClawTheme.Screen);
         var look = Themes.Get(ThemeId, AccentId);
-        ClawTheme.Fill(g, ClawTheme.Surface, new RectangleF(0, 0, Width - 1, Height - 1), 12);
-        using (var path = ClawTheme.Round(new RectangleF(Selected ? 1 : .5f, Selected ? 1 : .5f, Width - (Selected ? 3 : 2), Height - (Selected ? 3 : 2)), 12))
-        using (var pen = new Pen(Selected ? ClawTheme.Accent : ClawTheme.Border, Selected ? 2 : 1)) g.DrawPath(pen, path);
-        var screen = new Rectangle(12, 12, Width - 24, (Width - 24) * 3 / 5);
-        PaintDisplay(g, screen, look);
-        using var title = ClawTheme.Font(12, true); using var body = ClawTheme.Font(9);
-        ClawTheme.Text(g, look.Name, title, ClawTheme.Ink, new Rectangle(14, screen.Bottom + 10, Width - 28, 28));
-        ClawTheme.Text(g, look.Description, body, ClawTheme.Muted, new Rectangle(14, screen.Bottom + 38, Width - 28, Height - screen.Bottom - 44),
+        bool lit = Selected;
+        ClawTheme.Fill(g, lit ? (Hot ? ClawTheme.AccentHover : ClawTheme.Accent) : Hot ? ClawTheme.Raised : ClawTheme.Surface, new Rectangle(0, 0, Width, Height));
+        // The display in its slim case, wearing this look.
+        int pad = LogicalToDeviceUnits(14);
+        var area = new Rectangle(pad, pad, Width - 2 * pad, DeviceArt.HeightFor(Width - 2 * pad, .6f));
+        var screen = DeviceArt.FitScreen(area, 800, 480);
+        DeviceArt.Draw(g, screen, 800, 480, look.Background, canvas => PaintDisplay(canvas, screen, look));
+        ClawTheme.Text(g, look.Name, ClawTheme.Font(ClawTheme.Head, true), lit ? ClawTheme.CaseInk : ClawTheme.Ink, new Rectangle(pad, area.Bottom + LogicalToDeviceUnits(10), Width - 2 * pad, LogicalToDeviceUnits(30)));
+        ClawTheme.Text(g, look.Description, ClawTheme.Font(ClawTheme.Small), lit ? ClawTheme.CaseInk : ClawTheme.Muted, new Rectangle(pad, area.Bottom + LogicalToDeviceUnits(40), Width - 2 * pad, Height - area.Bottom - LogicalToDeviceUnits(44)),
             TextFormatFlags.Left | TextFormatFlags.Top | TextFormatFlags.WordBreak | TextFormatFlags.EndEllipsis);
-        if (Focused && ShowFocusCues) { using var focus = ClawTheme.Round(new RectangleF(4, 4, Width - 9, Height - 9), 10); using var pen = new Pen(ClawTheme.Accent); pen.DashStyle = DashStyle.Dot; g.DrawPath(pen, focus); }
+        if (Focused && ShowFocusCues) ClawTheme.Frame(g, lit ? ClawTheme.CaseInk : ClawTheme.Ink, new Rectangle(3, 3, Width - 6, Height - 6));
     }
     /* An 800 x 480 home screen reduced to its essentials, drawn in the card's own palette. */
     private static void PaintDisplay(Graphics g, Rectangle r, ThemeLook look)
     {
         float s = r.Width / 800f;
         RectangleF R(float x, float y, float w, float h) => new(r.X + x * s, r.Y + y * s, w * s, h * s);
-        ClawTheme.Fill(g, look.Background, r, 8);
-        using (var border = ClawTheme.Round(new RectangleF(r.X + .5f, r.Y + .5f, r.Width - 1, r.Height - 1), 8)) using (var pen = new Pen(look.Border)) g.DrawPath(pen, border);
+        ClawTheme.Fill(g, look.Background, r);
         using var rule = new Pen(look.Border, 1);
         using var ink = new SolidBrush(look.Ink); using var muted = new SolidBrush(look.Muted);
         g.TextRenderingHint = TextRenderingHint.AntiAliasGridFit;
-        if (look.Mascot) {
-            using var time = new Font("Segoe UI Semibold", 92 * s, GraphicsUnit.Pixel);
+        // Cased looks set the time in the display's heavy face; this app's own Segoe UI Black stands in for it.
+        string face = look.Cased ? "Segoe UI Black" : "Segoe UI Semibold";
+        if (look.Mascot)
+        {
+            using var time = new Font(face, 92 * s, GraphicsUnit.Pixel);
             using var center = new StringFormat { Alignment = StringAlignment.Center };
             g.DrawString("10:24", time, ink, R(20, 20, 400, 120), center);
-            if (crab.Value is { } sprite) {
+            if (crab.Value is { } sprite)
+            {
                 var mode = g.InterpolationMode; var offset = g.PixelOffsetMode;
                 g.InterpolationMode = InterpolationMode.NearestNeighbor; g.PixelOffsetMode = PixelOffsetMode.Half;
                 g.DrawImage(sprite, R(124, 150, 192, 192)); g.InterpolationMode = mode; g.PixelOffsetMode = offset;
             }
             g.FillRectangle(muted, R(110, 386, 220, 14));
-        } else {
+        }
+        else
+        {
             // A desk clock: the date as a heading, large light time, then the week with today marked in the accent.
-            using var time = new Font("Segoe UI Light", 136 * s, GraphicsUnit.Pixel);
+            using var time = new Font(look.Cased ? "Segoe UI Black" : "Segoe UI Light", (look.Cased ? 118 : 136) * s, GraphicsUnit.Pixel);
             g.DrawString("10:24", time, ink, R(28, 116, 420, 170));
             g.FillRectangle(ink, R(44, 130, 150, 14));
             using var accent = new SolidBrush(look.Accent);
-            for (int i = 0; i < 7; ++i) {
+            for (int i = 0; i < 7; ++i)
+            {
                 g.FillRectangle(i == 3 ? ink : muted, R(44 + i * 50, 296, 30, 10));
-                if (i == 3) g.FillRectangle(accent, R(44 + i * 50, 314, 30, 4));
+                if (i == 3) g.FillRectangle(accent, R(44 + i * 50, 314, 30, look.Cased ? 6 : 4));
             }
         }
+        if (look.Cased) { PaintCase(g, r, look); return; }
         g.DrawLine(rule, R(441, 40, 0, 0).Location, R(441, 420, 0, 0).Location);
-        for (int i = 0; i < 4; ++i) {
+        for (int i = 0; i < 4; ++i)
+        {
             float y = 54 + i * 92;
             using var tile = ClawTheme.Round(R(466, y, 64, 64), 10 * s);
             if (look.Mascot) { using var fill = new SolidBrush(look.Surface); g.FillPath(fill, tile); }
@@ -72,35 +83,44 @@ internal sealed class ThemeCard : ClawButton
             if (!look.Mascot && i < 3) g.DrawLine(rule, R(552, y + 78, 0, 0).Location, R(776, y + 78, 0, 0).Location);
         }
     }
+    /* A cased look: square blocks for the shortcuts, then ClawPal's orange case around the screen with
+     * its rail along the bottom, Apps and Home printed in the case's dark ink. */
+    private static void PaintCase(Graphics g, Rectangle r, ThemeLook look)
+    {
+        float s = r.Width / 800f;
+        RectangleF R(float x, float y, float w, float h) => new(r.X + x * s, r.Y + y * s, w * s, h * s);
+        using var surface = new SolidBrush(look.Surface); using var ink = new SolidBrush(look.Ink); using var muted = new SolidBrush(look.Muted);
+        using var accent = new SolidBrush(look.Accent); using var frame = new SolidBrush(look.Frame); using var frameInk = new SolidBrush(look.FrameInk);
+        for (int i = 0; i < 4; ++i)
+        {
+            float y = 40 + i * 98;
+            g.FillRectangle(surface, R(464, y, 308, 88));
+            g.FillRectangle(accent, R(482, y + 20, 48, 48));
+            g.FillRectangle(ink, R(552, y + 22, 150 - i * 18, 16)); g.FillRectangle(muted, R(552, y + 50, 104, 12));
+        }
+        g.FillRectangle(frame, R(0, 436, 800, 44));
+        g.FillRectangle(frame, R(0, 0, 800, 8)); g.FillRectangle(frame, R(0, 0, 8, 480)); g.FillRectangle(frame, R(792, 0, 8, 480));
+        for (int i = 0; i < 4; ++i) g.FillRectangle(frameInk, R(28 + i % 2 * 9, 450 + i / 2 * 9, 6, 6));
+        g.FillRectangle(frameInk, R(52, 452, 58, 12)); g.FillRectangle(frameInk, R(704, 452, 70, 12));
+    }
 }
 
-/* One accent as a card: a large swatch and its name. The chosen one is outlined in its own colour
- * and its swatch carries a check. */
+/* One accent as a block: a square of the colour and its name. The chosen one carries a tick. */
 internal sealed class SwatchButton : ClawButton
 {
-    private bool hover;
     internal string AccentId { get; }
-    internal SwatchButton(string accent) { AccentId = accent; Text = ""; Size = new(176, 72); AccessibleName = L.Text($"accent_{accent}"); }
-    protected override void OnMouseEnter(EventArgs e) { hover = true; base.OnMouseEnter(e); }
-    protected override void OnMouseLeave(EventArgs e) { hover = false; base.OnMouseLeave(e); }
+    internal SwatchButton(string accent) { AccentId = accent; Text = ""; Size = new(176, 64); AccessibleName = L.Text($"accent_{accent}"); }
     protected override void OnPaint(PaintEventArgs e)
     {
-        var g = e.Graphics; g.SmoothingMode = SmoothingMode.AntiAlias; g.Clear(Parent?.BackColor ?? ClawTheme.Background);
+        var g = e.Graphics; g.Clear(Parent?.BackColor ?? ClawTheme.Screen);
         var colour = Themes.AccentColor(AccentId);
-        ClawTheme.Fill(g, hover && !Selected ? ClawTheme.Hover : ClawTheme.Surface, new RectangleF(0, 0, Width - 1, Height - 1), 12);
-        float inset = Selected ? 1 : .5f;
-        using (var path = ClawTheme.Round(new RectangleF(inset, inset, Width - 1 - 2 * inset, Height - 1 - 2 * inset), 12))
-        using (var pen = new Pen(Selected ? colour : ClawTheme.Border, Selected ? 2 : 1)) g.DrawPath(pen, path);
-        int size = Math.Min(40, Height - 24), top = (Height - size) / 2;
-        using (var fill = new SolidBrush(colour)) g.FillEllipse(fill, 16, top, size, size);
-        if (Selected) {
-            using var tick = new Pen(ClawTheme.Background, 2.5f) { StartCap = LineCap.Round, EndCap = LineCap.Round, LineJoin = LineJoin.Round };
-            float cx = 16 + size / 2f, cy = top + size / 2f, u = size / 40f;
-            g.DrawLines(tick, new[] { new PointF(cx - 8 * u, cy), new PointF(cx - 2 * u, cy + 6 * u), new PointF(cx + 9 * u, cy - 6 * u) });
-        }
-        using var name = ClawTheme.Font(11, true);
-        ClawTheme.Text(g, L.Text($"accent_{AccentId}"), name, Selected ? ClawTheme.Ink : ClawTheme.Muted, new Rectangle(size + 30, 0, Width - size - 40, Height));
-        if (Focused && ShowFocusCues) { using var focus = ClawTheme.Round(new RectangleF(4, 4, Width - 9, Height - 9), 10); using var pen = new Pen(colour); pen.DashStyle = DashStyle.Dot; g.DrawPath(pen, focus); }
+        ClawTheme.Fill(g, Selected ? ClawTheme.Raised : Hot ? ClawTheme.Mix(ClawTheme.Surface, ClawTheme.Raised, .6f) : ClawTheme.Surface, new Rectangle(0, 0, Width, Height));
+        int size = Math.Min(LogicalToDeviceUnits(32), Height - 24), top = (Height - size) / 2, left = LogicalToDeviceUnits(14);
+        ClawTheme.Fill(g, colour, new Rectangle(left, top, size, size));
+        if (Selected) ClawTheme.Tick(g, ClawTheme.CaseInk, new PointF(left + size / 2f, top + size / 2f), size * .7f, LogicalToDeviceUnits(3));
+        ClawTheme.Text(g, L.Text($"accent_{AccentId}"), ClawTheme.Font(ClawTheme.Body, true), Selected ? ClawTheme.Ink : ClawTheme.Muted, new Rectangle(left + size + LogicalToDeviceUnits(12), 0, Width - size - left - LogicalToDeviceUnits(20), Height));
+        if (Selected) ClawTheme.Fill(g, colour, new Rectangle(0, Height - LogicalToDeviceUnits(4), Width, LogicalToDeviceUnits(4)));
+        PaintFocus(g);
     }
 }
 
@@ -109,7 +129,7 @@ internal sealed class LookPicker : Panel
 {
     private readonly ThemeCard[] cards;
     private readonly SwatchButton[] swatches;
-    private readonly Label accentTitle = ClawTheme.Label(L.Text("accent_colour"), 300, 10, true, 30), accentNote = ClawTheme.Label("", 400, 9, false, 30);
+    private readonly Label accentTitle = ClawTheme.Label(L.Text("accent_colour"), 300, ClawTheme.Body, true, 30), accentNote = ClawTheme.Label("", 400, ClawTheme.Small, false, 30);
     internal string Theme { get; private set; }
     internal string Accent { get; private set; }
     internal event Action<string, string>? Changed;
@@ -128,8 +148,8 @@ internal sealed class LookPicker : Panel
         Theme = theme; Accent = accent; var look = Themes.Get(theme, accent);
         foreach (var card in cards) { card.Selected = card.ThemeId == theme; card.AccentId = accent; card.Invalidate(); }
         foreach (var swatch in swatches) { swatch.Selected = swatch.AccentId == accent; swatch.Visible = look.HasAccents; swatch.Invalidate(); }
-        // The cards name each accent; only the crab, which has none to choose, needs a note.
-        accentNote.Text = L.Text("accent_crab_note"); accentNote.Visible = !look.HasAccents;
+        // The cards name each accent; looks with none to choose say why.
+        accentNote.Text = L.Text(look.Cased ? "accent_case_note" : "accent_crab_note"); accentNote.Visible = !look.HasAccents;
         LayoutPicker();
     }
     private void Choose(string theme, string accent)
@@ -139,18 +159,20 @@ internal sealed class LookPicker : Panel
     }
     private void LayoutPicker()
     {
-        int gap = 16, width = Math.Max(200, (ClientSize.Width - gap) / 2), height = (width - 24) * 3 / 5 + 96;
-        for (int i = 0; i < cards.Length; i++) cards[i].SetBounds(i * (width + gap), 0, width, height);
-        accentTitle.SetBounds(0, height + 22, ClientSize.Width, 30);
+        // Two looks to a row.
+        int gap = 12, width = Math.Max(200, (ClientSize.Width - gap) / 2), card = DeviceArt.HeightFor(width - 28, .6f) + 14 + 92;
+        for (int i = 0; i < cards.Length; i++) cards[i].SetBounds(i % 2 * (width + gap), i / 2 * (card + gap), width, card);
+        int height = (cards.Length + 1) / 2 * (card + gap) - gap;
+        accentTitle.SetBounds(0, height + 26, ClientSize.Width, 30);
         // Visible reads false until the window is shown, so ask the look instead.
         bool accents = Themes.Get(Theme, Accent).HasAccents;
-        // Four cards share a row while each fits its swatch and full name; narrower windows wrap them two by two,
+        // Four blocks share a row while each fits its swatch and full name; narrower windows wrap them two by two,
         // so the eight accents always form full rows.
-        int cardGap = 12, columns = (ClientSize.Width + cardGap) / (170 + cardGap) >= 4 ? Math.Min(4, swatches.Length) : 2;
+        int cardGap = 8, columns = (ClientSize.Width + cardGap) / (170 + cardGap) >= 4 ? Math.Min(4, swatches.Length) : 2;
         int cardWidth = (ClientSize.Width - cardGap * (columns - 1)) / columns, rows = (swatches.Length + columns - 1) / columns;
-        for (int i = 0; i < swatches.Length; i++) swatches[i].SetBounds(i % columns * (cardWidth + cardGap), height + 58 + i / columns * (72 + cardGap), cardWidth, 72);
+        for (int i = 0; i < swatches.Length; i++) swatches[i].SetBounds(i % columns * (cardWidth + cardGap), height + 62 + i / columns * (64 + cardGap), cardWidth, 64);
         accentNote.TextAlign = ContentAlignment.MiddleLeft;
-        accentNote.SetBounds(0, height + 54, ClientSize.Width, 40);
-        Height = accents ? height + 66 + rows * 72 + (rows - 1) * cardGap : height + 100;
+        accentNote.SetBounds(0, height + 56, ClientSize.Width, 30);
+        Height = accents ? height + 62 + rows * 64 + (rows - 1) * cardGap : height + 92;
     }
 }

@@ -18,7 +18,7 @@
   </PropertyGroup>
   <ItemGroup><Compile Remove="tests/**/*.cs" /></ItemGroup>
   
-  <ItemGroup><EmbeddedResource Include="Assets/BuddyOS.ico" LogicalName="ClawPal.Companion.CrabIcon" /></ItemGroup>
+  <ItemGroup><EmbeddedResource Include="Assets/BuddyOS.ico" LogicalName="ClawPal.Companion.CrabIcon" /><EmbeddedResource Include="Assets/welcome-display.jpg" LogicalName="ClawPal.Companion.WelcomeDisplay" /><EmbeddedResource Include="Assets/slim-case-front.png" LogicalName="ClawPal.Companion.SlimCaseFront" /></ItemGroup>
 <ItemGroup><EmbeddedResource Include="../assets/mascot/*.png" /><EmbeddedResource Include="../assets/logos/*.png" /><EmbeddedResource Include="Payload.zip" Condition="Exists('Payload.zip')" LogicalName="ClawPal.Payload" /></ItemGroup>
   <ItemGroup><EmbeddedResource Include="../languages/*.json" LogicalName="ClawPal.Languages.%(Filename).json" /></ItemGroup>
   <ItemGroup><EmbeddedResource Include="../boards/catalog.json" LogicalName="ClawPal.Boards" /></ItemGroup>

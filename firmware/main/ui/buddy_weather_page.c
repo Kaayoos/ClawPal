@@ -52,7 +52,7 @@ static lv_obj_t *card(lv_obj_t *parent,int radius)
     lv_obj_t *obj=box(parent,0,0,10,10);
     lv_obj_set_style_bg_color(obj,lv_color_hex(SURFACE),0);lv_obj_set_style_bg_opa(obj,LV_OPA_COVER,0);
     if(buddy_theme.outlined_cards){lv_obj_set_style_bg_opa(obj,LV_OPA_TRANSP,0);lv_obj_set_style_border_width(obj,1,0);lv_obj_set_style_border_color(obj,lv_color_hex(RULE),0);}
-    lv_obj_set_style_radius(obj,radius,0);return obj;
+    lv_obj_set_style_radius(obj, buddy_theme_round(radius),0);return obj;
 }
 static void visible(lv_obj_t *obj,bool show)
 {
@@ -139,7 +139,7 @@ static void layout(void)
     visible(weather_ui.now,now);visible(weather_ui.forecast,!now);
     for(unsigned i=0;i<3;i++){
         lv_obj_set_style_bg_opa(weather_ui.tabs[i],i==weather_ui.view?LV_OPA_COVER:LV_OPA_TRANSP,0);
-        lv_obj_set_style_text_color(weather_ui.tab_labels[i],lv_color_hex(i==weather_ui.view?ACCENT:MUTED),0);
+        lv_obj_set_style_text_color(weather_ui.tab_labels[i],lv_color_hex(i==weather_ui.view?(buddy_theme.cased?BUDDY_COLOR_FRAME_INK:ACCENT):MUTED),0);
     }
     if(WIDE){layout_cards(744,236);place(weather_ui.previous,0,252,48,44,NULL);place(weather_ui.next,696,252,48,44,NULL);place(weather_ui.page_range,60,264,624,22,NULL);return;}
     if(TINY){
@@ -237,13 +237,14 @@ lv_obj_t *buddy_weather_page_create(lv_obj_t *parent)
     const char *tabs[]={BT(BT_NOW),BT(BT_24_HOURS),BT(BT_5_DAYS)};
     for(unsigned i=0;i<3;i++){
         lv_obj_t *tab=weather_ui.tabs[i]=box(weather_ui.tab_track,4+(int)i*106,4,104,38);lv_obj_add_flag(tab,LV_OBJ_FLAG_CLICKABLE);
-        lv_obj_set_style_radius(tab,LV_RADIUS_CIRCLE,0);lv_obj_set_style_bg_color(tab,lv_color_hex(RULE),0);
+        lv_obj_set_style_radius(tab, buddy_theme_round(LV_RADIUS_CIRCLE),0);lv_obj_set_style_bg_color(tab,lv_color_hex(buddy_theme.cased?ACCENT:RULE),0);
         lv_obj_set_style_bg_color(tab,lv_color_hex(BUDDY_COLOR_PRESSED),LV_STATE_PRESSED);lv_obj_set_style_bg_opa(tab,LV_OPA_COVER,LV_STATE_PRESSED);
         lv_obj_add_event_cb(tab,tab_clicked,LV_EVENT_CLICKED,(void *)(uintptr_t)i);
         weather_ui.tab_labels[i]=label(tab,tabs[i],0,0,96,&buddy_language_font_16,MUTED);
         lv_obj_set_style_text_align(weather_ui.tab_labels[i],LV_TEXT_ALIGN_CENTER,0);lv_obj_align(weather_ui.tab_labels[i],LV_ALIGN_CENTER,0,0);
     }
     lv_obj_t *rule=weather_ui.rule=box(page,28,84,744,1);lv_obj_set_style_bg_color(rule,lv_color_hex(RULE),0);lv_obj_set_style_bg_opa(rule,LV_OPA_COVER,0);
+    if(buddy_theme.square)lv_obj_add_flag(rule,LV_OBJ_FLAG_HIDDEN);
 
     /* Now: a large reading, today's range and the animated crab, with four detail tiles. */
     weather_ui.now=box(page,28,96,744,340);
@@ -274,7 +275,7 @@ lv_obj_t *buddy_weather_page_create(lv_obj_t *parent)
         weather_ui.temperatures[i]=label(c,"",0,0,10,&buddy_language_font_24,INK);lv_obj_set_style_text_align(weather_ui.temperatures[i],LV_TEXT_ALIGN_CENTER,0);
         weather_ui.probabilities[i]=label(c,"",0,0,10,&buddy_language_font_16,ACCENT);lv_obj_set_style_text_align(weather_ui.probabilities[i],LV_TEXT_ALIGN_CENTER,0);
         weather_ui.rain[i]=lv_bar_create(c);lv_obj_remove_style_all(weather_ui.rain[i]);lv_bar_set_range(weather_ui.rain[i],0,100);
-        lv_obj_set_style_radius(weather_ui.rain[i],LV_RADIUS_CIRCLE,LV_PART_MAIN);lv_obj_set_style_radius(weather_ui.rain[i],LV_RADIUS_CIRCLE,LV_PART_INDICATOR);
+        lv_obj_set_style_radius(weather_ui.rain[i], buddy_theme_round(LV_RADIUS_CIRCLE),LV_PART_MAIN);lv_obj_set_style_radius(weather_ui.rain[i], buddy_theme_round(LV_RADIUS_CIRCLE),LV_PART_INDICATOR);
         lv_obj_set_style_bg_color(weather_ui.rain[i],lv_color_hex(RULE),LV_PART_MAIN);lv_obj_set_style_bg_opa(weather_ui.rain[i],LV_OPA_COVER,LV_PART_MAIN);
         lv_obj_set_style_bg_color(weather_ui.rain[i],lv_color_hex(BUDDY_COLOR_WEATHER_APP),LV_PART_INDICATOR);lv_obj_set_style_bg_opa(weather_ui.rain[i],LV_OPA_COVER,LV_PART_INDICATOR);
     }
@@ -283,7 +284,7 @@ lv_obj_t *buddy_weather_page_create(lv_obj_t *parent)
     weather_ui.page_range=label(weather_ui.forecast,"",0,0,10,&buddy_language_font_14,MUTED);lv_obj_set_style_text_align(weather_ui.page_range,LV_TEXT_ALIGN_CENTER,0);
     weather_ui.empty=label(weather_ui.forecast,BT(BT_FORECAST_IS_LOADING),16,100,712,&buddy_language_font_20,MUTED);lv_obj_set_style_text_align(weather_ui.empty,LV_TEXT_ALIGN_CENTER,0);
     weather_ui.view=VIEW_NOW;weather_ui.state=BUDDY_MASCOT_WORKING;
-    compact_weather();buddy_theme_numerals(weather_ui.temperature);layout();refresh();buddy_weather_page_tick();return page;
+    compact_weather();buddy_theme_numerals(weather_ui.temperature);buddy_theme_heading(weather_ui.city);layout();refresh();buddy_weather_page_tick();return page;
 }
 
 static void hour_label(char *value,size_t size,int64_t timestamp,bool use_24h)

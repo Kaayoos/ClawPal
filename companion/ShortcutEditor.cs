@@ -2,14 +2,15 @@ using System.Drawing.Drawing2D;
 
 namespace ClawPal.Companion;
 
-/* The deck as the display lays it out: the same columns, the same tiles, in the current look.
- * Click a tile to edit it; drag it onto another slot to move or swap it. Arrows move the
- * selection, Alt+arrows move the tile and Delete removes it. */
+/* The deck as the display lays it out: the same columns, the same tiles, in the display's look,
+ * standing in its case. Click a tile to edit it; drag it onto another slot to move or swap it.
+ * Arrows move the selection, Alt+arrows move the tile and Delete removes it. */
 internal sealed class DeckPreview : Control
 {
     private ShortcutDeck deck;
     private readonly BoardDefinition board;
     private readonly Func<string> language;
+    private readonly Func<ThemeLook> look;
     private int selected, dragFrom = -1, dropAt = -1;
     private Point pressAt;
     internal event Action<int>? SelectedChanged;
@@ -17,9 +18,9 @@ internal sealed class DeckPreview : Control
     internal int Selected => selected;
     internal ShortcutDeck Deck => deck;
 
-    internal DeckPreview(ShortcutDeck value, string boardId, Func<string> displayLanguage)
+    internal DeckPreview(ShortcutDeck value, string boardId, Func<string> displayLanguage, Func<ThemeLook>? displayLook = null)
     {
-        deck = value; board = BoardCatalog.Get(boardId); language = displayLanguage;
+        deck = value; board = BoardCatalog.Get(boardId); language = displayLanguage; look = displayLook ?? (() => Themes.Get(Themes.Default, Themes.DefaultAccent));
         SetStyle(ControlStyles.UserPaint | ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer | ControlStyles.Selectable, true);
         TabStop = true; AccessibleRole = AccessibleRole.List; AccessibleName = L.Text("shortcuts_on_your_display");
         Resize += (_, _) => Invalidate();
@@ -31,15 +32,7 @@ internal sealed class DeckPreview : Control
     private int Columns => deck.Size == 6 || (Tiny && deck.Size == 12) ? 3 : 4;
     private int Rows => (deck.Size + Columns - 1) / Columns;
     // The screen at the board's shape; the smallest boards scroll by views, so their views stack here.
-    internal Rectangle Screen
-    {
-        get
-        {
-            float aspect = board.Width / (float)(Tiny ? (board.Height - 44) * ((Rows + 1) / 2) + 44 : board.Height);
-            int width = (int)Math.Min(Width - 2, (Height - 2) * aspect), height = (int)(width / aspect);
-            return new((Width - width) / 2, (Height - height) / 2, width, height);
-        }
-    }
+    internal Rectangle Screen => DeviceArt.FitScreen(new Rectangle(1, 1, Width - 2, Height - 2), board.Width, Tiny ? (board.Height - 44) * ((Rows + 1) / 2) + 44 : board.Height);
     private float Ratio => Screen.Width / (float)board.Width;
     internal RectangleF TileBounds(int slot)
     {
@@ -62,50 +55,66 @@ internal sealed class DeckPreview : Control
 
     protected override void OnPaint(PaintEventArgs e)
     {
-        var g = e.Graphics; g.SmoothingMode = SmoothingMode.AntiAlias; g.Clear(Parent?.BackColor ?? ClawTheme.Background);
-        var screen = Screen; float s = Ratio;
-        ClawTheme.Fill(g, ClawTheme.Background, screen, 12);
-        using (var frame = ClawTheme.Round(new RectangleF(screen.X + .5f, screen.Y + .5f, screen.Width - 1, screen.Height - 1), 12))
-        using (var pen = new Pen(ClawTheme.Border)) g.DrawPath(pen, frame);
-        using var heading = new Font("Segoe UI", Math.Max(8, (board.Width >= 800 ? 24 : Tiny ? 14 : 20) * s), GraphicsUnit.Pixel);
+        var g = e.Graphics; g.Clear(Parent?.BackColor ?? ClawTheme.Screen);
+        var screen = Screen; var look = this.look();
+        DeviceArt.Draw(g, screen, board.Width, Tiny ? (board.Height - 44) * ((Rows + 1) / 2) + 44 : board.Height, look.Background, canvas => PaintScreen(canvas, screen, look));
+        if (Focused && ShowFocusCues) ClawTheme.Frame(g, ClawTheme.Ink, new Rectangle(0, 0, Width, Height));
+    }
+    private void PaintScreen(Graphics g, Rectangle screen, ThemeLook look)
+    {
+        float s = Ratio; g.SmoothingMode = SmoothingMode.AntiAlias;
+        ClawTheme.Fill(g, look.Background, screen);
+        // Cased looks head the page in the display's heavy face; this app's Segoe UI Black stands in for it.
+        using var heading = new Font(look.Cased ? "Segoe UI Black" : "Segoe UI", Math.Max(8, (board.Width >= 800 ? 24 : Tiny ? 14 : 20) * s), GraphicsUnit.Pixel);
         float pad = (board.Width >= 800 ? 28 : 12) * s;
         int views = Tiny ? (Rows + 1) / 2 : 1;
         for (int view = 0; view < views; ++view)
         {
             float top = screen.Y + view * (board.Height - 44) * s + (board.Width >= 800 ? 22 : Tiny ? 4 : 8) * s;
-            ClawTheme.Text(g, L.DisplayText(language(), "shortcuts"), heading, ClawTheme.Ink, Rectangle.Round(new RectangleF(screen.X + pad, top, screen.Width / 2f, heading.Height + 6)));
+            ClawTheme.Text(g, L.DisplayText(language(), "shortcuts"), heading, look.Ink, Rectangle.Round(new RectangleF(screen.X + pad, top, screen.Width / 2f, heading.Height + 6)));
         }
-        if (board.Width >= 800) using (var rule = new Pen(ClawTheme.Border)) g.DrawLine(rule, screen.X + pad, screen.Y + 84 * s, screen.Right - pad, screen.Y + 84 * s);
-        for (int slot = 0; slot < deck.Size; ++slot) if (slot != dragFrom || dropAt < 0) PaintTile(g, slot, TileBounds(slot), deck.At(slot));
+        if (board.Width >= 800 && !look.Cased) using (var rule = new Pen(look.Border)) g.DrawLine(rule, screen.X + pad, screen.Y + 84 * s, screen.Right - pad, screen.Y + 84 * s);
+        for (int slot = 0; slot < deck.Size; ++slot) if (slot != dragFrom || dropAt < 0) PaintTile(g, slot, TileBounds(slot), deck.At(slot), look);
         if (dragFrom >= 0 && dropAt >= 0)
         {
             var target = TileBounds(dropAt);
-            PaintTile(g, dragFrom, target, deck.At(dragFrom));
-            using var path = ClawTheme.Round(target, 10 * s); using var pen = new Pen(ClawTheme.Accent, 2); g.DrawPath(pen, path);
+            PaintTile(g, dragFrom, target, deck.At(dragFrom), look);
+            using var path = ClawTheme.Round(target, look.Cased ? 0 : 10 * s); using var pen = new Pen(ClawTheme.Accent, 2); g.DrawPath(pen, path);
         }
-        if (Focused && ShowFocusCues)
-        {
-            using var focus = ClawTheme.Round(new RectangleF(1, 1, Width - 3, Height - 3), 8); using var pen = new Pen(ClawTheme.Accent) { DashStyle = DashStyle.Dot };
-            g.DrawPath(pen, focus);
-        }
+        if (look.Cased) PaintCase(g, screen, look);
+    }
+    /* Cased looks: ClawPal's orange case around the screen and its rail along the bottom, with Apps and Home in its dark ink. */
+    private void PaintCase(Graphics g, Rectangle screen, ThemeLook look)
+    {
+        float s = Ratio, frame = (board.Width >= 800 ? 8 : board.Height >= 400 ? 5 : 3) * s, rail = 44 * s;
+        using var brush = new SolidBrush(look.Frame);
+        g.FillRectangle(brush, screen.X, screen.Bottom - rail, screen.Width, rail);
+        g.FillRectangle(brush, screen.X, screen.Y, screen.Width, frame); g.FillRectangle(brush, screen.X, screen.Y, frame, screen.Height);
+        g.FillRectangle(brush, screen.Right - frame, screen.Y, frame, screen.Height);
+        using var ink = new SolidBrush(look.FrameInk);
+        for (int i = 0; i < 4; ++i) g.FillRectangle(ink, screen.X + (28 + i % 2 * 7) * s, screen.Bottom - rail + (19 + i / 2 * 7) * s, 4 * s, 4 * s);
+        using var font = new Font("Segoe UI Semibold", Math.Max(7, 16 * s), GraphicsUnit.Pixel);
+        ClawTheme.Text(g, L.DisplayText(language(), "apps"), font, look.FrameInk, Rectangle.Round(new RectangleF(screen.X + 46 * s, screen.Bottom - rail, 120 * s, rail - frame)), TextFormatFlags.Left | TextFormatFlags.VerticalCenter);
+        ClawTheme.Text(g, L.DisplayText(language(), "home"), font, look.FrameInk, Rectangle.Round(new RectangleF(screen.Right - 140 * s, screen.Bottom - rail, 128 * s, rail - frame)), TextFormatFlags.Right | TextFormatFlags.VerticalCenter);
     }
 
-    private void PaintTile(Graphics g, int slot, RectangleF r, ShortcutTile? tile)
+    private void PaintTile(Graphics g, int slot, RectangleF r, ShortcutTile? tile, ThemeLook look)
     {
-        float s = Ratio, radius = (board.Width >= 800 ? 14 : Tiny ? 10 : 12) * s;
-        bool outlined = !ClawTheme.Mascot;
+        // Cased looks draw square, solid tiles, as the display does.
+        float s = Ratio, radius = look.Cased ? 0 : (board.Width >= 800 ? 14 : Tiny ? 10 : 12) * s;
+        bool outlined = !look.Mascot && !look.Cased;
         using var shape = ClawTheme.Round(r, radius);
         if (tile is null)
         {
-            using var dash = new Pen(Color.FromArgb(outlined ? 110 : 170, ClawTheme.Border)) { DashStyle = DashStyle.Dash };
+            using var dash = new Pen(Color.FromArgb(outlined ? 110 : 170, look.Border)) { DashStyle = DashStyle.Dash };
             g.DrawPath(dash, shape);
-            if (slot == selected) using (var plus = new Pen(ClawTheme.Muted, 2)) { var c = new PointF(r.X + r.Width / 2, r.Y + r.Height / 2); float a = Math.Min(r.Width, r.Height) * .12f; g.DrawLine(plus, c.X - a, c.Y, c.X + a, c.Y); g.DrawLine(plus, c.X, c.Y - a, c.X, c.Y + a); }
+            if (slot == selected) using (var plus = new Pen(look.Muted, 2)) { var c = new PointF(r.X + r.Width / 2, r.Y + r.Height / 2); float a = Math.Min(r.Width, r.Height) * .12f; g.DrawLine(plus, c.X - a, c.Y, c.X + a, c.Y); g.DrawLine(plus, c.X, c.Y - a, c.X, c.Y + a); }
         }
         else
         {
-            if (outlined) { using var pen = new Pen(ClawTheme.Border); g.DrawPath(pen, shape); }
-            else ClawTheme.Fill(g, ClawTheme.Surface, r, radius);
-            var ink = ShortcutArt.ColorOf(tile.Color);
+            if (outlined) { using var pen = new Pen(look.Border); g.DrawPath(pen, shape); }
+            else ClawTheme.Fill(g, look.Surface, r, radius);
+            var ink = ShortcutArt.ColorOf(tile.Color, look.Accent);
             bool named = tile.Label.Length > 0, side = r.Width / s >= 150 && r.Height / s < 96;
             using var font = new Font("Segoe UI", Math.Max(7, ((r.Width / s) < 120 || Tiny ? 14 : 16) * s * .92f), GraphicsUnit.Pixel);
             RectangleF icon, text;
@@ -114,10 +123,11 @@ internal sealed class DeckPreview : Control
             else { float size = Math.Clamp(r.Height - font.Height - 28 * s, 16 * s, 48 * s), top = r.Y + (r.Height - size - 6 * s - font.Height) / 2; icon = new(r.X + (r.Width - size) / 2, top, size, size); text = new(r.X + 4, top + size + 6 * s, r.Width - 8, font.Height + 2); }
             if (tile.UsesAppIcon && AppIcons.Load(tile.Target) is { } image) lock (image) g.DrawImage(image, icon);
             else ShortcutArt.Draw(g, tile.Icon, icon, ink);
-            if (named) ClawTheme.Text(g, tile.Label, font, ClawTheme.Ink, Rectangle.Round(text),
+            if (named) ClawTheme.Text(g, tile.Label, font, look.Ink, Rectangle.Round(text),
                 (side ? TextFormatFlags.Left : TextFormatFlags.HorizontalCenter) | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis | TextFormatFlags.SingleLine);
         }
-        if (slot == selected) { using var pen = new Pen(ClawTheme.Accent, 2); using var outline = ClawTheme.Round(RectangleF.Inflate(r, 1, 1), radius + 1); g.DrawPath(pen, outline); }
+        // The tile being edited: an orange frame from this app, drawn over the display's own.
+        if (slot == selected) { using var pen = new Pen(ClawTheme.Accent, 3); using var outline = ClawTheme.Round(RectangleF.Inflate(r, 2, 2), radius + 2); g.DrawPath(pen, outline); }
     }
 
     protected override void OnMouseDown(MouseEventArgs e)
@@ -177,19 +187,15 @@ internal sealed class ArtChoice : ClawButton
     }
     protected override void OnPaint(PaintEventArgs e)
     {
-        var g = e.Graphics; g.SmoothingMode = SmoothingMode.AntiAlias; g.Clear(Parent?.BackColor ?? ClawTheme.Background);
-        bool hover = ClientRectangle.Contains(PointToClient(MousePosition));
-        ClawTheme.Fill(g, hover && !Selected ? ClawTheme.Hover : ClawTheme.Surface, new RectangleF(0, 0, Width - 1, Height - 1), 8);
-        var inner = new RectangleF(9, 9, Width - 18, Height - 18);
-        if (colour) using (var fill = new SolidBrush(ShortcutArt.ColorOf(Value))) g.FillEllipse(fill, inner);
+        var g = e.Graphics; g.Clear(Parent?.BackColor ?? ClawTheme.Screen);
+        ClawTheme.Fill(g, Selected ? ClawTheme.Raised : Hot ? ClawTheme.Raised : ClawTheme.Surface, new Rectangle(0, 0, Width, Height));
+        var inner = new RectangleF(10, 10, Width - 20, Height - 20);
+        g.SmoothingMode = SmoothingMode.AntiAlias;
+        if (colour) ClawTheme.Fill(g, ShortcutArt.ColorOf(Value), inner);
         else if (Picture is { } image) lock (image) g.DrawImage(image, inner);
         else ShortcutArt.Draw(g, Value, inner, Ink);
-        if (Selected || (Focused && ShowFocusCues))
-        {
-            using var path = ClawTheme.Round(new RectangleF(1, 1, Width - 3, Height - 3), 8);
-            using var pen = new Pen(Selected ? ClawTheme.Accent : ClawTheme.Muted, Selected ? 2 : 1) { DashStyle = Selected ? DashStyle.Solid : DashStyle.Dot };
-            g.DrawPath(pen, path);
-        }
+        if (Selected) ClawTheme.Frame(g, ClawTheme.Accent, new Rectangle(0, 0, Width, Height), 3);
+        else if (Focused && ShowFocusCues) ClawTheme.Frame(g, ClawTheme.Ink, new Rectangle(0, 0, Width, Height));
     }
 }
 
@@ -227,8 +233,8 @@ internal sealed class ShortcutInspector : Panel
     private IReadOnlyList<(string Name, string Path)>? apps;
     internal ShortcutInspector(Func<ShortcutDeck> deck, Func<string> displayLanguage, Action<ShortcutDeck> changed)
     {
-        this.deck = deck; language = displayLanguage; this.changed = changed; BackColor = ClawTheme.Background;
-        error = ClawTheme.Label("", 300, 9, false, 40); error.ForeColor = ClawTheme.Warning;
+        this.deck = deck; language = displayLanguage; this.changed = changed; BackColor = ClawTheme.Screen;
+        error = ClawTheme.Label("", 300, ClawTheme.Small, false, 40); error.ForeColor = ClawTheme.Warning;
         // Rebuilt for a new width only; Bind itself sets the height.
         int boundWidth = -1;
         Resize += (_, _) => { if (Width != boundWidth) { boundWidth = Width; Bind(slot); } };
@@ -245,7 +251,7 @@ internal sealed class ShortcutInspector : Panel
         changed(next);
     }
     private int Width2 => Math.Max(240, Width - 4);
-    private Label Caption(string text, int y) { var label = ClawTheme.Label(text, Width2, 9, true, 22); label.Location = new(0, y); Controls.Add(label); return label; }
+    private Label Caption(string text, int y) { var label = ClawTheme.Label(text, Width2, ClawTheme.Body, true, 24); label.Location = new(0, y); Controls.Add(label); return label; }
 
     internal void Bind(int value)
     {
@@ -254,7 +260,7 @@ internal sealed class ShortcutInspector : Panel
         foreach (Control child in Controls.Cast<Control>().ToArray()) { Controls.Remove(child); if (child != error) child.Dispose(); }
         var tile = Tile;
         int y = 0, w = Width2;
-        var heading = ClawTheme.Label(tile is null ? L.Text("empty_slot_n", slot + 1) : L.Text("tile_n", slot + 1), w, 13, true, 32); heading.Location = new(0, y); Controls.Add(heading); y += 40;
+        var heading = ClawTheme.Label(tile is null ? L.Text("empty_slot_n", slot + 1) : L.Text("tile_n", slot + 1), w, ClawTheme.Head, true, 32); heading.Location = new(0, y); Controls.Add(heading); y += 40;
         Caption(L.Text("what_it_does"), y); y += 24;
         var action = new ChoiceBox { Width = w, Height = 44, Location = new(0, y) };
         foreach (var group in ShortcutCatalog.Groups) foreach (var item in ShortcutCatalog.Actions.Where(a => a.Group == group)) action.Items.Add(new ActionChoice(item));
@@ -301,7 +307,7 @@ internal sealed class ShortcutInspector : Panel
         }
         else
         {
-            var hint = ClawTheme.Label(L.Text("pick_an_action_to_fill_this_slot"), w, 9, false, 44); hint.Location = new(0, y); Controls.Add(hint); y += 48;
+            var hint = ClawTheme.Label(L.Text("pick_an_action_to_fill_this_slot"), w, ClawTheme.Small, false, 44); hint.Location = new(0, y); Controls.Add(hint); y += 48;
         }
         error.SetBounds(0, y, w, 44); Controls.Add(error); y += 48;
         Height = y;
@@ -348,7 +354,7 @@ internal sealed class ShortcutInspector : Panel
             case ShortcutTarget.Folder:
             {
                 Caption(L.Text("folder"), y); y += 24;
-                var path = ClawTheme.Label(tile.Target.Length > 0 ? tile.Target : L.Text("no_folder_chosen"), w - 112, 9, false, 44); path.Location = new(0, y); path.AutoEllipsis = true;
+                var path = ClawTheme.Label(tile.Target.Length > 0 ? tile.Target : L.Text("no_folder_chosen"), w - 112, ClawTheme.Small, false, 44); path.Location = new(0, y); path.AutoEllipsis = true;
                 var choose = new ClawButton { Text = L.Text("browse"), Size = new(104, 44), Location = new(w - 104, y) };
                 choose.Click += (_, _) =>
                 {
@@ -370,7 +376,7 @@ internal sealed class ShortcutInspector : Panel
                     Apply(current with { Keys = combo.Value, Label = following ? ShortcutDeck.Fit(combo.Text) : current.Label });
                     BeginInvoke(() => Bind(slot));
                 };
-                var note = ClawTheme.Label(L.Text("keys_go_to_the_window_in_front"), w, 9, false, 40); note.Location = new(0, y + 48);
+                var note = ClawTheme.Label(L.Text("keys_go_to_the_window_in_front"), w, ClawTheme.Small, false, 40); note.Location = new(0, y + 48);
                 Controls.AddRange([recorder, note]);
                 return y + 92;
             }

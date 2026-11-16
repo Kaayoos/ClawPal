@@ -53,8 +53,8 @@ public static class ShortcutArt
     public static IReadOnlyList<Swatch> Colors => data.Value.Colors;
     public static Icon? FindIcon(string? id) => Icons.FirstOrDefault(i => i.Id == id);
     public static bool HasColor(string? id) => Colors.Any(c => c.Id == id);
-    // Accent follows the look, as on the display.
-    public static Color ColorOf(string? id) => Colors.FirstOrDefault(c => c.Id == id)?.Value ?? ClawTheme.Accent;
+    // "Accent" follows the display's look, as on the display; this app's own orange stands in elsewhere.
+    public static Color ColorOf(string? id, Color? accent = null) => Colors.FirstOrDefault(c => c.Id == id)?.Value ?? accent ?? ClawTheme.Accent;
     private static (Icon[], Swatch[]) Load()
     {
         using var stream = typeof(ShortcutArt).Assembly.GetManifestResourceStream("ClawPal.Shortcuts") ?? throw new InvalidOperationException("Shortcut art is missing.");

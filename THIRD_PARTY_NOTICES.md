@@ -24,6 +24,10 @@ document is also bundled in the companion's About page alongside full licenses.
   listed in [the SIL Open Font License](LICENSES/Montserrat-OFL.txt). Generated
   bitmap fonts derive from these fonts; original font sources are included in
   assets/fonts.
+- **Archivo:** copyright holders are listed in
+  [the SIL Open Font License](LICENSES/Archivo-OFL.txt). The heavy display type of
+  the Crab v2 and Crastudio looks is generated from the variable font in
+  assets/fonts by `scripts/generate_display_fonts.py`.
 - **Weather and app symbols:** drawn in ClawPal source; the third-party logos
   above remain unchanged in color and proportions.
 

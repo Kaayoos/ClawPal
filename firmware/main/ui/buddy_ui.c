@@ -100,6 +100,8 @@ typedef struct {
 static struct {
     lv_obj_t *screen, *overview, *details, *empty;
     lv_obj_t *dim_overlay, *about_page, *about_version;
+    /* Cased looks: the frame around every surface and the rail along the bottom. */
+    lv_obj_t *case_frame, *rail;
     lv_obj_t *monitor_header, *monitor_title, *clock_page, *chooser, *weather_page, *shortcuts_page, *audio_page;
     lv_obj_t *home_page, *game_panel, *game_title, *game_fps, *game_status;
     lv_obj_t *clock_large, *clock_date, *clock_mascot;
@@ -297,6 +299,8 @@ static lv_obj_t *text(lv_obj_t *parent, const char *value, int x, int y,
 
 static void rule(lv_obj_t *parent, int x, int y, int w, int h)
 {
+    /* Square looks separate with space and solid surfaces, never hairlines. */
+    if (buddy_theme.square) return;
     lv_obj_t *obj = box(parent, x, y, w, h);
     lv_obj_set_style_bg_color(obj, color(C_RULE), 0);
     lv_obj_set_style_bg_opa(obj, LV_OPA_COVER, 0);
@@ -338,7 +342,7 @@ static void open_about(lv_event_t *event)
         lv_obj_add_flag(close, LV_OBJ_FLAG_CLICKABLE);
         lv_obj_set_style_bg_color(close, color(C_PRESSED), 0);
         lv_obj_set_style_bg_opa(close, LV_OPA_COVER, 0);
-        lv_obj_set_style_radius(close, 8, 0);
+        lv_obj_set_style_radius(close, buddy_theme_round(8), 0);
         text(close, BT(BT_ABOUT_CLOSE), 16, 14, 112, &buddy_language_font_16, C_ACCENT);
         lv_obj_add_event_cb(close, close_about, LV_EVENT_CLICKED, NULL);
         if(CLAWPAL_EXPERIMENTAL)text(ui.about_page,BT(BT_EXPERIMENTAL_HARDWARE),32,190,BOARD_DISPLAY_WIDTH-64,&buddy_language_font_14,C_WARNING);
@@ -348,13 +352,15 @@ static void open_about(lv_event_t *event)
             lv_obj_set_height(credit,LV_SIZE_CONTENT);lv_obj_set_y(credit,228);lv_obj_update_layout(ui.about_page);
             int end=lv_obj_get_y(credit)+lv_obj_get_height(credit)+20;lv_obj_set_y(source_link,end);lv_obj_set_pos(close,BOARD_DISPLAY_WIDTH-154,end+40);
         }
+        buddy_theme_type(ui.about_page);
     }
     char version[80];
     snprintf(version, sizeof(version), "ClawPal %s", esp_app_get_description()->version);
     lv_label_set_text(ui.about_version, version);
     visible(ui.about_page, true);
     lv_obj_move_foreground(ui.about_page);
-    // Keep the existing wake/dim overlay above every app surface.
+    // The case frames every surface; the wake/dim overlay stays above it all.
+    if (ui.case_frame) lv_obj_move_foreground(ui.case_frame);
     lv_obj_move_foreground(ui.dim_overlay);
 }
 
@@ -831,7 +837,7 @@ static void create_startup(void)
     lv_obj_t *subtitle = text(ui.startup, BT(BT_YOUR_LITTLE_DESK_COMPANION), 12, crab ? (BOARD_DISPLAY_HEIGHT-230)/2+186 : BOARD_DISPLAY_HEIGHT/2 + 18, BOARD_DISPLAY_WIDTH-24, &buddy_language_font_16, C_MUTED);
     lv_obj_set_style_text_align(subtitle, LV_TEXT_ALIGN_CENTER, 0);
     if (!crab) {
-        lv_obj_t *line = box(ui.startup, (BOARD_DISPLAY_WIDTH - 48) / 2, BOARD_DISPLAY_HEIGHT/2 + 6, 48, 1);
+        lv_obj_t *line = box(ui.startup, (BOARD_DISPLAY_WIDTH - 48) / 2, BOARD_DISPLAY_HEIGHT/2 + 6, 48, buddy_theme.square ? 4 : 1);
         lv_obj_set_style_bg_color(line, color(C_ACCENT), 0);
         lv_obj_set_style_bg_opa(line, LV_OPA_COVER, 0);
         buddy_ui_motion_enter(title, 10, 600, 0);
@@ -839,6 +845,19 @@ static void create_startup(void)
     }
     mascot_tick(NULL);
     ui.mascot_timer = lv_timer_create(mascot_tick, BUDDY_MASCOT_FRAME_MS, NULL);
+}
+
+/* A button on the case's rail: dark ink on the orange or, while its view is open, a black tab
+ * joined to the screen above it, the way the PC app marks the page you are on. */
+static void rail_button(lv_obj_t *button, lv_obj_t *caption, bool tab)
+{
+    lv_obj_set_style_bg_color(button, color(C_BG), 0);
+    lv_obj_set_style_bg_opa(button, tab ? LV_OPA_COVER : LV_OPA_TRANSP, 0);
+    for (uint32_t i = 0; i < lv_obj_get_child_cnt(button); ++i) {
+        lv_obj_t *child = lv_obj_get_child(button, i);
+        if (child == caption) lv_obj_set_style_text_color(child, color(tab ? C_TEXT : BUDDY_COLOR_FRAME_INK), 0);
+        else lv_obj_set_style_bg_color(child, color(tab ? C_ACCENT : BUDDY_COLOR_FRAME_INK), 0);
+    }
 }
 
 static void refresh_visibility(void)
@@ -877,7 +896,10 @@ static void refresh_visibility(void)
     lv_label_set_text(ui.nav_text, ui.active_app == BUDDY_APP_HOME ? BT(BT_CLOCK) : BT(BT_HOME));
     lv_label_set_text(ui.details_text, ui.details_visible ? BT(BT_OVERVIEW) : BT(BT_DETAILS));
     lv_label_set_text(ui.apps_text, ui.menu_open ? BT(BT_CLOSE) : BT(BT_APPS));
-    lv_obj_set_style_text_color(ui.apps_text, color(need_setup ? C_MUTED : C_ACCENT), 0);
+    if (buddy_theme.cased) {
+        rail_button(ui.apps_button, ui.apps_text, ui.menu_open);
+        rail_button(ui.details_button, ui.details_text, ui.details_visible);
+    } else lv_obj_set_style_text_color(ui.apps_text, color(need_setup ? C_MUTED : C_ACCENT), 0);
     lv_obj_set_style_opa(ui.apps_button, need_setup ? LV_OPA_50 : LV_OPA_COVER, 0);
     if (!ui.menu_open) for (unsigned i = 0; i < BUDDY_APP_COUNT; ++i) buddy_ui_motion_cancel(ui.app_rows[i]);
     chooser_layout();
@@ -911,6 +933,8 @@ static void chooser_layout(void)
         visible(tile, shown);
         lv_obj_set_style_border_color(tile, color(selected ? C_ACCENT : C_RULE), 0);
         lv_obj_set_style_border_width(tile, selected ? buddy_theme.border_w : buddy_theme.outlined_cards ? 1 : 0, 0);
+        /* Square looks raise the open app's tile and underline it in orange, like a chosen swatch. */
+        if (buddy_theme.square) lv_obj_set_style_bg_color(tile, color(selected ? C_PRESSED : BUDDY_COLOR_SURFACE), 0);
         if (!shown) continue;
         lv_obj_set_pos(tile, grid.margin + (int)(position % grid.columns) * (grid.width + grid.gap),
                        grid.top + (int)(position / grid.columns) * (grid.height + grid.gap));
@@ -974,9 +998,10 @@ static void refresh_footer(void)
         bool hint=BOARD_DISPLAY_HEIGHT>=400||ui.menu_open||ui.active_app==BUDDY_APP_HOME;
         visible(ui.footer,!monitor&&!shortcut&&hint);visible(ui.timer_link,shortcut&&!monitor);
     }
-    lv_obj_set_style_text_color(ui.footer,
-        color(ui.active_app == BUDDY_APP_MONITOR && !ui.menu_open && ui.have_stats &&
-              ui.connection != BUDDY_PC_CONNECTED ? C_WARNING : C_MUTED), 0);
+    /* On the case's rail the footer speaks in the case's own dark ink. */
+    lv_obj_set_style_text_color(ui.footer, color(buddy_theme.cased ? BUDDY_COLOR_FRAME_INK :
+        ui.active_app == BUDDY_APP_MONITOR && !ui.menu_open && ui.have_stats &&
+        ui.connection != BUDDY_PC_CONNECTED ? C_WARNING : C_MUTED), 0);
 }
 
 static void mascot_set_y(void *obj, int32_t value)
@@ -1244,6 +1269,8 @@ static void create_channel(channel_t *channel, const char *name, bool gpu)
     lv_obj_set_style_border_color(channel->button, color(C_ACCENT), 0);
     lv_obj_set_style_border_width(channel->button, buddy_theme.border_w, 0);
     lv_obj_set_style_border_opa(channel->button, LV_OPA_TRANSP, 0);
+    /* Square looks mark the chosen card with an orange bar along its foot instead of an outline. */
+    if (buddy_theme.square) lv_obj_set_style_border_side(channel->button, LV_BORDER_SIDE_BOTTOM, 0);
     lv_obj_add_event_cb(channel->button, channel_clicked, LV_EVENT_CLICKED, gpu ? (void *)1 : NULL);
     channel->gauge = usage_gauge(channel->button);
     lv_arc_set_range(channel->gauge, 0, 1000);
@@ -1290,8 +1317,8 @@ static void channel_layout(channel_t *channel, int x, int y, int width, int heig
 static lv_obj_t *meter_bar(lv_obj_t *parent)
 {
     lv_obj_t *bar = progress_bar(parent, 0, 0, 10);
-    lv_obj_set_style_radius(bar, LV_RADIUS_CIRCLE, LV_PART_MAIN);
-    lv_obj_set_style_radius(bar, LV_RADIUS_CIRCLE, LV_PART_INDICATOR);
+    lv_obj_set_style_radius(bar, buddy_theme_round(LV_RADIUS_CIRCLE), LV_PART_MAIN);
+    lv_obj_set_style_radius(bar, buddy_theme_round(LV_RADIUS_CIRCLE), LV_PART_INDICATOR);
     lv_bar_set_range(bar, 0, 100);
     return bar;
 }
@@ -1395,7 +1422,7 @@ static lv_obj_t *action_button(lv_obj_t *parent, const char *label, int x, int y
     lv_obj_set_style_bg_color(button, color(C_PRESSED), 0);
     lv_obj_set_style_bg_opa(button, LV_OPA_COVER, 0);
     lv_obj_set_style_bg_color(button, color(C_RULE), LV_STATE_PRESSED);
-    lv_obj_set_style_radius(button, 8, 0);
+    lv_obj_set_style_radius(button, buddy_theme_round(8), 0);
     lv_obj_t *text_obj = text(button, label, 8, 0, width - 16, &buddy_language_font_20, C_TEXT);
     lv_obj_set_style_text_align(text_obj, LV_TEXT_ALIGN_CENTER, 0);
     lv_obj_align(text_obj, LV_ALIGN_CENTER, 0, 0);
@@ -1755,8 +1782,8 @@ static lv_obj_t *usage_gauge(lv_obj_t *parent)
     lv_arc_set_bg_angles(arc, GAUGE_START, (GAUGE_START + GAUGE_SWEEP) % 360);
     lv_arc_set_range(arc, 0, 1000);
     lv_obj_set_style_arc_color(arc, color(C_RULE), LV_PART_MAIN);
-    lv_obj_set_style_arc_rounded(arc, true, LV_PART_MAIN);
-    lv_obj_set_style_arc_rounded(arc, true, LV_PART_INDICATOR);
+    lv_obj_set_style_arc_rounded(arc, !buddy_theme.square, LV_PART_MAIN);
+    lv_obj_set_style_arc_rounded(arc, !buddy_theme.square, LV_PART_INDICATOR);
     lv_obj_clear_flag(arc, LV_OBJ_FLAG_CLICKABLE);
     return arc;
 }
@@ -1766,7 +1793,7 @@ static lv_obj_t *surface_card(lv_obj_t *parent, int radius)
     lv_obj_t *card = box(parent, 0, 0, 10, 10);
     lv_obj_set_style_bg_color(card, color(BUDDY_COLOR_SURFACE), 0);
     lv_obj_set_style_bg_opa(card, LV_OPA_COVER, 0);
-    lv_obj_set_style_radius(card, radius, 0);
+    lv_obj_set_style_radius(card, buddy_theme_round(radius), 0);
     /* Outlined themes draw the same card as a hairline on the page. */
     if (buddy_theme.outlined_cards) {
         lv_obj_set_style_bg_opa(card, LV_OPA_TRANSP, 0);
@@ -2020,7 +2047,8 @@ static void refresh_agent(agent_view_t *view)
     for (unsigned i = 0; i < 2; ++i) {
         bool selected = (i == 1) == view->tasks_selected;
         lv_obj_set_style_bg_opa(view->tabs[i], selected ? LV_OPA_COVER : LV_OPA_TRANSP, 0);
-        lv_obj_set_style_text_color(view->tab_labels[i], color(selected ? copy->accent : C_MUTED), 0);
+        /* On a cased look the chosen tab is a solid block of the product's colour with dark ink. */
+        lv_obj_set_style_text_color(view->tab_labels[i], color(selected ? (buddy_theme.cased ? BUDDY_COLOR_FRAME_INK : copy->accent) : C_MUTED), 0);
     }
     refresh_app_cards();
 }
@@ -2060,8 +2088,8 @@ static void create_agent_page(agent_view_t *view, const buddy_codex_t *data, con
     for (unsigned i = 0; i < 2; ++i) {
         view->tabs[i] = box(view->tab_track, 4 + (int)i * 116, 4, 116, 38);
         lv_obj_add_flag(view->tabs[i], LV_OBJ_FLAG_CLICKABLE);
-        lv_obj_set_style_radius(view->tabs[i], LV_RADIUS_CIRCLE, 0);
-        lv_obj_set_style_bg_color(view->tabs[i], color(C_RULE), 0);
+        lv_obj_set_style_radius(view->tabs[i], buddy_theme_round(LV_RADIUS_CIRCLE), 0);
+        lv_obj_set_style_bg_color(view->tabs[i], color(buddy_theme.cased ? copy->accent : C_RULE), 0);
         lv_obj_set_style_bg_color(view->tabs[i], color(C_PRESSED), LV_STATE_PRESSED);
         lv_obj_set_style_bg_opa(view->tabs[i], LV_OPA_COVER, LV_STATE_PRESSED);
         view->tab_labels[i] = text(view->tabs[i], i ? BT(BT_TASKS) : BT(BT_USAGE), 0, 0, 108, &buddy_language_font_16, C_MUTED);
@@ -2097,7 +2125,7 @@ static void create_agent_page(agent_view_t *view, const buddy_codex_t *data, con
         lv_label_set_text(view->remaining_captions[i], BT(BT_GAUGE_LEFT));
         lv_obj_set_style_text_color(view->remaining_captions[i], color(C_MUTED), 0);
         view->time_marks[i] = box(view->gauges[i], 0, 0, 12, 12);
-        lv_obj_set_style_radius(view->time_marks[i], LV_RADIUS_CIRCLE, 0);
+        lv_obj_set_style_radius(view->time_marks[i], buddy_theme_round(LV_RADIUS_CIRCLE), 0);
         lv_obj_set_style_bg_color(view->time_marks[i], color(C_TEXT), 0);
         lv_obj_set_style_bg_opa(view->time_marks[i], LV_OPA_COVER, 0);
         lv_obj_set_style_border_color(view->time_marks[i], color(BUDDY_COLOR_SURFACE), 0);
@@ -2122,14 +2150,14 @@ static void create_agent_page(agent_view_t *view, const buddy_codex_t *data, con
     for (unsigned i = 0; i < 3; ++i) {
         view->task_rows[i] = surface_card(view->tasks_body, 14);
         view->task_dots[i] = box(view->task_rows[i], 0, 0, 10, 10);
-        lv_obj_set_style_radius(view->task_dots[i], LV_RADIUS_CIRCLE, 0);
+        lv_obj_set_style_radius(view->task_dots[i], buddy_theme_round(LV_RADIUS_CIRCLE), 0);
         lv_obj_set_style_bg_opa(view->task_dots[i], LV_OPA_COVER, 0);
         view->task_titles[i] = text(view->task_rows[i], "", 0, 0, 100, &buddy_language_font_20, C_TEXT);
         view->task_details[i] = text(view->task_rows[i], "", 0, 0, 100, &buddy_language_font_16, C_MUTED);
         view->task_states[i] = lv_label_create(view->task_rows[i]);
         lv_obj_set_style_text_font(view->task_states[i], &buddy_language_font_14, 0);
         lv_obj_set_style_bg_opa(view->task_states[i], LV_OPA_COVER, 0);
-        lv_obj_set_style_radius(view->task_states[i], LV_RADIUS_CIRCLE, 0);
+        lv_obj_set_style_radius(view->task_states[i], buddy_theme_round(LV_RADIUS_CIRCLE), 0);
         lv_obj_set_style_pad_hor(view->task_states[i], 10, 0);
         lv_obj_set_style_pad_ver(view->task_states[i], 3, 0);
         lv_label_set_text(view->task_states[i], "");
@@ -2199,8 +2227,9 @@ static void refresh_timer(void)
     for (unsigned i = 0; i < 4; ++i) {
         bool selected = ui.timer_duration_s == timer_preset_minutes[i] * 60U;
         button_enabled(ui.timer_presets[i], editable);
-        lv_obj_set_style_bg_color(ui.timer_presets[i], color(selected ? C_RULE : BUDDY_COLOR_SURFACE), 0);
-        lv_obj_set_style_text_color(ui.timer_preset_labels[i], color(selected ? C_ACCENT : C_TEXT), 0);
+        /* Cased looks fill the chosen duration with orange, like a chosen card in the PC app. */
+        lv_obj_set_style_bg_color(ui.timer_presets[i], color(selected ? (buddy_theme.cased ? C_ACCENT : C_RULE) : BUDDY_COLOR_SURFACE), 0);
+        lv_obj_set_style_text_color(ui.timer_preset_labels[i], color(selected ? (buddy_theme.cased ? BUDDY_COLOR_FRAME_INK : C_ACCENT) : C_TEXT), 0);
     }
     refresh_app_cards();
     refresh_footer();
@@ -2299,7 +2328,7 @@ static lv_obj_t *icon_button(lv_obj_t *parent, const char *symbol, unsigned cont
     lv_obj_t *button = box(parent, 0, 0, 48, 48);
     lv_obj_add_flag(button, LV_OBJ_FLAG_CLICKABLE);
     lv_obj_set_ext_click_area(button, 6);
-    lv_obj_set_style_radius(button, LV_RADIUS_CIRCLE, 0);
+    lv_obj_set_style_radius(button, buddy_theme_round(LV_RADIUS_CIRCLE), 0);
     lv_obj_set_style_bg_color(button, color(C_PRESSED), LV_STATE_PRESSED);
     lv_obj_set_style_bg_opa(button, LV_OPA_COVER, LV_STATE_PRESSED);
     lv_obj_t *icon = lv_label_create(button);
@@ -2317,13 +2346,13 @@ static lv_obj_t *music_slider(lv_obj_t *parent, int32_t maximum)
     lv_obj_t *slider = lv_slider_create(parent);
     lv_obj_remove_style_all(slider);
     lv_slider_set_range(slider, 0, maximum);
-    lv_obj_set_style_radius(slider, LV_RADIUS_CIRCLE, LV_PART_MAIN);
+    lv_obj_set_style_radius(slider, buddy_theme_round(LV_RADIUS_CIRCLE), LV_PART_MAIN);
     lv_obj_set_style_bg_color(slider, color(C_RULE), LV_PART_MAIN);
     lv_obj_set_style_bg_opa(slider, LV_OPA_COVER, LV_PART_MAIN);
-    lv_obj_set_style_radius(slider, LV_RADIUS_CIRCLE, LV_PART_INDICATOR);
+    lv_obj_set_style_radius(slider, buddy_theme_round(LV_RADIUS_CIRCLE), LV_PART_INDICATOR);
     lv_obj_set_style_bg_color(slider, color(C_ACCENT), LV_PART_INDICATOR);
     lv_obj_set_style_bg_opa(slider, LV_OPA_COVER, LV_PART_INDICATOR);
-    lv_obj_set_style_radius(slider, LV_RADIUS_CIRCLE, LV_PART_KNOB);
+    lv_obj_set_style_radius(slider, buddy_theme_round(LV_RADIUS_CIRCLE), LV_PART_KNOB);
     lv_obj_set_style_bg_color(slider, color(C_TEXT), LV_PART_KNOB);
     lv_obj_set_style_bg_opa(slider, LV_OPA_COVER, LV_PART_KNOB);
     lv_obj_set_style_pad_all(slider, 6, LV_PART_KNOB);
@@ -2390,15 +2419,16 @@ static void create_music_page(void)
     for (unsigned i = 0; i < 3; ++i) {
         ui.music_eq_bars[i] = box(ui.music_eq, (int)i * 7, 8, 4, 6);
         lv_obj_set_style_bg_opa(ui.music_eq_bars[i], LV_OPA_COVER, 0);
-        lv_obj_set_style_radius(ui.music_eq_bars[i], 2, 0);
+        lv_obj_set_style_radius(ui.music_eq_bars[i], buddy_theme_round(2), 0);
     }
     rule(ui.music_page, 28, 84, 744, 1);
 
     /* Cover: a tinted record sleeve for the dancing crab. */
     ui.music_cover = box(ui.music_page, 0, 0, 200, 200);
-    lv_obj_set_style_radius(ui.music_cover, 18, 0);
+    lv_obj_set_style_radius(ui.music_cover, buddy_theme_round(18), 0);
     lv_obj_set_style_bg_opa(ui.music_cover, LV_OPA_COVER, 0);
-    lv_obj_set_style_bg_grad_dir(ui.music_cover, LV_GRAD_DIR_VER, 0);
+    /* Square looks are flat: the sleeve is one colour. */
+    lv_obj_set_style_bg_grad_dir(ui.music_cover, buddy_theme.square ? LV_GRAD_DIR_NONE : LV_GRAD_DIR_VER, 0);
     for (unsigned i = 0; i < 2; ++i) {
         ui.music_rings[i] = box(ui.music_cover, 0, 0, 10, 10);
         lv_obj_set_style_radius(ui.music_rings[i], LV_RADIUS_CIRCLE, 0);
@@ -2439,7 +2469,7 @@ static void create_music_page(void)
     lv_obj_set_style_text_color(ui.music_button_labels[MUSIC_PLAY_BUTTON], color(C_BG), 0);
     for (unsigned i = 0; i < 2; ++i) {
         ui.music_toggle_dots[i] = box(ui.music_buttons[i ? MUSIC_REPEAT_BUTTON : MUSIC_SHUFFLE_BUTTON], 0, 0, 6, 6);
-        lv_obj_set_style_radius(ui.music_toggle_dots[i], LV_RADIUS_CIRCLE, 0);
+        lv_obj_set_style_radius(ui.music_toggle_dots[i], buddy_theme_round(LV_RADIUS_CIRCLE), 0);
         lv_obj_set_style_bg_opa(ui.music_toggle_dots[i], LV_OPA_COVER, 0);
     }
     /* Repeat-one badge: a small filled "1" on the repeat icon's shoulder. */
@@ -2447,7 +2477,7 @@ static void create_music_page(void)
     lv_obj_set_size(ui.music_repeat_one, 15, 15);
     lv_obj_set_style_text_line_space(ui.music_repeat_one, 0, 0);
     lv_obj_set_style_text_align(ui.music_repeat_one, LV_TEXT_ALIGN_CENTER, 0);
-    lv_obj_set_style_radius(ui.music_repeat_one, LV_RADIUS_CIRCLE, 0);
+    lv_obj_set_style_radius(ui.music_repeat_one, buddy_theme_round(LV_RADIUS_CIRCLE), 0);
     lv_obj_set_style_bg_opa(ui.music_repeat_one, LV_OPA_COVER, 0);
     music_transport_layout(528, 372, 76, 60, 48, 104, 196, &buddy_language_font_32, &buddy_language_font_24, &buddy_language_font_20);
 
@@ -2482,7 +2512,7 @@ static lv_obj_t *timer_chip(lv_obj_t *parent, const char *label, lv_obj_t **capt
 {
     lv_obj_t *chip = box(parent, 0, 0, 10, 10);
     lv_obj_add_flag(chip, LV_OBJ_FLAG_CLICKABLE);
-    lv_obj_set_style_radius(chip, LV_RADIUS_CIRCLE, 0);
+    lv_obj_set_style_radius(chip, buddy_theme_round(LV_RADIUS_CIRCLE), 0);
     lv_obj_set_style_bg_color(chip, color(BUDDY_COLOR_SURFACE), 0);
     lv_obj_set_style_bg_opa(chip, LV_OPA_COVER, 0);
     lv_obj_set_style_bg_color(chip, color(C_PRESSED), LV_STATE_PRESSED);
@@ -2545,7 +2575,7 @@ static void create_timer_page(void)
     lv_arc_set_rotation(ui.timer_ring, 270);
     lv_arc_set_range(ui.timer_ring, 0, 1000);
     lv_obj_set_style_arc_color(ui.timer_ring, color(C_RULE), LV_PART_MAIN);
-    lv_obj_set_style_arc_rounded(ui.timer_ring, true, LV_PART_INDICATOR);
+    lv_obj_set_style_arc_rounded(ui.timer_ring, !buddy_theme.square, LV_PART_INDICATOR);
     lv_obj_clear_flag(ui.timer_ring, LV_OBJ_FLAG_CLICKABLE);
     ui.timer_mascot = lv_img_create(ui.timer_ring);
     lv_img_set_antialias(ui.timer_mascot, false);
@@ -2567,7 +2597,7 @@ static void create_timer_page(void)
             unsigned action = i * 2 + j;
             lv_obj_t *caption;
             ui.timer_adjust[action] = action_button(ui.timer_page, j ? LV_SYMBOL_PLUS : LV_SYMBOL_MINUS, 0, 0, 52, 48, &caption);
-            lv_obj_set_style_radius(ui.timer_adjust[action], LV_RADIUS_CIRCLE, 0);
+            lv_obj_set_style_radius(ui.timer_adjust[action], buddy_theme_round(LV_RADIUS_CIRCLE), 0);
             lv_obj_add_event_cb(ui.timer_adjust[action], timer_adjust_clicked, LV_EVENT_PRESSED,
                 (void *)(uintptr_t)action);
             lv_obj_add_event_cb(ui.timer_adjust[action], timer_adjust_clicked, LV_EVENT_LONG_PRESSED_REPEAT,
@@ -2587,7 +2617,7 @@ static void create_timer_page(void)
     const char *labels[] = { BT(BT_START), BT(BT_RESET) };
     for (unsigned i = 0; i < 2; ++i) {
         ui.timer_buttons[i] = action_button(ui.timer_page, labels[i], 0, 0, 100, 56, &ui.timer_button_labels[i]);
-        lv_obj_set_style_radius(ui.timer_buttons[i], LV_RADIUS_CIRCLE, 0);
+        lv_obj_set_style_radius(ui.timer_buttons[i], buddy_theme_round(LV_RADIUS_CIRCLE), 0);
         lv_obj_add_event_cb(ui.timer_buttons[i], timer_clicked, LV_EVENT_CLICKED, (void *)(uintptr_t)i);
         if (!i) lv_obj_add_event_cb(ui.timer_buttons[i], timer_clicked, LV_EVENT_PRESSED, NULL);
     }
@@ -2651,6 +2681,7 @@ static void create_app_surfaces(void)
     const int inner = grid.width - 2 * grid.pad, name_y = grid.pad + grid.icon + (wide ? 12 : tiny ? 4 : 6);
     for (unsigned i = 0; i < sizeof(app_catalog) / sizeof(app_catalog[0]); ++i) {
         lv_obj_t *tile = surface_card(ui.chooser, wide ? 14 : 12);
+        if (buddy_theme.square) lv_obj_set_style_border_side(tile, LV_BORDER_SIDE_BOTTOM, 0);
         ui.app_rows[i] = tile;
         lv_obj_set_size(tile, grid.width, grid.height);
         /* A finger that slides off a tile is scrolling or changing its mind, not choosing it. */
@@ -2719,6 +2750,34 @@ static void theme_layout(void)
     lv_obj_center(ui.music_buddy);
 }
 
+/* Cased looks: the rail's buttons wear the case's dark ink and press a shade darker; the timer
+ * pill is a dark block on the orange, clear of the frame below it. */
+static void cased_footer(void)
+{
+    if (!buddy_theme.cased) return;
+    lv_obj_t *buttons[] = { ui.apps_button, ui.details_button, ui.nav_button };
+    for (unsigned i = 0; i < sizeof(buttons) / sizeof(buttons[0]); ++i)
+        lv_obj_set_style_bg_color(buttons[i], lv_color_darken(color(BUDDY_COLOR_FRAME), LV_OPA_20), LV_STATE_PRESSED);
+    lv_obj_set_style_text_color(ui.nav_text, color(BUDDY_COLOR_FRAME_INK), 0);
+    rail_button(ui.apps_button, ui.apps_text, false);
+    rail_button(ui.details_button, ui.details_text, false);
+    lv_obj_set_style_bg_color(ui.timer_link, color(BUDDY_COLOR_FRAME_INK), 0);
+    lv_obj_set_style_bg_color(ui.timer_link, color(C_PRESSED), LV_STATE_PRESSED);
+    lv_obj_set_height(ui.timer_link, 28);
+    lv_obj_set_y(ui.timer_link, BOARD_DISPLAY_HEIGHT - 44 + (44 - buddy_theme_frame() - 28) / 2);
+    /* The square screen's now-playing chip sits in the header's corner; keep it inside the frame. */
+    if (BOARD_DISPLAY_WIDTH < 800 && BOARD_DISPLAY_HEIGHT >= 400)
+        lv_obj_set_pos(ui.music_link, BOARD_DISPLAY_WIDTH - 150 - buddy_theme_frame(), buddy_theme_frame());
+}
+
+/* Heavy-type looks set page names and big readings below display size in the heavy weight too. */
+static void theme_headings(void)
+{
+    lv_obj_t *headings[] = { ui.monitor_title, ui.clock, ui.memory, ui.vram, ui.music_heading, ui.timer_heading,
+        ui.timer_units[0], ui.timer_units[1], ui.timer_units[2], ui.codex.heading, ui.claude.heading };
+    for (unsigned i = 0; i < sizeof(headings) / sizeof(headings[0]); ++i) buddy_theme_heading(headings[i]);
+}
+
 void buddy_ui_init(void)
 {
     if (ui.screen) return;
@@ -2750,7 +2809,7 @@ void buddy_ui_init(void)
     lv_obj_set_style_bg_color(ui.music_link, color(C_PRESSED), 0);
     lv_obj_set_style_bg_opa(ui.music_link, LV_OPA_COVER, 0);
     lv_obj_set_style_bg_color(ui.music_link, color(C_RULE), LV_STATE_PRESSED);
-    lv_obj_set_style_radius(ui.music_link, 8, 0);
+    lv_obj_set_style_radius(ui.music_link, buddy_theme_round(8), 0);
     lv_obj_add_event_cb(ui.music_link, activity_clicked, LV_EVENT_CLICKED, (void *)(uintptr_t)BUDDY_APP_MUSIC);
     text(ui.music_link, BT(BT_NOW_PLAYING), 39, 6, 180, &buddy_language_font_14, C_ACCENT);
     ui.music_link_title = text(ui.music_link, BT(BT_MUSIC), 12, 29, 210, &buddy_language_font_20, C_TEXT);
@@ -2765,7 +2824,7 @@ void buddy_ui_init(void)
     ui.date = text(ui.monitor_header, "", 654, 24, 118, &buddy_language_font_14, C_MUTED);
     lv_obj_set_style_text_align(ui.date, LV_TEXT_ALIGN_RIGHT, 0);
     ui.dot = box(ui.monitor_header, 581, 58, 6, 6);
-    lv_obj_set_style_radius(ui.dot, LV_RADIUS_CIRCLE, 0);
+    lv_obj_set_style_radius(ui.dot, buddy_theme_round(LV_RADIUS_CIRCLE), 0);
     lv_obj_set_style_bg_opa(ui.dot, LV_OPA_COVER, 0);
     ui.status = text(ui.monitor_header, BT(BT_JOINING_WI_FI), 598, 52, 174, &buddy_language_font_14, C_WARNING);
     lv_obj_set_style_text_align(ui.status, LV_TEXT_ALIGN_RIGHT, 0);
@@ -2837,6 +2896,12 @@ void buddy_ui_init(void)
 
     create_app_surfaces();
 
+    /* Cased looks: the case runs along the bottom as a rail that carries Apps, the footer and Home. */
+    if (buddy_theme.cased) {
+        ui.rail = box(ui.screen, 0, BOARD_DISPLAY_HEIGHT - 44, BOARD_DISPLAY_WIDTH, 44);
+        lv_obj_set_style_bg_color(ui.rail, color(BUDDY_COLOR_FRAME), 0);
+        lv_obj_set_style_bg_opa(ui.rail, LV_OPA_COVER, 0);
+    }
     rule(ui.screen, 28, 440, 744, 1);
     ui.footer = text(ui.screen, BT(BT_CLAWPAL_PC_MONITOR), 142, 454, 481, &buddy_language_font_14, C_MUTED);
     lv_obj_set_height(ui.footer, 22);
@@ -2848,7 +2913,7 @@ void buddy_ui_init(void)
     lv_obj_set_style_bg_color(ui.timer_link, color(C_PRESSED), 0);
     lv_obj_set_style_bg_opa(ui.timer_link, LV_OPA_COVER, 0);
     lv_obj_set_style_bg_color(ui.timer_link, color(C_RULE), LV_STATE_PRESSED);
-    lv_obj_set_style_radius(ui.timer_link, 8, 0);
+    lv_obj_set_style_radius(ui.timer_link, buddy_theme_round(8), 0);
     lv_obj_add_event_cb(ui.timer_link, activity_clicked, LV_EVENT_CLICKED, (void *)(uintptr_t)BUDDY_APP_TIMER);
     ui.timer_link_title = text(ui.timer_link, BT(BT_TIMER), 12, 4, 184, &buddy_language_font_14, C_ACCENT);
     lv_obj_set_height(ui.timer_link_title, 18);
@@ -2858,7 +2923,7 @@ void buddy_ui_init(void)
     lv_obj_add_flag(ui.apps_button, LV_OBJ_FLAG_CLICKABLE);
     lv_obj_set_style_bg_color(ui.apps_button, color(C_PRESSED), LV_STATE_PRESSED);
     lv_obj_set_style_bg_opa(ui.apps_button, LV_OPA_COVER, LV_STATE_PRESSED);
-    lv_obj_set_style_radius(ui.apps_button, 8, 0);
+    lv_obj_set_style_radius(ui.apps_button, buddy_theme_round(8), 0);
     lv_obj_add_event_cb(ui.apps_button, apps_clicked, LV_EVENT_CLICKED, NULL);
     for (unsigned i = 0; i < 4; ++i) {
         lv_obj_t *cell = box(ui.apps_button, 12 + (i % 2) * 7, 19 + (i / 2) * 7, 4, 4);
@@ -2870,7 +2935,7 @@ void buddy_ui_init(void)
     lv_obj_add_flag(ui.details_button, LV_OBJ_FLAG_CLICKABLE);
     lv_obj_set_style_bg_color(ui.details_button, color(C_PRESSED), LV_STATE_PRESSED);
     lv_obj_set_style_bg_opa(ui.details_button, LV_OPA_COVER, LV_STATE_PRESSED);
-    lv_obj_set_style_radius(ui.details_button, 8, 0);
+    lv_obj_set_style_radius(ui.details_button, buddy_theme_round(8), 0);
     lv_obj_add_event_cb(ui.details_button, details_clicked, LV_EVENT_CLICKED, NULL);
     ui.details_text = text(ui.details_button, BT(BT_DETAILS), 12, 13, 96, &buddy_language_font_16, C_ACCENT);
     lv_obj_t *nav = box(ui.screen, 641, 436, 147, 44);
@@ -2884,10 +2949,20 @@ void buddy_ui_init(void)
     lv_obj_set_style_text_align(ui.nav_text, LV_TEXT_ALIGN_RIGHT, 0);
     compact_layout();
     theme_layout();
+    cased_footer();
+    theme_headings();
     select_channel(false);
     refresh_connection();
     ui.history_timer = lv_timer_create(history_tick, 1000, NULL);
     create_startup();
+    buddy_theme_type(ui.screen);
+    /* The case frames every surface, overlays included; only the dim shade sits above it. */
+    if (buddy_theme_frame()) {
+        ui.case_frame = box(ui.screen, 0, 0, BOARD_DISPLAY_WIDTH, BOARD_DISPLAY_HEIGHT);
+        lv_obj_set_style_border_color(ui.case_frame, color(BUDDY_COLOR_FRAME), 0);
+        lv_obj_set_style_border_width(ui.case_frame, buddy_theme_frame(), 0);
+        lv_obj_set_style_border_opa(ui.case_frame, LV_OPA_COVER, 0);
+    }
     lv_scr_load(ui.screen);
     /* Global shade; it captures only the first wake gesture when fully off. */
     ui.dim_overlay = box(ui.screen, 0, 0, BOARD_DISPLAY_WIDTH, BOARD_DISPLAY_HEIGHT);
@@ -3219,6 +3294,7 @@ static void raise_overlays(void)
     if (ui.alert.page && ui.alert_key[0]) lv_obj_move_foreground(ui.alert.page);
     if (ui.confirm.page && ui.confirm_action != BUDDY_CONFIRM_NONE) lv_obj_move_foreground(ui.confirm.page);
     if (ui.install_page && ui.install_stage != BUDDY_INSTALL_NONE) lv_obj_move_foreground(ui.install_page);
+    if (ui.case_frame) lv_obj_move_foreground(ui.case_frame);
     lv_obj_move_foreground(ui.dim_overlay);
 }
 
@@ -3255,6 +3331,8 @@ static void create_prompt(prompt_view_t *view, lv_event_cb_t clicked)
         lv_obj_set_size(view->tile, m.tile, m.tile);
         lv_obj_set_style_border_width(view->tile, buddy_theme.border_w, 0);
         lv_obj_set_style_border_color(view->tile, color(C_RULE), 0);
+        /* Square looks: a bar under the crab's tile instead of a frame around it. */
+        if (buddy_theme.square) lv_obj_set_style_border_side(view->tile, LV_BORDER_SIDE_BOTTOM, 0);
         view->mascot = lv_img_create(view->tile);
         lv_img_set_antialias(view->mascot, false);
         lv_obj_set_size(view->mascot, 96, 96);
@@ -3281,22 +3359,23 @@ static void create_prompt(prompt_view_t *view, lv_event_cb_t clicked)
     view->track = box(view->page, m.margin, 0, width - m.margin * 2, 4);
     lv_obj_set_style_bg_color(view->track, color(C_RULE), 0);
     lv_obj_set_style_bg_opa(view->track, LV_OPA_COVER, 0);
-    lv_obj_set_style_radius(view->track, 2, 0);
+    lv_obj_set_style_radius(view->track, buddy_theme_round(2), 0);
     view->countdown = box(view->track, 0, 0, width - m.margin * 2, 4);
     lv_obj_set_style_bg_color(view->countdown, color(C_ACCENT), 0);
     lv_obj_set_style_bg_opa(view->countdown, LV_OPA_COVER, 0);
-    lv_obj_set_style_radius(view->countdown, 2, 0);
+    lv_obj_set_style_radius(view->countdown, buddy_theme_round(2), 0);
     /* The quiet choice sits where a stray tap is most likely; the primary one needs a deliberate press. */
     const int button_w = (width - m.margin * 2 - 16) / 2, button_y = height - m.margin - m.button_h;
     view->secondary = action_button(view->page, "", m.margin, button_y, button_w, m.button_h, &view->secondary_label);
     view->primary = action_button(view->page, "", m.margin + button_w + 16, button_y, button_w, m.button_h, &view->primary_label);
-    lv_obj_set_style_radius(view->secondary, 12, 0);
-    lv_obj_set_style_radius(view->primary, 12, 0);
+    lv_obj_set_style_radius(view->secondary, buddy_theme_round(12), 0);
+    lv_obj_set_style_radius(view->primary, buddy_theme_round(12), 0);
     lv_obj_set_style_text_font(view->secondary_label, m.button, 0);
     lv_obj_set_style_text_font(view->primary_label, m.button, 0);
     lv_obj_add_event_cb(view->secondary, clicked, LV_EVENT_CLICKED, NULL);
     lv_obj_add_event_cb(view->primary, clicked, LV_EVENT_CLICKED, (void *)1);
     lv_obj_add_flag(view->page, LV_OBJ_FLAG_HIDDEN);
+    buddy_theme_type(view->page);
 }
 
 static void prompt_row(prompt_view_t *view, const char *name, const char *value)
@@ -3528,10 +3607,10 @@ static void create_install_page(void)
     ui.install_track = box(ui.install_page, track_x, track_y, track_w, track_h);
     lv_obj_set_style_bg_color(ui.install_track, color(C_RULE), 0);
     lv_obj_set_style_bg_opa(ui.install_track, LV_OPA_COVER, 0);
-    lv_obj_set_style_radius(ui.install_track, LV_RADIUS_CIRCLE, 0);
+    lv_obj_set_style_radius(ui.install_track, buddy_theme_round(LV_RADIUS_CIRCLE), 0);
     ui.install_fill = box(ui.install_track, 0, 0, 0, track_h);
     lv_obj_set_style_bg_opa(ui.install_fill, LV_OPA_COVER, 0);
-    lv_obj_set_style_radius(ui.install_fill, LV_RADIUS_CIRCLE, 0);
+    lv_obj_set_style_radius(ui.install_fill, buddy_theme_round(LV_RADIUS_CIRCLE), 0);
     if (ui.install_crab) {
         ui.install_mascot = lv_img_create(ui.install_page);
         lv_img_set_antialias(ui.install_mascot, false);
@@ -3560,6 +3639,8 @@ static void create_install_page(void)
     lv_obj_set_style_text_align(ui.install_note, LV_TEXT_ALIGN_CENTER, 0);
     lv_obj_add_flag(ui.install_page, LV_OBJ_FLAG_HIDDEN);
     if (!ui.overlay_timer) ui.overlay_timer = lv_timer_create(confirm_tick, 1000, NULL);
+    buddy_theme_type(ui.install_page);
+    buddy_theme_heading(ui.install_title);
 }
 
 void buddy_ui_set_install(buddy_install_stage_t stage, uint32_t received, uint32_t total)

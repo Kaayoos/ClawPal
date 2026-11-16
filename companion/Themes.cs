@@ -7,6 +7,11 @@ namespace ClawPal.Companion;
 public sealed record ThemeLook(string Id, string AccentId, bool Mascot, bool HasAccents,
     Color Background, Color Surface, Color Hover, Color Border, Color Ink, Color Muted, Color Accent, Color Warning, Color WeatherApp)
 {
+    /* Cased looks sit the display's screen in ClawPal's orange case, with square shapes and heavy type,
+     * as this app does; Frame is the case and FrameInk the ink printed on it. */
+    public bool Cased { get; init; }
+    public Color Frame { get; init; }
+    public Color FrameInk { get; init; }
     public string Name => L.Text($"theme_{Id}");
     public string Description => L.Text($"theme_{Id}_description");
 }
@@ -38,7 +43,8 @@ public static class Themes
         Color Role(string name) => Parse(colors.GetProperty(name));
         bool hasAccents = flags.GetProperty("accents").GetBoolean();
         return new(id, accentId, flags.GetProperty("mascot").GetBoolean(), hasAccents, Role("bg"), Role("surface"), Role("pressed"), Role("rule"),
-            Role("text"), Role("muted"), hasAccents ? value.Accents[accentId] : Role("accent"), Role("warning"), Role("weather_app"));
+            Role("text"), Role("muted"), hasAccents ? value.Accents[accentId] : Role("accent"), Role("warning"), Role("weather_app"))
+            { Cased = flags.GetProperty("cased").GetBoolean(), Frame = Role("frame"), FrameInk = Role("frame_ink") };
     }
     private static Color Parse(JsonElement value)
     {

@@ -169,7 +169,7 @@ static void create_week(int x, int y, int width)
     home.week = plain(home.page, 0, 0, 1, 1);
     for (unsigned i = 0; i < 7; ++i)
         home.week_days[i] = label(home.week, buddy_weekday((int)(i + 1) % 7), 0, 0, 40, &buddy_language_font_16, HOME_SECONDARY);
-    home.week_mark = plain(home.week, 0, 0, 18, 2);
+    home.week_mark = plain(home.week, 0, 0, 18, buddy_theme.square ? 4 : 2);
     lv_obj_set_style_bg_color(home.week_mark, lv_color_hex(HOME_ACCENT), 0); lv_obj_set_style_bg_opa(home.week_mark, LV_OPA_COVER, 0);
     place_week(x, y, width, &buddy_language_font_16);
     lv_obj_add_flag(home.week, LV_OBJ_FLAG_HIDDEN);
@@ -214,30 +214,39 @@ lv_obj_t *buddy_home_create(lv_obj_t *screen, lv_event_cb_t open_app, lv_event_c
     lv_obj_set_style_text_align(home.greeting, LV_TEXT_ALIGN_CENTER, 0);
     lv_obj_t *seam = plain(home.page, 441, 60, 1, 358);
     lv_obj_set_style_bg_color(seam, lv_color_hex(HOME_SEAM), 0); lv_obj_set_style_bg_opa(seam, LV_OPA_COVER, 0);
-    home.wifi = plain(home.page, 744, 9, 38, 32); lv_obj_add_event_cb(home.wifi, draw_wifi, LV_EVENT_DRAW_MAIN, NULL);
+    /* Square looks set the shortcuts on solid blocks, so no seam is needed between the halves. */
+    if (buddy_theme.square) lv_obj_add_flag(seam, LV_OBJ_FLAG_HIDDEN);
+    /* Inside a case the Wi-Fi mark steps in from the frame. */
+    home.wifi = buddy_theme.cased ? plain(home.page, 734, 14, 38, 32) : plain(home.page, 744, 9, 38, 32);
+    lv_obj_add_event_cb(home.wifi, draw_wifi, LV_EVENT_DRAW_MAIN, NULL);
     const char *names[] = { BT(BT_PC_MONITOR), BT(BT_CLOCK), BT(BT_MUSIC), BT(BT_TIMER), BT(BT_CODEX), BT(BT_HOME), BT(BT_WEATHER), BT(BT_CLAUDE), BT(BT_SHORTCUTS), BT(BT_AUDIO) };
     _Static_assert(sizeof(names) / sizeof(names[0]) == BUDDY_APP_COUNT, "Home needs a name for every app");
     /* The smallest screen uses slimmer rows so three shortcuts fit a view. */
-    const bool tiny = BOARD_DISPLAY_HEIGHT < 400;
-    const int icon_box = tiny ? 44 : 66, text_x = tiny ? 58 : 82;
+    const bool tiny = BOARD_DISPLAY_HEIGHT < 400, square = buddy_theme.square;
+    /* Square looks set each shortcut on a solid block, its icon inset from the block's edge. */
+    const int inset = square ? (tiny ? 4 : 6) : 0;
+    const int icon_box = tiny ? 44 : 66, text_x = (tiny ? 58 : 82) + inset;
+    /* Blocks end on the page's usual right margin, clear of the case. */
+    const int row_w = square ? 308 : 316, text_w = square ? row_w - text_x - inset : 234;
     for (unsigned app = 0; app < BUDDY_APP_COUNT; ++app) {
         if (app == BUDDY_APP_HOME) continue;
-        lv_obj_t *row = plain(home.page, 464, 67, 316, 78); home.rows[app] = row;
-        lv_obj_add_flag(row, LV_OBJ_FLAG_CLICKABLE); lv_obj_set_style_radius(row, 10, 0);
+        lv_obj_t *row = plain(home.page, 464, 67, row_w, 78); home.rows[app] = row;
+        lv_obj_add_flag(row, LV_OBJ_FLAG_CLICKABLE); lv_obj_set_style_radius(row, buddy_theme_round(10), 0);
+        if (square) { lv_obj_set_style_bg_color(row, lv_color_hex(BUDDY_COLOR_SURFACE), 0); lv_obj_set_style_bg_opa(row, LV_OPA_COVER, 0); }
         lv_obj_set_style_bg_color(row, lv_color_hex(BUDDY_COLOR_PRESSED), LV_STATE_PRESSED); lv_obj_set_style_bg_opa(row, LV_OPA_COVER, LV_STATE_PRESSED);
         lv_obj_add_event_cb(row, open_app, LV_EVENT_CLICKED, (void *)(uintptr_t)app);
-        lv_obj_t *icon = plain(row, 0, tiny ? 7 : 2, icon_box, icon_box);
-        lv_obj_set_style_border_width(icon, 1, 0); lv_obj_set_style_border_color(icon, lv_color_hex(HOME_SEAM), 0); lv_obj_set_style_radius(icon, tiny ? 10 : 12, 0);
+        lv_obj_t *icon = plain(row, inset, tiny ? 7 : 2, icon_box, icon_box);
+        lv_obj_set_style_border_width(icon, square ? 0 : 1, 0); lv_obj_set_style_border_color(icon, lv_color_hex(HOME_SEAM), 0); lv_obj_set_style_radius(icon, buddy_theme_round(tiny ? 10 : 12), 0);
         if (app == BUDDY_APP_WEATHER) {
             /* The mark draws at 26 px per scale step: one step, centred, on the slimmer rows. */
             home.weather_icon = tiny ? plain(icon, 9, 9, 26, 26) : plain(icon, 5, 5, 56, 56);
             lv_obj_add_event_cb(home.weather_icon, weather_icon, LV_EVENT_DRAW_MAIN, NULL);
         } else if (tiny) buddy_app_icon_create(icon, (buddy_app_t)app, 6, 6, 32);
         else buddy_app_icon_create(icon,(buddy_app_t)app,5,5,56);
-        home.titles[app] = label(row, names[app], text_x, tiny ? 6 : 4, 234, &buddy_language_font_24, HOME_INK);
-        home.statuses[app] = label(row, BT(BT_WAITING), text_x, tiny ? 32 : 38, 234, &buddy_language_font_20, HOME_SECONDARY);
+        home.titles[app] = label(row, names[app], text_x, tiny ? 6 : 4, text_w, &buddy_language_font_24, HOME_INK);
+        home.statuses[app] = label(row, BT(BT_WAITING), text_x, tiny ? 32 : 38, text_w, &buddy_language_font_20, HOME_SECONDARY);
         lv_obj_set_height(home.statuses[app], tiny ? 20 : 27);
-        if (!crab) {
+        if (!crab && !square) {
             /* Hairlines separate the shortcuts instead of the crab's open spacing. */
             lv_obj_add_flag(row, LV_OBJ_FLAG_OVERFLOW_VISIBLE);
             home.lines[app] = plain(row, text_x, 0, 234, 1);

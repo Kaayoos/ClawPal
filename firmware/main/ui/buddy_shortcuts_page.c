@@ -207,8 +207,10 @@ static void style_tile(unsigned slot)
         /* Outlined looks draw real tiles as outlines too, so their empty slots are fainter still. */
         visible(obj, slot_shown);
         lv_obj_clear_flag(obj, LV_OBJ_FLAG_CLICKABLE);
-        lv_obj_set_style_bg_opa(obj, LV_OPA_TRANSP, 0);
-        lv_obj_set_style_border_width(obj, 1, 0);
+        /* Square looks show an empty slot as a faint block rather than an outline. */
+        if (buddy_theme.square) lv_obj_set_style_bg_color(obj, lv_color_hex(BUDDY_COLOR_SURFACE), 0);
+        lv_obj_set_style_bg_opa(obj, buddy_theme.square ? LV_OPA_40 : LV_OPA_TRANSP, 0);
+        lv_obj_set_style_border_width(obj, buddy_theme.square ? 0 : 1, 0);
         lv_obj_set_style_border_color(obj, lv_color_hex(BUDDY_COLOR_RULE), 0);
         lv_obj_set_style_border_opa(obj, buddy_theme.outlined_cards ? LV_OPA_40 : LV_OPA_70, 0);
         lv_obj_set_style_opa(obj, LV_OPA_COVER, 0);
@@ -504,7 +506,7 @@ static void layout(void)
         int y = (int)view * BODY + y0 + (int)(row % rows_per_view) * (tile_h + gap);
         place(sc.tiles[slot], x0 + (int)column * (tile_w + gap), y, tile_w, tile_h);
         layout_tile(slot, tile_w, tile_h, lines);
-        lv_obj_set_style_radius(sc.tiles[slot], WIDE ? 14 : TINY ? 10 : 12, 0);
+        lv_obj_set_style_radius(sc.tiles[slot], buddy_theme_round(WIDE ? 14 : TINY ? 10 : 12), 0);
     }
     if (TINY) {
         /* One swipe moves one view; a spacer lets the last view reach the top. */
@@ -532,10 +534,11 @@ lv_obj_t *buddy_shortcuts_page_create(lv_obj_t *parent)
     int pad = WIDE ? 28 : 12, top = WIDE ? 26 : TINY ? 6 : 12, status_w = WIDE ? 264 : TINY ? 150 : 220;
     sc.heading = label(page, BT(BT_SHORTCUTS), heading_font, BUDDY_COLOR_TEXT);
     place(sc.heading, pad, top, WIDTH - pad * 2, lv_font_get_line_height(heading_font));
+    buddy_theme_heading(sc.heading);
     sc.status = label(page, "", status_font, BUDDY_COLOR_ACCENT);
     lv_obj_set_style_text_align(sc.status, LV_TEXT_ALIGN_RIGHT, 0);
     place(sc.status, WIDTH - pad - status_w, top + (WIDE ? 3 : TINY ? 0 : 3), status_w, lv_font_get_line_height(status_font));
-    if (WIDE) {
+    if (WIDE && !buddy_theme.square) {
         sc.rule = box(page, 28, 84, 744, 1);
         lv_obj_set_style_bg_color(sc.rule, lv_color_hex(BUDDY_COLOR_RULE), 0);
         lv_obj_set_style_bg_opa(sc.rule, LV_OPA_COVER, 0);
@@ -574,6 +577,8 @@ lv_obj_t *buddy_shortcuts_page_create(lv_obj_t *parent)
         lv_obj_set_style_bg_opa(tile, LV_OPA_COVER, LV_STATE_PRESSED);
         lv_obj_set_style_transform_width(tile, -3, LV_STATE_PRESSED);
         lv_obj_set_style_transform_height(tile, -3, LV_STATE_PRESSED);
+        /* Square looks flash a bar along the tile's foot rather than a ring around it. */
+        if (buddy_theme.square) lv_obj_set_style_border_side(tile, LV_BORDER_SIDE_BOTTOM, 0);
         if (buddy_theme.motion_pct) lv_obj_set_style_transition(tile, &press, 0);
         lv_obj_add_event_cb(tile, tile_event, LV_EVENT_CLICKED, (void *)(uintptr_t)slot);
         lv_obj_add_event_cb(tile, tile_event, LV_EVENT_LONG_PRESSED_REPEAT, (void *)(uintptr_t)slot);
@@ -585,7 +590,7 @@ lv_obj_t *buddy_shortcuts_page_create(lv_obj_t *parent)
         visible(sc.images[slot], false);
         sc.labels[slot] = label(tile, "", &buddy_language_font_16, BUDDY_COLOR_TEXT);
         lv_obj_t *check = sc.checks[slot] = box(tile, 0, 0, 20, 20);
-        lv_obj_set_style_radius(check, LV_RADIUS_CIRCLE, 0);
+        lv_obj_set_style_radius(check, buddy_theme_round(LV_RADIUS_CIRCLE), 0);
         lv_obj_set_style_bg_opa(check, LV_OPA_COVER, 0);
         lv_obj_t *mark = label(check, LV_SYMBOL_OK, &buddy_language_font_14, BUDDY_COLOR_BG);
         lv_obj_center(mark);

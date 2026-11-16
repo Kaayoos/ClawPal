@@ -35,7 +35,7 @@ bool buddy_settings_parse(const cJSON *json, buddy_settings_t *out)
     const cJSON *lat = cJSON_GetObjectItemCaseSensitive(json, "latitude");
     const cJSON *lon = cJSON_GetObjectItemCaseSensitive(json, "longitude");
     const cJSON *tz = cJSON_GetObjectItemCaseSensitive(json, "timezone");
-    if (!cJSON_IsObject(json) || !cJSON_IsNumber(schema) || (schema->valuedouble != 2 && schema->valuedouble != 3 && schema->valuedouble != 4 && schema->valuedouble != 5 && schema->valuedouble != 6 && schema->valuedouble != 7 && schema->valuedouble != 8 && schema->valuedouble != BUDDY_SETTINGS_SCHEMA) ||
+    if (!cJSON_IsObject(json) || !cJSON_IsNumber(schema) || (schema->valuedouble != 2 && schema->valuedouble != 3 && schema->valuedouble != 4 && schema->valuedouble != 5 && schema->valuedouble != 6 && schema->valuedouble != 7 && schema->valuedouble != 8 && schema->valuedouble != 9 && schema->valuedouble != BUDDY_SETTINGS_SCHEMA) ||
         !cJSON_IsNumber(apps) || apps->valuedouble != apps->valueint || !(apps->valueint & 32) || apps->valueint < 0 || apps->valueint > (schema->valueint == 2 ? 63 : schema->valueint < 6 ? 127 : schema->valueint < 8 ? 255 : schema->valueint < 9 ? 511 : 1023) ||
         !cJSON_IsArray(order) || cJSON_GetArraySize(order) > BUDDY_HOME_SLOTS ||
         !cJSON_IsBool(hours) || !cJSON_IsBool(weather) ||

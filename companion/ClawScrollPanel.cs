@@ -50,12 +50,22 @@ internal sealed class ClawScrollPanel : Panel, IMessageFilter
             Content.Width=width;
             extent=Padding.Vertical+Content.Controls.Cast<Control>().Where(c=>c.Visible).Select(c=>c.Bottom).DefaultIfEmpty(0).Max();
             offset=Math.Clamp(offset,0,MaximumOffset);
-            Content.SetBounds(0,Padding.Top-offset,width,Math.Max(1,extent-Padding.Vertical));
+            Content.SetBounds(0,Padding.Top-offset+(int)rise,width,Math.Max(1,extent-Padding.Vertical));
             Invalidate();
         }finally{arranging=false;}
     }
-    internal void ScrollTo(int position){offset=Math.Clamp(position,0,MaximumOffset);Content.Top=Padding.Top-offset;Invalidate();}
+    internal void ScrollTo(int position){offset=Math.Clamp(position,0,MaximumOffset);Content.Top=Padding.Top-offset+(int)rise;Invalidate();}
     internal void ResetScroll()=>ScrollTo(0);
+    /* A new page rises the last few pixels into place, so the page you chose arrives rather than appears. */
+    private readonly System.Windows.Forms.Timer entrance=new(){Interval=15};
+    private float rise;
+    private long risenAt;
+    internal void Arrive()
+    {
+        if(!ClawTheme.Motion||!IsHandleCreated){rise=0;return;}
+        if(entrance.Tag is null){entrance.Tag=true;entrance.Tick+=(_,_)=>{float t=Math.Min(1,(Environment.TickCount64-risenAt)/240f);rise=LogicalToDeviceUnits(24)*(1-t)*(1-t)*(1-t);if(t>=1){rise=0;entrance.Stop();}Content.Top=Padding.Top-offset+(int)rise;};}
+        risenAt=Environment.TickCount64;rise=LogicalToDeviceUnits(24);Content.Top=Padding.Top-offset+(int)rise;entrance.Start();
+    }
     public bool PreFilterMessage(ref Message m)
     {
         if(m.Msg!=0x20A||!Visible||!Enabled||IsDisposed)return false;
@@ -77,8 +87,8 @@ internal sealed class ClawScrollPanel : Panel, IMessageFilter
     }
     protected override void OnPaint(PaintEventArgs e)
     {
-        base.OnPaint(e);if(MaximumOffset==0)return;e.Graphics.SmoothingMode=System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
-        ClawTheme.Fill(e.Graphics,dragging?ClawTheme.Accent:ClawTheme.Thumb,Thumb,3);
+        base.OnPaint(e);if(MaximumOffset==0)return;
+        ClawTheme.Fill(e.Graphics,dragging?ClawTheme.Accent:ClawTheme.Raised,Thumb);
     }
     protected override void OnMouseDown(MouseEventArgs e)
     {
@@ -89,5 +99,5 @@ internal sealed class ClawScrollPanel : Panel, IMessageFilter
     protected override void OnMouseMove(MouseEventArgs e){base.OnMouseMove(e);if(dragging)ScrollTo((int)(Math.Clamp((e.Y-grip-4)/(float)Math.Max(1,Height-8-Thumb.Height),0,1)*MaximumOffset));}
     protected override void OnMouseUp(MouseEventArgs e){base.OnMouseUp(e);dragging=Capture=false;Invalidate();}
     protected override void OnMouseCaptureChanged(EventArgs e){base.OnMouseCaptureChanged(e);if(!Capture)dragging=false;}
-    protected override void Dispose(bool disposing){if(disposing)Application.RemoveMessageFilter(this);base.Dispose(disposing);}
+    protected override void Dispose(bool disposing){if(disposing){Application.RemoveMessageFilter(this);entrance.Dispose();}base.Dispose(disposing);}
 }

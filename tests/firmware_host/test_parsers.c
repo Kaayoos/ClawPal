@@ -62,7 +62,14 @@ static void settings_checks(void)
     check(!settings("Warsaw", "UTC0;rm", 6, 255, NULL), "time zone outside the POSIX character set is rejected");
     check(!settings("", "UTC0", 6, 255, NULL), "empty city is rejected");
     check(!settings("Warsaw", "UTC0", 6, 255 & ~32, NULL), "Home app cannot be disabled");
-    check(!settings("Warsaw", "UTC0", 10, 1023, NULL), "unknown settings schema is rejected");
+    check(!settings("Warsaw", "UTC0", 11, 1023, NULL), "unknown settings schema is rejected");
+    check(settings_look("Warsaw", "UTC0", 10, 1023, "\"theme\":\"crabv2\",\"accent\":\"champagne\",\"show_version\":false,", &parsed) &&
+          parsed.theme == BUDDY_THEME_CRABV2, "schema 10 settings carry Crab v2");
+    check(settings_look("Warsaw", "UTC0", 10, 1023, "\"theme\":\"crastudio\",\"accent\":\"champagne\",\"show_version\":false,", &parsed) &&
+          parsed.theme == BUDDY_THEME_CRASTUDIO, "schema 10 settings carry Crastudio");
+    cJSON *cased = buddy_settings_json(&parsed); buddy_settings_t back = {0};
+    check(cased && buddy_settings_parse(cased, &back) && back.theme == BUDDY_THEME_CRASTUDIO, "a cased look round-trips");
+    cJSON_Delete(cased);
     check(settings("Warsaw", "UTC0", 9, 1023, &parsed) && (parsed.enabled_apps & 512) && !parsed.show_version, "schema 9 settings carry the Audio app");
     check(settings("Warsaw", "UTC0", 9, 511, &parsed) && !(parsed.enabled_apps & 512), "schema 9 settings can turn Audio off");
     check(!settings("Warsaw", "UTC0", 9, 2047, NULL), "schema 9 settings cannot name an eleventh app");

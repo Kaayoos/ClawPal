@@ -118,9 +118,9 @@ internal static class WifiNetworks
 internal sealed class WifiPicker : ClawStack
 {
     private readonly ChoiceBox networks = new();
-    private readonly ClawButton rescan = new() { Text = L.Text("wifi_scan_again"), Height = 44 };
-    private readonly Label note = ClawTheme.Label(L.Text("wifi_scanning"), 400, 9, false, 20);
-    private readonly ClawButton location = new() { Text = L.Text("wifi_open_location_settings"), Height = 38, Visible = false };
+    private readonly ClawButton rescan = new() { Text = L.Text("wifi_scan_again") };
+    private readonly Label note = ClawTheme.Label(L.Text("wifi_scanning"), 400, ClawTheme.Small, false, 20);
+    private readonly ClawButton location = new() { Text = L.Text("wifi_open_location_settings"), Visible = false };
     private readonly ClawTextField ssid;
     private readonly bool preview;
     private bool scanning, filling;
@@ -130,7 +130,7 @@ internal sealed class WifiPicker : ClawStack
         this.ssid = ssid; this.preview = preview; Gap = 6;
         var row = new ClawRow(); row.Add(networks); row.Add(rescan, 170);
         var locationRow = new ClawRow(); locationRow.Add(location, 250);
-        Add(ClawTheme.Label(L.Text("wifi_nearby"), 400, 10, true, 24)); Add(row); Add(note); Add(locationRow);
+        Add(ClawTheme.Label(L.Text("wifi_nearby"), 400, ClawTheme.Body, true, 24)); Add(row); Add(note); Add(locationRow);
         // Windows 11 lists nearby networks only to apps allowed to use location.
         location.Click += (_, _) => { if (!preview) System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("ms-settings:privacy-location") { UseShellExecute = true }); };
         networks.Text = L.Text("wifi_scanning");

@@ -47,21 +47,25 @@ internal class ClawStack : Panel
     protected override void OnResize(EventArgs e) { base.OnResize(e); if (!arranging) PerformLayout(); Parent?.PerformLayout(); }
 }
 
-/* A rounded section with a title. Everything inside sits on the surface colour. */
-internal sealed class ClawCard : ClawStack
+/* A part of a page set straight on the screen: its name, one line on what it is for, then its controls.
+   Space, not boxes, keeps one part from the next. */
+internal class ClawSection : ClawStack
 {
     internal Label? Heading { get; }
-    internal ClawCard(string? title = null, string? description = null)
+    internal ClawSection(string? title = null, string? description = null)
     {
-        BackColor = ClawTheme.Surface; Padding = new Padding(22, 18, 22, 20); Gap = 12;
-        if (title is not null) { Heading = ClawTheme.Label(title, 400, 12, true, 30); Add(Heading, description is null ? -1 : 2); }
-        if (description is not null) Add(ClawTheme.Label(description, 400, 9, false, 20));
+        Gap = 12;
+        if (title is not null) { Heading = ClawTheme.Label(title, 400, ClawTheme.Head, true, 30); Add(Heading, description is null ? 14 : 4); }
+        if (description is not null) Add(ClawTheme.Label(description, 400, ClawTheme.Body, false, 22), 14);
     }
-    protected override void OnPaintBackground(PaintEventArgs e)
+}
+
+/* A filled block one tone up from the screen, for the few things that belong together as one object. */
+internal sealed class ClawCard : ClawSection
+{
+    internal ClawCard(string? title = null, string? description = null) : base(title, description)
     {
-        e.Graphics.Clear(Parent?.BackColor ?? ClawTheme.Background); e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
-        ClawTheme.Fill(e.Graphics, ClawTheme.Surface, new RectangleF(0, 0, Width - 1, Height - 1), 12);
-        using var outline = ClawTheme.Round(new RectangleF(.5f, .5f, Width - 2, Height - 2), 12); using var pen = new Pen(ClawTheme.Mix(ClawTheme.Surface, ClawTheme.Border, .7f)); e.Graphics.DrawPath(pen, outline);
+        BackColor = ClawTheme.Surface; Padding = new Padding(24, 20, 24, 22);
     }
 }
 
@@ -69,7 +73,7 @@ internal sealed class ClawCard : ClawStack
 internal sealed class ClawRow : Panel
 {
     private readonly Dictionary<Control, int> fixedWidths = new();
-    internal int Gap { get; set; } = 12;
+    internal int Gap { get; set; } = 10;
     /* Below this width the children stack instead, each at full width. */
     internal int StackBelow { get; set; }
     private bool arranging;
@@ -109,28 +113,36 @@ internal sealed class ClawRow : Panel
     protected override void OnResize(EventArgs e) { base.OnResize(e); if (!arranging) PerformLayout(); }
 }
 
-/* An app ready to add to Home: its icon and name, with a plus. */
+/* An app ready to add to Home: its icon and name, with a plus that turns orange under the pointer. */
 internal sealed class AppChip : ClawButton
 {
     internal int AppId { get; }
     /* false: just shows the app, as setup's list of what the display will have. */
     private readonly bool adds;
-    internal AppChip(DisplayApp app, bool adds = true) { AppId = app.Id; this.adds = adds; Text = app.Name; Size = new(170, 52); Font = ClawTheme.Font(9.5f, true); AccessibleName = adds ? L.Text("add_app_to_home", app.Name) : app.Name; TextAlign = ContentAlignment.MiddleLeft; if (!adds) { Cursor = Cursors.Default; TabStop = false; } }
+    internal AppChip(DisplayApp app, bool adds = true)
+    {
+        AppId = app.Id; this.adds = adds; Text = app.Name; Size = new(170, 52); Font = ClawTheme.Font(ClawTheme.Body, true);
+        AccessibleName = adds ? L.Text("add_app_to_home", app.Name) : app.Name; TextAlign = ContentAlignment.MiddleLeft;
+        if (!adds) { Cursor = Cursors.Default; TabStop = false; }
+    }
     protected override void OnPaint(PaintEventArgs e)
     {
-        base.OnPaint(e);
-        var g = e.Graphics; g.SmoothingMode = SmoothingMode.AntiAlias;
-        bool hot = adds && ClientRectangle.Contains(PointToClient(MousePosition)) && Enabled;
-        ClawTheme.Fill(g, hot ? ClawTheme.Hover : ClawTheme.OnSurface(this) ? ClawTheme.Hover : ClawTheme.Surface, new RectangleF(0, 0, Width - 1, Height - 1), 10);
-        using (var outline = ClawTheme.Round(new RectangleF(.5f, .5f, Width - 2, Height - 2), 10)) using (var pen = new Pen(hot ? ClawTheme.Accent : ClawTheme.Border)) g.DrawPath(pen, outline);
-        int icon = Math.Min(22, Height - 24), left = 12, plusSize = 18, textLeft = left + icon + 10, textRight = Width - (adds ? plusSize + 16 : 8);
+        var g = e.Graphics; g.Clear(Parent?.BackColor ?? ClawTheme.Screen); g.SmoothingMode = SmoothingMode.AntiAlias;
+        bool hot = adds && Hot, raised = ClawTheme.OnSurface(this);
+        ClawTheme.Fill(g, hot ? (raised ? ClawTheme.Pressed : ClawTheme.Raised) : raised ? ClawTheme.Raised : ClawTheme.Surface, new Rectangle(0, 0, Width, Height));
+        int icon = Math.Min(LogicalToDeviceUnits(24), Height - 20), left = LogicalToDeviceUnits(12), plus = LogicalToDeviceUnits(18);
+        int textLeft = left + icon + LogicalToDeviceUnits(10), textRight = Width - (adds ? plus + LogicalToDeviceUnits(18) : 10);
         AppArtwork.Draw(g, AppId, new Rectangle(left, (Height - icon) / 2, icon, icon));
-        ClawTheme.Text(g, Text, Font, Enabled ? ClawTheme.Ink : ClawTheme.Muted, new Rectangle(textLeft, 0, Math.Max(1, textRight - textLeft), Height));
-        if (!adds) return;
-        float cx = Width - 10 - plusSize / 2f, cy = Height / 2f;
-        ClawTheme.Fill(g, hot ? ClawTheme.Accent : ClawTheme.Mix(ClawTheme.Hover, ClawTheme.Ink, .08f), new RectangleF(cx - plusSize / 2f, cy - plusSize / 2f, plusSize, plusSize), plusSize / 2f);
-        using var plus = new Pen(hot ? ClawTheme.Background : Enabled ? ClawTheme.Ink : ClawTheme.Muted, 1.6f);
-        g.DrawLine(plus, cx - 4, cy, cx + 4, cy); g.DrawLine(plus, cx, cy - 4, cx, cy + 4);
+        ClawTheme.Text(g, Text, Font, Enabled ? ClawTheme.Ink : ClawTheme.Faint, new Rectangle(textLeft, 0, Math.Max(1, textRight - textLeft), Height));
+        if (adds)
+        {
+            int x = Width - LogicalToDeviceUnits(12) - plus, y = (Height - plus) / 2;
+            ClawTheme.Fill(g, hot ? ClawTheme.Accent : raised ? ClawTheme.Pressed : ClawTheme.Raised, new Rectangle(x, y, plus, plus));
+            using var brush = new SolidBrush(hot ? ClawTheme.CaseInk : Enabled ? ClawTheme.Ink : ClawTheme.Faint);
+            int arm = plus / 4, t = Math.Max(2, LogicalToDeviceUnits(2)), cx = x + plus / 2, cy = y + plus / 2;
+            g.FillRectangle(brush, cx - arm, cy - t / 2, 2 * arm, t); g.FillRectangle(brush, cx - t / 2, cy - arm, t, 2 * arm);
+        }
+        PaintFocus(g);
     }
 }
 
@@ -139,7 +151,7 @@ internal sealed class ClawWrap : Panel
 {
     internal int ItemWidth { get; set; } = 170;
     internal int ItemHeight { get; set; } = 52;
-    internal int Gap { get; set; } = 10;
+    internal int Gap { get; set; } = 8;
     private bool arranging;
     protected override void OnLayout(LayoutEventArgs e)
     {
@@ -157,18 +169,26 @@ internal sealed class ClawWrap : Panel
     protected override void OnResize(EventArgs e) { base.OnResize(e); if (!arranging) PerformLayout(); }
 }
 
-/* Large text drawn without GDI's side padding, so a page title lines up with the text under it. */
+/* The page's shout: Segoe UI Black, two lines at most, drawn without GDI's side padding so it lines up with the text under it. */
 internal sealed class ClawHeading : Label
 {
-    public ClawHeading() { AutoSize = false; UseMnemonic = false; SetStyle(ControlStyles.OptimizedDoubleBuffer | ControlStyles.AllPaintingInWmPaint, true); }
+    public ClawHeading() { AutoSize = false; UseMnemonic = false; Font = ClawTheme.Display(ClawTheme.Title); ForeColor = ClawTheme.Ink; SetStyle(ControlStyles.OptimizedDoubleBuffer | ControlStyles.AllPaintingInWmPaint, true); }
+    private const TextFormatFlags Flags = TextFormatFlags.NoPadding | TextFormatFlags.Left | TextFormatFlags.Top | TextFormatFlags.WordBreak | TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix;
+    /* The height the text needs at this width, in at most two lines. */
+    internal int Measure(int width)
+    {
+        int line = TextRenderer.MeasureText("Ag", Font, new Size(int.MaxValue, int.MaxValue), TextFormatFlags.NoPadding).Height;
+        int needed = TextRenderer.MeasureText(Text.Length == 0 ? "Ag" : Text, Font, new Size(Math.Max(1, width), int.MaxValue), Flags).Height;
+        return Math.Min(needed, line * 2);
+    }
     protected override void OnPaint(PaintEventArgs e)
     {
-        e.Graphics.Clear(BackColor == Color.Transparent ? Parent?.BackColor ?? ClawTheme.Background : BackColor);
-        TextRenderer.DrawText(e.Graphics, Text, Font, ClientRectangle, ForeColor, TextFormatFlags.NoPadding | TextFormatFlags.Left | TextFormatFlags.Top | TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix);
+        e.Graphics.Clear(BackColor == Color.Transparent ? Parent?.BackColor ?? ClawTheme.Screen : BackColor);
+        TextRenderer.DrawText(e.Graphics, Text, Font, ClientRectangle, ForeColor, Flags);
     }
 }
 
-/* A thin rounded bar: a moving segment while the length of the work is unknown, then the share done. */
+/* A thick square bar: a moving block while the length of the work is unknown, then the share done. */
 internal sealed class ClawProgress : Control
 {
     private readonly System.Windows.Forms.Timer timer = new() { Interval = 16 };
@@ -179,51 +199,85 @@ internal sealed class ClawProgress : Control
     internal int Value { get => value; set { this.value = Math.Clamp(value, 0, 100); Invalidate(); } }
     public ClawProgress()
     {
-        Height = 8; SetStyle(ControlStyles.OptimizedDoubleBuffer | ControlStyles.AllPaintingInWmPaint | ControlStyles.UserPaint, true);
-        timer.Tick += (_, _) => { phase = (phase + .012f) % 1.4f; Invalidate(); }; timer.Start();
+        Height = 12; SetStyle(ControlStyles.OptimizedDoubleBuffer | ControlStyles.AllPaintingInWmPaint | ControlStyles.UserPaint, true);
+        timer.Tick += (_, _) => { if (!ClawTheme.Motion) { phase = .35f; timer.Stop(); } else phase = (phase + .011f) % 1.4f; Invalidate(); }; timer.Start();
     }
     protected override void OnPaint(PaintEventArgs e)
     {
-        var g = e.Graphics; g.SmoothingMode = SmoothingMode.AntiAlias; g.Clear(Parent?.BackColor ?? ClawTheme.Background);
-        float r = Height / 2f; ClawTheme.Fill(g, ClawTheme.Track, new RectangleF(0, 0, Width - 1, Height - 1), r);
+        var g = e.Graphics; g.Clear(Parent?.BackColor ?? ClawTheme.Screen);
+        ClawTheme.Fill(g, ClawTheme.Raised, new Rectangle(0, 0, Width, Height));
         if (style == ProgressBarStyle.Marquee)
         {
-            float w = Width * .3f, x = (phase - .3f) * Width; var bar = RectangleF.Intersect(new RectangleF(x, 0, w, Height - 1), new RectangleF(0, 0, Width - 1, Height - 1));
-            if (bar.Width > 1) ClawTheme.Fill(g, ClawTheme.Accent, bar, Math.Min(r, bar.Width / 2));
+            float w = Width * .28f, x = (phase - .28f) * Width; var bar = RectangleF.Intersect(new RectangleF(x, 0, w, Height), new RectangleF(0, 0, Width, Height));
+            if (bar.Width > 1) ClawTheme.Fill(g, ClawTheme.Accent, bar);
         }
-        else if (value > 0) ClawTheme.Fill(g, ClawTheme.Accent, new RectangleF(0, 0, Math.Max(Height, (Width - 1) * value / 100f), Height - 1), r);
+        else if (value > 0) ClawTheme.Fill(g, ClawTheme.Accent, new RectangleF(0, 0, Width * value / 100f, Height));
     }
     protected override void Dispose(bool disposing) { if (disposing) timer.Dispose(); base.Dispose(disposing); }
 }
 
-/* Setup's steps: done ones carry a tick, the current one is lit, later ones wait in grey. */
+/* A number set large, without GDI's side padding, so it starts on the same edge as the text above it. */
+internal sealed class BigNumber : Control
+{
+    public BigNumber() { SetStyle(ControlStyles.OptimizedDoubleBuffer | ControlStyles.AllPaintingInWmPaint | ControlStyles.UserPaint | ControlStyles.ResizeRedraw, true); Font = ClawTheme.Display(48); ForeColor = ClawTheme.Ink; }
+    protected override void OnTextChanged(EventArgs e) { base.OnTextChanged(e); Invalidate(); }
+    protected override void OnPaint(PaintEventArgs e)
+    {
+        e.Graphics.Clear(Parent?.BackColor ?? ClawTheme.Screen);
+        TextRenderer.DrawText(e.Graphics, Text, Font, new Point(-LogicalToDeviceUnits(2), 0), ForeColor, TextFormatFlags.NoPadding | TextFormatFlags.NoPrefix);
+    }
+}
+
+/* The stages of a long job in a row, in the order they happen: done ones carry a tick, the one under
+   way is the orange block, the rest wait in the dark. */
+internal sealed class StageStrip : Control
+{
+    private string[] names = [];
+    private int current;
+    internal int Current => current;
+    internal void Set(string[] stages, int index)
+    {
+        names = stages; current = index; Invalidate();
+        AccessibleName = current < names.Length ? names[current] : string.Join(", ", names); AccessibilityNotifyClients(AccessibleEvents.NameChange, -1);
+    }
+    public StageStrip() { Height = 72; SetStyle(ControlStyles.OptimizedDoubleBuffer | ControlStyles.AllPaintingInWmPaint | ControlStyles.UserPaint | ControlStyles.ResizeRedraw, true); AccessibleRole = AccessibleRole.ProgressBar; }
+    protected override void OnPaint(PaintEventArgs e)
+    {
+        var g = e.Graphics; g.Clear(Parent?.BackColor ?? ClawTheme.Screen);
+        if (names.Length == 0) return;
+        int gap = LogicalToDeviceUnits(6), width = (Width - gap * (names.Length - 1)) / names.Length, pad = LogicalToDeviceUnits(16);
+        for (int i = 0; i < names.Length; i++)
+        {
+            var block = new Rectangle(i * (width + gap), 0, i == names.Length - 1 ? Width - i * (width + gap) : width, Height);
+            bool done = i < current, now = i == current;
+            ClawTheme.Fill(g, now ? ClawTheme.Accent : ClawTheme.Surface, block);
+            int textLeft = block.X + pad;
+            if (done) { ClawTheme.Tick(g, ClawTheme.Accent, new PointF(block.X + pad + LogicalToDeviceUnits(8), block.Y + Height / 2f), LogicalToDeviceUnits(16), LogicalToDeviceUnits(3)); textLeft += LogicalToDeviceUnits(26); }
+            ClawTheme.Text(g, names[i], ClawTheme.Font(ClawTheme.Body, done || now), now ? ClawTheme.CaseInk : done ? ClawTheme.Ink : ClawTheme.Faint, new Rectangle(textLeft, block.Y, block.Right - textLeft - pad / 2, Height));
+        }
+    }
+}
+
+/* Setup's steps down the rail: done ones carry a tick, the current one is the black tab that joins
+   the screen, and the ones still to come wait in plain type. Order is their position. */
 internal sealed class StepList : Control
 {
     private string[] steps = [];
     private int current;
-    internal int RowHeight => LogicalToDeviceUnits(46);
+    internal int RowHeight => LogicalToDeviceUnits(48);
     internal void Set(string[] names, int index) { steps = names; current = index; Height = steps.Length * RowHeight; Invalidate(); }
-    public StepList() { SetStyle(ControlStyles.OptimizedDoubleBuffer | ControlStyles.AllPaintingInWmPaint | ControlStyles.UserPaint | ControlStyles.ResizeRedraw, true); }
+    public StepList() { SetStyle(ControlStyles.OptimizedDoubleBuffer | ControlStyles.AllPaintingInWmPaint | ControlStyles.UserPaint | ControlStyles.ResizeRedraw, true); BackColor = ClawTheme.Case; }
     protected override void OnPaint(PaintEventArgs e)
     {
-        var g = e.Graphics; g.SmoothingMode = SmoothingMode.AntiAlias; g.Clear(Parent?.BackColor ?? ClawTheme.Surface);
-        int row = RowHeight, dot = LogicalToDeviceUnits(26);
-        using var number = ClawTheme.Font(9, true); using var regular = ClawTheme.Font(10.5f); using var bold = ClawTheme.Font(10.5f, true);
+        var g = e.Graphics; g.Clear(ClawTheme.Case);
+        int row = RowHeight, text = LogicalToDeviceUnits(46);
+        var regular = ClawTheme.Font(ClawTheme.Lead); var bold = ClawTheme.Font(ClawTheme.Lead, true);
         for (int i = 0; i < steps.Length; i++)
         {
-            int y = i * row, cy = y + row / 2; var circle = new RectangleF(1, cy - dot / 2f, dot, dot);
-            if (i < steps.Length - 1) { using var line = new Pen(i < current ? ClawTheme.Accent : ClawTheme.Border, 2); g.DrawLine(line, 1 + dot / 2f, cy + dot / 2f + 3, 1 + dot / 2f, cy + row - dot / 2f - 3); }
-            if (i < current)
-            {
-                using var fill = new SolidBrush(ClawTheme.Accent); g.FillEllipse(fill, circle);
-                using var tick = new Pen(ClawTheme.Background, 2f); float x = circle.X + dot / 2f; g.DrawLines(tick, new PointF[] { new(x - 5, cy), new(x - 1.5f, cy + 3.5f), new(x + 5, cy - 4) });
-            }
-            else
-            {
-                using var ring = new Pen(i == current ? ClawTheme.Accent : ClawTheme.Border, 2); g.DrawEllipse(ring, circle);
-                ClawTheme.Text(g, (i + 1).ToString(), number, i == current ? ClawTheme.Accent : ClawTheme.Muted, Rectangle.Round(circle), TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter);
-            }
-            ClawTheme.Text(g, steps[i], i == current ? bold : regular, i == current ? ClawTheme.Ink : i < current ? ClawTheme.Ink : ClawTheme.Muted, new Rectangle(dot + LogicalToDeviceUnits(14), y, Width - dot - LogicalToDeviceUnits(14), row));
+            int y = i * row;
+            if (i == current) ClawTheme.Fill(g, ClawTheme.Screen, new Rectangle(0, y, Width, row));
+            if (i < current) ClawTheme.Tick(g, ClawTheme.CaseInk, new PointF(LogicalToDeviceUnits(26), y + row / 2f), LogicalToDeviceUnits(16), LogicalToDeviceUnits(3));
+            ClawTheme.Text(g, steps[i], i <= current ? bold : regular, i == current ? ClawTheme.Ink : ClawTheme.CaseInk, new Rectangle(text, y, Width - text - 8, row));
         }
     }
 }
