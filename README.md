@@ -315,13 +315,3 @@ You need ESP-IDF 5.5.2, .NET SDK 8.0.425 and Python 3.12. Firmware binaries and 
 
 <sub>The official source and updates are at <a href="https://github.com/Kaayoos/clawpal">Kaayoos/clawpal</a>. ClawPal is independent of Spotify, OpenAI, Anthropic, Intel, Espressif and Waveshare. Spotify, OpenAI/Codex and Anthropic/Claude marks belong to their owners and keep their own brand terms.</sub>
 
-
-## Star History
-
-<a href="https://www.star-history.com/?repos=kaayoos%2Fclawpal&type=date&releases=&legend=bottom-right">
- <picture>
-   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=kaayoos/clawpal&type=date&theme=dark&legend=bottom-right" />
-   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=kaayoos/clawpal&type=date&legend=bottom-right" />
-   <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=kaayoos/clawpal&type=date&legend=bottom-right" />
- </picture>
-</a>
