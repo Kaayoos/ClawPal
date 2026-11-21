@@ -302,6 +302,15 @@ You need ESP-IDF 5.5.2, .NET SDK 8.0.425 and Python 3.12. Firmware binaries and 
   &nbsp;·&nbsp;
   <a href="https://discord.com/invite/gR5DqCdGre">Discord</a>
 </p>
+## Star History
+
+<a href="https://www.star-history.com/?repos=kaayoos%2Fclawpal&type=date&legend=bottom-right">
+ <picture>
+   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=kaayoos/clawpal&type=date&theme=dark&legend=top-left" />
+   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=kaayoos/clawpal&type=date&legend=top-left" />
+   <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=kaayoos/clawpal&type=date&legend=top-left" />
+ </picture>
+</a>
 
 <a name="license-and-credits"></a>
 <img src="assets/readme/mark.webp" width="100%" alt="ClawPal, built from blocks in the crab's colours, with the crab standing on the w.">
@@ -314,12 +323,4 @@ You need ESP-IDF 5.5.2, .NET SDK 8.0.425 and Python 3.12. Firmware binaries and 
 
 <sub>The official source and updates are at <a href="https://github.com/Kaayoos/clawpal">Kaayoos/clawpal</a>. ClawPal is independent of Spotify, OpenAI, Anthropic, Intel, Espressif and Waveshare. Spotify, OpenAI/Codex and Anthropic/Claude marks belong to their owners and keep their own brand terms.</sub>
 
-## Star History
 
-<a href="https://www.star-history.com/?repos=kaayoos%2Fclawpal&type=date&legend=bottom-right">
- <picture>
-   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=kaayoos/clawpal&type=date&theme=dark&legend=top-left" />
-   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=kaayoos/clawpal&type=date&legend=top-left" />
-   <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=kaayoos/clawpal&type=date&legend=top-left" />
- </picture>
-</a>
