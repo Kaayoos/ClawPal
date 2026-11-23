@@ -2,4 +2,5 @@
   <PropertyGroup><OutputType>Exe</OutputType><TargetFramework>net8.0</TargetFramework><ImplicitUsings>enable</ImplicitUsings><Nullable>enable</Nullable></PropertyGroup>
   <ItemGroup><Compile Include="../GameContract.cs" Link="GameContract.cs" /></ItemGroup>
   <ItemGroup><Compile Include="../Protocol.cs" Link="Protocol.cs" /><Compile Include="../DeviceAuth.cs" Link="DeviceAuth.cs" /><Compile Include="../CodexContract.cs" Link="CodexContract.cs" /><Compile Include="../ActivityContract.cs" Link="ActivityContract.cs" /><Compile Include="../StartupContract.cs" Link="StartupContract.cs" /><Compile Include="../BuddyPaths.cs" Link="BuddyPaths.cs" /></ItemGroup>
+  <ItemGroup><Compile Include="../PrinterContract.cs" Link="PrinterContract.cs" /><Compile Include="../PrinterMqtt.cs" Link="PrinterMqtt.cs" /><Compile Include="../PrinterClients.cs" Link="PrinterClients.cs" /><Compile Include="../PrinterDiscovery.cs" Link="PrinterDiscovery.cs" /></ItemGroup>
 </Project>

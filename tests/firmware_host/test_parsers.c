@@ -25,6 +25,7 @@ static void check(bool value, const char *name)
 
 #include "test_telemetry.c"
 #include "test_auth.c"
+#include "test_printers.c"
 
 /* `look` holds the schema 7 theme fields, or nothing for older payloads. */
 static bool settings_look(const char *city, const char *timezone, int schema, int apps, const char *look, buddy_settings_t *out)
@@ -62,7 +63,7 @@ static void settings_checks(void)
     check(!settings("Warsaw", "UTC0;rm", 6, 255, NULL), "time zone outside the POSIX character set is rejected");
     check(!settings("", "UTC0", 6, 255, NULL), "empty city is rejected");
     check(!settings("Warsaw", "UTC0", 6, 255 & ~32, NULL), "Home app cannot be disabled");
-    check(!settings("Warsaw", "UTC0", 11, 1023, NULL), "unknown settings schema is rejected");
+    check(!settings("Warsaw", "UTC0", 12, 1023, NULL), "unknown settings schema is rejected");
     check(settings_look("Warsaw", "UTC0", 10, 1023, "\"theme\":\"crabv2\",\"accent\":\"champagne\",\"show_version\":false,", &parsed) &&
           parsed.theme == BUDDY_THEME_CRABV2, "schema 10 settings carry Crab v2");
     check(settings_look("Warsaw", "UTC0", 10, 1023, "\"theme\":\"crastudio\",\"accent\":\"champagne\",\"show_version\":false,", &parsed) &&
@@ -187,6 +188,8 @@ int main(int argc, char **argv)
     weather_checks();
     shortcut_checks();
     telemetry_checks();
+    printer_checks();
+    printer_settings_checks();
     auth_checks();
     telemetry_fuzz(argc > 1 ? (unsigned)strtoul(argv[1], NULL, 10) : 200000);
     printf("%d firmware parser checks passed, %d failed\n", passed, failed);

@@ -8,6 +8,7 @@
 #include "buddy_app_icons.h"
 #include "buddy_shortcuts_page.h"
 #include "buddy_audio_page.h"
+#include "buddy_printer_page.h"
 #include "buddy_home_logos.h"
 #include "buddy_clock_font.h"
 #include "buddy_music_font.h"
@@ -219,7 +220,7 @@ lv_obj_t *buddy_home_create(lv_obj_t *screen, lv_event_cb_t open_app, lv_event_c
     /* Inside a case the Wi-Fi mark steps in from the frame. */
     home.wifi = buddy_theme.cased ? plain(home.page, 734, 14, 38, 32) : plain(home.page, 744, 9, 38, 32);
     lv_obj_add_event_cb(home.wifi, draw_wifi, LV_EVENT_DRAW_MAIN, NULL);
-    const char *names[] = { BT(BT_PC_MONITOR), BT(BT_CLOCK), BT(BT_MUSIC), BT(BT_TIMER), BT(BT_CODEX), BT(BT_HOME), BT(BT_WEATHER), BT(BT_CLAUDE), BT(BT_SHORTCUTS), BT(BT_AUDIO) };
+    const char *names[] = { BT(BT_PC_MONITOR), BT(BT_CLOCK), BT(BT_MUSIC), BT(BT_TIMER), BT(BT_CODEX), BT(BT_HOME), BT(BT_WEATHER), BT(BT_CLAUDE), BT(BT_SHORTCUTS), BT(BT_AUDIO), BT(BT_PRINTER) };
     _Static_assert(sizeof(names) / sizeof(names[0]) == BUDDY_APP_COUNT, "Home needs a name for every app");
     /* The smallest screen uses slimmer rows so three shortcuts fit a view. */
     const bool tiny = BOARD_DISPLAY_HEIGHT < 400, square = buddy_theme.square;
@@ -336,6 +337,7 @@ void buddy_home_update(const buddy_stats_t *stats, bool connected, bool wifi, bo
     set_text(home.statuses[BUDDY_APP_CLAUDE], value);
     set_text(home.statuses[BUDDY_APP_SHORTCUTS], buddy_shortcuts_page_status());
     set_text(home.statuses[BUDDY_APP_AUDIO], buddy_audio_page_status());
+    set_text(home.statuses[BUDDY_APP_PRINTER], buddy_printer_page_status());
     set_text(home.statuses[2], connected && stats && stats->music.available && stats->music.playing ?
         (stats->music.title[0] ? stats->music.title : BT(BT_PLAYING)) : BT(BT_NOT_PLAYING));
     if (weather->available) {

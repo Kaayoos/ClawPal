@@ -20,16 +20,18 @@ public static class DisplayApps
         new(7,L.Text("claude_code"),L.Text("claude_description"),"typing"),
         new(6,L.Text("weather"),L.Text("current_conditions_and_a_crab_dressed_for_the_weather"),"sunny"),
         new(8,L.Text("shortcuts"),L.Text("shortcuts_app_description"),"happy"),
-        new(9,L.Text("audio"),L.Text("audio_app_description"),"music") ];
+        new(9,L.Text("audio"),L.Text("audio_app_description"),"music"),
+        new(10,L.Text("printer"),L.Text("printer_app_description"),"working") ];
     public static DisplayApp Get(int id) => All.Single(a => a.Id == id);
 }
 
 public sealed record DeviceSettings
 {
     // 10 adds the cased looks, Crab v2 and Crastudio, which older displays cannot draw.
-    public const int CurrentSchema=10;
+    // 11 adds the Printer app (bit 10); older displays gain it switched on.
+    public const int CurrentSchema=11;
     // One bit per display app; 5 is Home, which always stays on.
-    public const int AllApps=1023, LastApp=9;
+    public const int AllApps=2047, LastApp=10;
     public int Schema { get; init; } = CurrentSchema;
     public string Language { get; init; } = "en";
     public int EnabledApps { get; init; } = AllApps;
@@ -61,7 +63,8 @@ public sealed record DeviceSettings
         if(Schema is >=2 and <8)value=value with {EnabledApps=value.EnabledApps|256};
         // Audio arrives switched on too, and Home's footer stops naming the version.
         if(Schema is >=2 and <9)value=value with {EnabledApps=value.EnabledApps|512,ShowVersion=false};
-        // The cased looks change nothing else; the display keeps the look it had.
+        // The cased looks change nothing else; the display keeps the look it had. The Printer app arrives switched on.
+        if(Schema is >=2 and <11)value=value with {EnabledApps=value.EnabledApps|1024};
         return Schema is >=2 and <CurrentSchema ? value with {Schema=CurrentSchema} : value;
     }
     public bool Enabled(int app) => app is >= 0 and <= LastApp && (EnabledApps & (1 << app)) != 0;
@@ -165,7 +168,7 @@ public sealed class DeviceSettingsClient(Configuration config)
     {
         using var json=JsonDocument.Parse(response);
         var settings=JsonSerializer.Deserialize<DeviceSettings>(response,Json) ?? throw new IOException(L.Text("the_display_returned_empty_settings"));
-        if (!json.RootElement.TryGetProperty("schema",out var schema) || schema.GetInt32() is not (2 or 3 or 4 or 5 or 6 or 7 or 8 or 9 or 10)) throw new NotSupportedException(L.Text("update_the_display_firmware_to_use_wireless_configuration"));
+        if (!json.RootElement.TryGetProperty("schema",out var schema) || schema.GetInt32() is not (2 or 3 or 4 or 5 or 6 or 7 or 8 or 9 or 10 or 11)) throw new NotSupportedException(L.Text("update_the_display_firmware_to_use_wireless_configuration"));
         foreach(string key in new[]{"enabled_apps","home_order","use_24h","weather_enabled","city","latitude","longitude","timezone"})
             if(!json.RootElement.TryGetProperty(key,out _))throw new IOException(L.Text("the_display_returned_incomplete_settings"));
         if(schema.GetInt32()>=3)

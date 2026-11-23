@@ -4,11 +4,11 @@ using System.Text.Json;
 
 namespace ClawPal.Companion;
 
-internal sealed class SettingsForm : ClawWindow
+internal sealed partial class SettingsForm : ClawWindow
 {
     /* Rail order: what the display shows, then this PC. About opens from the version line. */
-    private enum SettingsPage { Home, Apps, Shortcuts, Clock, Screen, Look, Pc, Connection, Updates, About }
-    private static readonly SettingsPage[][] Groups = [[SettingsPage.Home, SettingsPage.Apps, SettingsPage.Shortcuts, SettingsPage.Clock, SettingsPage.Screen, SettingsPage.Look], [SettingsPage.Pc, SettingsPage.Connection, SettingsPage.Updates]];
+    private enum SettingsPage { Home, Apps, Shortcuts, Printers, Clock, Screen, Look, Pc, Connection, Updates, About }
+    private static readonly SettingsPage[][] Groups = [[SettingsPage.Home, SettingsPage.Apps, SettingsPage.Shortcuts, SettingsPage.Printers, SettingsPage.Clock, SettingsPage.Screen, SettingsPage.Look], [SettingsPage.Pc, SettingsPage.Connection, SettingsPage.Updates]];
     private readonly Configuration config;
     private readonly Connection connection;
     private readonly DeviceSettingsClient wireless;
@@ -74,14 +74,14 @@ internal sealed class SettingsForm : ClawWindow
     internal const int NavTop = 116, NavRow = 42, GroupGap = 18;
     private static string PageName(SettingsPage page) => page switch
     {
-        SettingsPage.Home => L.Text("home"), SettingsPage.Apps => L.Text("apps"), SettingsPage.Shortcuts => L.Text("shortcuts"), SettingsPage.Clock => L.Text("clock_weather"),
+        SettingsPage.Home => L.Text("home"), SettingsPage.Apps => L.Text("apps"), SettingsPage.Shortcuts => L.Text("shortcuts"), SettingsPage.Printers => L.Text("printers"), SettingsPage.Clock => L.Text("clock_weather"),
         SettingsPage.Screen => L.Text("screen"), SettingsPage.Look => L.Text("look_language"), SettingsPage.Pc => L.Text("pc_app_nav"), SettingsPage.Connection => L.Text("connection_nav"),
         SettingsPage.Updates => L.Text("updates"), _ => L.Text("about_clawpal")
     };
     /* Each page has a crab doing its thing; saving and problems take over for a moment. */
     private static string Mood(SettingsPage page) => page switch
     {
-        SettingsPage.Apps => "music", SettingsPage.Shortcuts => "typing", SettingsPage.Clock => "sunny", SettingsPage.Screen => "night", SettingsPage.Look => "happy",
+        SettingsPage.Apps => "music", SettingsPage.Shortcuts => "typing", SettingsPage.Printers => "working", SettingsPage.Clock => "sunny", SettingsPage.Screen => "night", SettingsPage.Look => "happy",
         SettingsPage.Pc => "working", SettingsPage.Connection => "thinking", SettingsPage.Updates => "carrying", _ => "idle"
     };
     private void SetMoment(string? state)
@@ -178,7 +178,7 @@ internal sealed class SettingsForm : ClawWindow
         moment = null; crab.State = connection.Updates.Busy ? "working" : Mood(index);
         switch (index)
         {
-            case SettingsPage.Home: HomePage(); break; case SettingsPage.Apps: AppsPage(); break; case SettingsPage.Shortcuts: ShortcutsPage(); break;
+            case SettingsPage.Home: HomePage(); break; case SettingsPage.Apps: AppsPage(); break; case SettingsPage.Shortcuts: ShortcutsPage(); break; case SettingsPage.Printers: PrintersPage(); break;
             case SettingsPage.Clock: ClockPage(); break; case SettingsPage.Screen: ScreenPage(); break; case SettingsPage.Look: LookPage(); break;
             case SettingsPage.Pc: PcPage(); break; case SettingsPage.Connection: ConnectionPage(); break; case SettingsPage.Updates: UpdatesPage(); break; default: AboutPage(); break;
         }
@@ -293,6 +293,7 @@ internal sealed class SettingsForm : ClawWindow
             }
             else if (app.Id == 7) ClaudeOptions(options);
             else if (app.Id == 9) options.Add(Note(L.Text("audio_app_note")));
+            else if (app.Id == 10) { var edit = new ClawButton { Text = L.Text("manage_printers") }; edit.Click += (_, _) => ShowPage(SettingsPage.Printers); options.Add(Row(0, (edit, 230))); }
             else if (app.Id == 8) { var edit = new ClawButton { Text = L.Text("edit_shortcut_tiles") }; edit.Click += (_, _) => ShowPage(SettingsPage.Shortcuts); options.Add(Row(0, (edit, 230))); }
             else if (app.Id is 1 or 6) { var edit = new ClawButton { Text = L.Text("clock_weather_settings") }; edit.Click += (_, _) => ShowPage(SettingsPage.Clock); options.Add(Row(0, (edit, 260))); }
             if (options.Controls.Count > 0) item.Add(options);

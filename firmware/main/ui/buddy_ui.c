@@ -25,6 +25,8 @@
 #include "buddy_weather_page.h"
 #include "buddy_shortcuts_page.h"
 #include "buddy_audio_page.h"
+#include "buddy_printer_page.h"
+#include "buddy_printer_watch.h"
 #include "buddy_weather_icon.h"
 
 /* Broadcast meter bridge: real channels, shared time, restrained state ink. */
@@ -102,7 +104,7 @@ static struct {
     lv_obj_t *dim_overlay, *about_page, *about_version;
     /* Cased looks: the frame around every surface and the rail along the bottom. */
     lv_obj_t *case_frame, *rail;
-    lv_obj_t *monitor_header, *monitor_title, *clock_page, *chooser, *weather_page, *shortcuts_page, *audio_page;
+    lv_obj_t *monitor_header, *monitor_title, *clock_page, *chooser, *weather_page, *shortcuts_page, *audio_page, *printer_page;
     lv_obj_t *home_page, *game_panel, *game_title, *game_fps, *game_status;
     lv_obj_t *clock_large, *clock_date, *clock_mascot;
     lv_obj_t *weather_row, *weather_icon, *weather_text, *weather_note;
@@ -148,6 +150,8 @@ static struct {
     bool music_automatic, music_seen_running, music_launch_pending, music_command_pending;
     bool codex_automatic, codex_seen_running, codex_launch_pending;
     bool claude_automatic, claude_seen_running, claude_launch_pending;
+    /* The Printer app opens by itself while a print runs, like Media and the agents. */
+    bool printer_automatic, printer_seen_active, printer_launch_pending;
     uint32_t music_command_tick, music_command_control_id;
     /* Slider gestures and the values shown until Spotify reports them back. */
     bool music_feedback_error, music_seeking, music_volume_dragging, music_seek_hold, music_volume_hold;
@@ -163,6 +167,11 @@ static struct {
     prompt_view_t confirm, alert;
     buddy_app_t alert_app;
     char alert_key[112], alert_dismissed[112];
+    /* A print that finished, failed or paused: the printer's id while it shows, 0 otherwise. */
+    prompt_view_t printer_alert;
+    buddy_print_watch_t print_watch;
+    buddy_print_alert_t printer_alert_kind;
+    uint8_t printer_alert_id, printer_alert_state;
     /* A Wi-Fi firmware install in progress. */
     lv_obj_t *install_page, *install_title, *install_version, *install_track, *install_fill, *install_mascot;
     lv_obj_t *install_percent, *install_stage_label, *install_note;
@@ -226,6 +235,10 @@ static bool claude_tasks_stale(void);
 static void refresh_home(void);
 static void refresh_game(void);
 static void refresh_alert(void);
+static void hide_printer_alert(void);
+static bool printer_offered(void);
+static bool printer_printing(void);
+static void refresh_printer_alert(buddy_print_alert_t alert, unsigned index);
 
 /* A PC that is connected and not locked or asleep. */
 static bool pc_live(void)
@@ -262,6 +275,7 @@ static const struct {
     { BUDDY_APP_CLAUDE, BT_CLAUDE, BT_YOUR_ACCOUNT_LIMITS, BUDDY_MASCOT_TYPING },
     { BUDDY_APP_SHORTCUTS, BT_SHORTCUTS, BT_YOUR_PC_AT_A_TAP, BUDDY_MASCOT_HAPPY },
     { BUDDY_APP_AUDIO, BT_AUDIO, BT_EVERY_APP_S_VOLUME, BUDDY_MASCOT_MUSIC },
+    { BUDDY_APP_PRINTER, BT_PRINTER, BT_YOUR_PRINTS_AT_A_GLANCE, BUDDY_MASCOT_WORKING },
 };
 
 static buddy_text_key_t app_short_title(buddy_app_t app, buddy_text_key_t title)
@@ -376,7 +390,7 @@ static void refresh_display_power(void)
     ui.power_tick = now;
     bool connected = pc_live();
     if ((connected && view_settings.dim_behavior != 2) || touched != ui.last_touch_tick || ui.wake_touch_active ||
-        ui.confirm_action != BUDDY_CONFIRM_NONE || ui.alert_key[0] || ui.install_stage != BUDDY_INSTALL_NONE) {
+        ui.confirm_action != BUDDY_CONFIRM_NONE || ui.alert_key[0] || ui.printer_alert_id || ui.install_stage != BUDDY_INSTALL_NONE) {
         ui.idle_ms = 0;
     } else {
         /* Saturation prevents a long unattended run from waking at tick wrap. */
@@ -558,6 +572,7 @@ static void refresh_app_cards(void)
     set_label_if_changed(ui.app_description[BUDDY_APP_WEATHER],value);
     set_label_if_changed(ui.app_description[BUDDY_APP_SHORTCUTS], buddy_shortcuts_page_status());
     set_label_if_changed(ui.app_description[BUDDY_APP_AUDIO], buddy_audio_page_status());
+    set_label_if_changed(ui.app_description[BUDDY_APP_PRINTER], buddy_printer_page_status());
     const buddy_music_t *music = &ui.stats.music;
     set_label_if_changed(ui.app_description[BUDDY_APP_MUSIC], music_connected() && music->available ?
         (music->title[0] ? music->title : BT(BT_PLAYING)) : music_connected() && music->running ? BT(BT_NOT_PLAYING) : BT(BT_WAITING_FOR_SPOTIFY));
@@ -644,6 +659,7 @@ static lv_obj_t *overlay_mascot(void)
     if (ui.install_stage != BUDDY_INSTALL_NONE) return ui.install_crab == 96 ? ui.install_mascot : NULL;
     if (ui.confirm_action != BUDDY_CONFIRM_NONE) return ui.confirm.mascot;
     if (ui.alert_key[0]) return ui.alert.mascot;
+    if (ui.printer_alert_id) return ui.printer_alert.mascot;
     return NULL;
 }
 
@@ -657,6 +673,8 @@ static buddy_mascot_state_t mascot_state(void)
     if (ui.confirm_action != BUDDY_CONFIRM_NONE)
         return ui.confirm_action == BUDDY_CONFIRM_FIRMWARE ? BUDDY_MASCOT_CARRYING : BUDDY_MASCOT_THINKING;
     if (ui.alert_key[0]) return BUDDY_MASCOT_THINKING;
+    if (ui.printer_alert_id) return ui.printer_alert_kind == BUDDY_PRINT_ALERT_FINISHED ? BUDDY_MASCOT_HAPPY :
+        ui.printer_alert_kind == BUDDY_PRINT_ALERT_FAILED ? BUDDY_MASCOT_ERROR : BUDDY_MASCOT_THINKING;
     if (ui.transition_active) return ui.transition_mascot;
     if (ui.active_app == BUDDY_APP_HOME) return BUDDY_MASCOT_IDLE;
     /* The crab naps with the PC; the timer keeps its own animation. */
@@ -783,6 +801,8 @@ static void mascot_tick(lv_timer_t *timer)
     }
     if (ui.alert_key[0] && ui.alert.tile)
         lv_obj_set_style_border_opa(ui.alert.tile, (lv_tick_get() / 600U) % 2U ? LV_OPA_COVER : LV_OPA_20, 0);
+    if (ui.printer_alert_id && ui.printer_alert.tile)
+        lv_obj_set_style_border_opa(ui.printer_alert.tile, (lv_tick_get() / 600U) % 2U ? LV_OPA_COVER : LV_OPA_20, 0);
     if (buddy_theme_has_mascot()) feed_mascot();
 }
 
@@ -872,6 +892,7 @@ static void refresh_visibility(void)
     visible(ui.weather_page, ui.active_app == BUDDY_APP_WEATHER && !ui.menu_open);
     visible(ui.shortcuts_page, ui.active_app == BUDDY_APP_SHORTCUTS && !ui.menu_open);
     visible(ui.audio_page, ui.active_app == BUDDY_APP_AUDIO && !ui.menu_open);
+    visible(ui.printer_page, ui.active_app == BUDDY_APP_PRINTER && !ui.menu_open);
     visible(ui.clock_page, ui.active_app == BUDDY_APP_CLOCK && !ui.menu_open);
     if (ui.active_app != BUDDY_APP_CLOCK || ui.menu_open) {
         buddy_ui_motion_cancel(ui.clock_large);
@@ -924,12 +945,13 @@ static chooser_grid_t chooser_grid(void)
 static void chooser_layout(void)
 {
     static const buddy_app_t order[] = { BUDDY_APP_HOME, BUDDY_APP_MONITOR, BUDDY_APP_CLOCK, BUDDY_APP_MUSIC,
-        BUDDY_APP_TIMER, BUDDY_APP_CODEX, BUDDY_APP_WEATHER, BUDDY_APP_CLAUDE, BUDDY_APP_SHORTCUTS, BUDDY_APP_AUDIO };
+        BUDDY_APP_TIMER, BUDDY_APP_CODEX, BUDDY_APP_WEATHER, BUDDY_APP_CLAUDE, BUDDY_APP_SHORTCUTS, BUDDY_APP_AUDIO, BUDDY_APP_PRINTER };
     const chooser_grid_t grid = chooser_grid();
     unsigned position = 0;
     for (unsigned i = 0; i < sizeof(order) / sizeof(order[0]); ++i) {
         lv_obj_t *tile = ui.app_rows[order[i]];
-        bool shown = order[i] == BUDDY_APP_HOME || app_enabled(order[i]), selected = order[i] == ui.active_app;
+        bool shown = order[i] == BUDDY_APP_HOME || (app_enabled(order[i]) && (order[i] != BUDDY_APP_PRINTER || printer_offered())),
+            selected = order[i] == ui.active_app;
         visible(tile, shown);
         lv_obj_set_style_border_color(tile, color(selected ? C_ACCENT : C_RULE), 0);
         lv_obj_set_style_border_width(tile, selected ? buddy_theme.border_w : buddy_theme.outlined_cards ? 1 : 0, 0);
@@ -939,6 +961,14 @@ static void chooser_layout(void)
         lv_obj_set_pos(tile, grid.margin + (int)(position % grid.columns) * (grid.width + grid.gap),
                        grid.top + (int)(position / grid.columns) * (grid.height + grid.gap));
         ++position;
+    }
+    /* Ten tiles fill the wide screen; an eleventh peeks in below and the grid scrolls to it. */
+    if (BOARD_DISPLAY_WIDTH >= 800) {
+        bool scroll = position > 10;
+        if (scroll != lv_obj_has_flag(ui.chooser, LV_OBJ_FLAG_SCROLLABLE)) {
+            if (scroll) { lv_obj_add_flag(ui.chooser, LV_OBJ_FLAG_SCROLLABLE); lv_obj_set_scroll_dir(ui.chooser, LV_DIR_VER); }
+            else { lv_obj_scroll_to_y(ui.chooser, 0, LV_ANIM_OFF); lv_obj_clear_flag(ui.chooser, LV_OBJ_FLAG_SCROLLABLE); }
+        }
     }
 }
 
@@ -1011,7 +1041,7 @@ static void mascot_set_y(void *obj, int32_t value)
 
 static void animate_destination(void)
 {
-    lv_obj_t *objects[] = { ui.overview, ui.details, ui.empty, ui.music_page, ui.timer_page, ui.codex.page, ui.claude.page, ui.home_page, ui.weather_page, ui.shortcuts_page, ui.audio_page,
+    lv_obj_t *objects[] = { ui.overview, ui.details, ui.empty, ui.music_page, ui.timer_page, ui.codex.page, ui.claude.page, ui.home_page, ui.weather_page, ui.shortcuts_page, ui.audio_page, ui.printer_page,
         ui.codex.usage_body, ui.codex.tasks_body, ui.claude.usage_body, ui.claude.tasks_body,
         ui.clock_large, ui.clock_date };
     for (unsigned i = 0; i < sizeof(objects) / sizeof(objects[0]); ++i)
@@ -1024,7 +1054,7 @@ static void animate_destination(void)
         buddy_ui_motion_enter(ui.clock_large, 8, 200, 0);
         buddy_ui_motion_enter(ui.clock_date, 6, 180, 20);
     } else {
-        lv_obj_t *destination = ui.active_app == BUDDY_APP_WEATHER ? ui.weather_page : ui.active_app == BUDDY_APP_SHORTCUTS ? ui.shortcuts_page : ui.active_app == BUDDY_APP_AUDIO ? ui.audio_page : ui.active_app == BUDDY_APP_HOME ? ui.home_page : ui.active_app == BUDDY_APP_MUSIC ? ui.music_page :
+        lv_obj_t *destination = ui.active_app == BUDDY_APP_WEATHER ? ui.weather_page : ui.active_app == BUDDY_APP_SHORTCUTS ? ui.shortcuts_page : ui.active_app == BUDDY_APP_AUDIO ? ui.audio_page : ui.active_app == BUDDY_APP_PRINTER ? ui.printer_page : ui.active_app == BUDDY_APP_HOME ? ui.home_page : ui.active_app == BUDDY_APP_MUSIC ? ui.music_page :
             ui.active_app == BUDDY_APP_CODEX ? ui.codex.page :
             ui.active_app == BUDDY_APP_CLAUDE ? ui.claude.page :
             ui.active_app == BUDDY_APP_TIMER ? ui.timer_page : ui.details_visible ? ui.details :
@@ -1036,7 +1066,7 @@ static void animate_destination(void)
 static void begin_app_transition(void)
 {
     if (!buddy_theme.app_flourish) { ui.transition_active = false; return; }
-    if (ui.active_app == BUDDY_APP_HOME || ui.active_app == BUDDY_APP_WEATHER || ui.active_app == BUDDY_APP_SHORTCUTS || ui.active_app == BUDDY_APP_AUDIO) { ui.transition_active = false; return; }
+    if (ui.active_app == BUDDY_APP_HOME || ui.active_app == BUDDY_APP_WEATHER || ui.active_app == BUDDY_APP_SHORTCUTS || ui.active_app == BUDDY_APP_AUDIO || ui.active_app == BUDDY_APP_PRINTER) { ui.transition_active = false; return; }
     if (ui.active_app == BUDDY_APP_MUSIC || ui.active_app == BUDDY_APP_TIMER || ui.active_app == BUDDY_APP_CODEX || ui.active_app == BUDDY_APP_CLAUDE) {
         ui.transition_active = false;
         if (!ui.startup) update_large_frame(&buddy_mascot_frames[mascot_state()][0]);
@@ -1071,6 +1101,7 @@ static void activate_app(buddy_app_t app, bool automatic)
     ui.music_automatic = app == BUDDY_APP_MUSIC && automatic;
     ui.codex_automatic = app == BUDDY_APP_CODEX && automatic;
     ui.claude_automatic = app == BUDDY_APP_CLAUDE && automatic;
+    ui.printer_automatic = app == BUDDY_APP_PRINTER && automatic;
     if (app == BUDDY_APP_TIMER) ui.timer_notify = false;
     ui.details_visible = false;
     if (changed) begin_app_transition();
@@ -1079,11 +1110,26 @@ static void activate_app(buddy_app_t app, bool automatic)
     animate_destination();
 }
 
+/* The PC reports at least one printer, so the Printer app has something to show. */
+static bool printer_offered(void)
+{
+    return ui.have_stats && ui.stats.printers.present && ui.stats.printers.count > 0;
+}
+
+/* A print is being prepared, printed or is paused on some printer. */
+static bool printer_printing(void)
+{
+    if (!ui.have_stats || !ui.stats.printers.present) return false;
+    for (unsigned i = 0; i < ui.stats.printers.count; ++i) if (buddy_print_active(ui.stats.printers.items[i].state)) return true;
+    return false;
+}
+
 static buddy_app_t preferred_connected_app(void)
 {
     if (!ui.stats.auto_open_apps) return BUDDY_APP_HOME;
     return ui.stats.codex.running && app_enabled(BUDDY_APP_CODEX) ? BUDDY_APP_CODEX :
         ui.stats.claude.running && app_enabled(BUDDY_APP_CLAUDE) ? BUDDY_APP_CLAUDE :
+        printer_printing() && app_enabled(BUDDY_APP_PRINTER) ? BUDDY_APP_PRINTER :
         ui.stats.music.running && app_enabled(BUDDY_APP_MUSIC) ? BUDDY_APP_MUSIC : BUDDY_APP_HOME;
 }
 
@@ -1098,15 +1144,15 @@ static void maybe_auto_app(void)
     /* Each connection chooses from a fresh frame, so old Spotify/Codex state
      * cannot send a newly connected PC to the wrong app. Timers keep running. */
     if (ui.pc_launch_pending && fresh_pc && ui.stats.sequence != ui.pc_launch_sequence) {
-        ui.pc_launch_pending = ui.music_launch_pending = ui.codex_launch_pending = ui.claude_launch_pending = false;
+        ui.pc_launch_pending = ui.music_launch_pending = ui.codex_launch_pending = ui.claude_launch_pending = ui.printer_launch_pending = false;
         activate_app(preferred_connected_app(), true);
         return;
     }
     if (fresh_pc && !ui.stats.auto_open_apps) {
-        ui.music_launch_pending = ui.codex_launch_pending = ui.claude_launch_pending = false;
+        ui.music_launch_pending = ui.codex_launch_pending = ui.claude_launch_pending = ui.printer_launch_pending = false;
         /* Disabling the tray option releases automatic app selections only.
          * A manually opened Music/Codex view remains selected. */
-        if (ui.music_automatic || ui.codex_automatic || ui.claude_automatic) {
+        if (ui.music_automatic || ui.codex_automatic || ui.claude_automatic || ui.printer_automatic) {
             activate_app(BUDDY_APP_HOME, false);
             return;
         }
@@ -1115,7 +1161,7 @@ static void maybe_auto_app(void)
     if (ui.offline_automatic && ui.have_stats &&
         fresh_pc) {
         ui.music_launch_pending = false;
-        ui.codex_launch_pending = false; ui.claude_launch_pending = false;
+        ui.codex_launch_pending = false; ui.claude_launch_pending = false; ui.printer_launch_pending = false;
         activate_app(preferred_connected_app(), true);
     } else if (!fresh_pc && !ui.offline_handled && age >= CLOCK_DELAY_MS) {
         ui.offline_handled = true;
@@ -1138,6 +1184,15 @@ static void maybe_auto_app(void)
         ui.music_launch_pending = false;
         activate_app(BUDDY_APP_CLAUDE, true);
     } else if (ui.active_app == BUDDY_APP_CLAUDE && ui.claude_automatic && fresh_pc && !ui.stats.claude.running) {
+        ui.music_launch_pending = false;
+        activate_app(preferred_connected_app(), true);
+    } else if (app_enabled(BUDDY_APP_PRINTER) && ui.printer_launch_pending && fresh_pc && printer_printing() &&
+               (ui.active_app == BUDDY_APP_HOME || ui.active_app == BUDDY_APP_MONITOR || ui.active_app == BUDDY_APP_MUSIC ||
+                (ui.offline_automatic))) {
+        ui.printer_launch_pending = false;
+        ui.music_launch_pending = false;
+        activate_app(BUDDY_APP_PRINTER, true);
+    } else if (ui.active_app == BUDDY_APP_PRINTER && ui.printer_automatic && fresh_pc && !printer_printing()) {
         ui.music_launch_pending = false;
         activate_app(preferred_connected_app(), true);
     } else if (ui.active_app == BUDDY_APP_MUSIC && ui.music_automatic && fresh_pc && !ui.stats.music.running) {
@@ -2665,6 +2720,7 @@ static void create_app_surfaces(void)
     ui.weather_page = buddy_weather_page_create(ui.screen);
     ui.shortcuts_page = buddy_shortcuts_page_create(ui.screen);
     ui.audio_page = buddy_audio_page_create(ui.screen);
+    ui.printer_page = buddy_printer_page_create(ui.screen);
     create_music_page();
     create_timer_page();
     create_codex_page();
@@ -3021,6 +3077,8 @@ void buddy_ui_set_connection(buddy_connection_state_t state, const char *ssid,
     }
     buddy_shortcuts_page_set_connected(state == BUDDY_PC_CONNECTED);
     buddy_audio_page_set_connected(state == BUDDY_PC_CONNECTED);
+    buddy_printer_page_update(NULL, state == BUDDY_PC_CONNECTED && ui.have_stats);
+    if (state == BUDDY_PROVISIONING) hide_printer_alert();
     refresh_connection();
 }
 
@@ -3084,6 +3142,15 @@ void buddy_ui_update_stats(const buddy_stats_t *stats)
     }
     if (!stats->claude.running || !stats->auto_open_apps) ui.claude_launch_pending = false;
     ui.claude_seen_running = stats->claude.running;
+    bool printing = false;
+    for (unsigned i = 0; stats->printers.present && i < stats->printers.count; ++i) printing |= buddy_print_active(stats->printers.items[i].state);
+    if (printing && !ui.printer_seen_active) {
+        ui.printer_launch_pending = stats->auto_open_apps && !ui.timer_running &&
+            (ui.active_app == BUDDY_APP_HOME || ui.active_app == BUDDY_APP_MONITOR || ui.active_app == BUDDY_APP_MUSIC ||
+             (ui.offline_automatic));
+    }
+    if (!printing || !stats->auto_open_apps) ui.printer_launch_pending = false;
+    ui.printer_seen_active = printing;
     /* Consume each launch edge once; manual Clock and active timer keep priority. */
     if (stats->music.running && !ui.music_seen_running) {
         ui.music_launch_pending = stats->auto_open_apps && !ui.timer_running &&
@@ -3112,6 +3179,8 @@ void buddy_ui_update_stats(const buddy_stats_t *stats)
     buddy_shortcuts_page_update(stats);
     buddy_audio_page_update(stats);
     ui.stats = *stats;
+    unsigned alert_index = 0;
+    buddy_print_alert_t print_alert = buddy_print_watch_update(&ui.print_watch, &stats->printers, &alert_index);
     ui.have_stats = true;
     ui.fresh_sample = true;
     ui.last_stats_tick = lv_tick_get();
@@ -3146,9 +3215,11 @@ void buddy_ui_update_stats(const buddy_stats_t *stats)
     lv_label_set_text(ui.detail_uptime, buf);
     refresh_music();
     refresh_codex(); refresh_claude();
+    buddy_printer_page_update(&stats->printers, true);
     if (away_changed) refresh_connection();
     maybe_auto_app();
     refresh_alert();
+    refresh_printer_alert(app_enabled(BUDDY_APP_PRINTER) ? print_alert : BUDDY_PRINT_ALERT_NONE, alert_index);
     refresh_footer();
     refresh_visibility();
 }
@@ -3218,7 +3289,7 @@ bool buddy_ui_select_app(buddy_app_t app)
     ui.offline_handled = ui.connection != BUDDY_PC_CONNECTED;
     ui.pc_launch_pending = false;
     ui.music_launch_pending = false;
-    ui.codex_launch_pending = false; ui.claude_launch_pending = false;
+    ui.codex_launch_pending = false; ui.claude_launch_pending = false; ui.printer_launch_pending = false;
     ui.manual_monitor_hold = app == BUDDY_APP_HOME || app == BUDDY_APP_MONITOR || app == BUDDY_APP_MUSIC || app == BUDDY_APP_CODEX || app == BUDDY_APP_CLAUDE;
     ui.manual_monitor_started = lv_tick_get();
     activate_app(app, false);
@@ -3235,6 +3306,7 @@ void buddy_ui_apply_settings(const buddy_settings_t *settings)
     if (!app_enabled(BUDDY_APP_TIMER)) { ui.timer_running = false; ui.timer_notify = false; ui.timer_started = false; ui.timer_completed = false; }
     buddy_home_apply_settings(settings);
     if (!app_enabled(ui.active_app)) activate_app(BUDDY_APP_HOME, false);
+    if (!app_enabled(BUDDY_APP_PRINTER)) hide_printer_alert();
     buddy_ui_set_weather(&ui.weather); refresh_app_cards();
     refresh_visibility(); refresh_connection(); refresh_music(); refresh_codex(); refresh_claude(); refresh_home(); refresh_footer();
 }
@@ -3291,6 +3363,7 @@ static prompt_metrics_t prompt_metrics(void)
 /* Overlays stack by urgency: an install above an approval above an alert, the dim shield above all. */
 static void raise_overlays(void)
 {
+    if (ui.printer_alert.page && ui.printer_alert_id) lv_obj_move_foreground(ui.printer_alert.page);
     if (ui.alert.page && ui.alert_key[0]) lv_obj_move_foreground(ui.alert.page);
     if (ui.confirm.page && ui.confirm_action != BUDDY_CONFIRM_NONE) lv_obj_move_foreground(ui.confirm.page);
     if (ui.install_page && ui.install_stage != BUDDY_INSTALL_NONE) lv_obj_move_foreground(ui.install_page);
@@ -3500,6 +3573,70 @@ static void refresh_alert(void)
     if (ui.alert.tile) lv_obj_set_style_border_color(ui.alert.tile, color(C_WARNING), 0);
     prompt_layout(&ui.alert, false);
     show_overlay(ui.alert.page);
+}
+
+/* ---- The print alert: a print the display watched finished, failed or paused ---- */
+
+static void hide_printer_alert(void)
+{
+    if (!ui.printer_alert_id) return;
+    ui.printer_alert_id = 0;
+    ui.printer_alert_kind = BUDDY_PRINT_ALERT_NONE;
+    visible(ui.printer_alert.page, false);
+    refresh_display_power();
+}
+
+static void printer_alert_clicked(lv_event_t *event)
+{
+    bool show = lv_event_get_user_data(event) != NULL;
+    uint8_t id = ui.printer_alert_id;
+    hide_printer_alert();
+    if (!show || !app_enabled(BUDDY_APP_PRINTER)) return;
+    buddy_printer_page_show(id);
+    buddy_ui_select_app(BUDDY_APP_PRINTER);
+}
+
+/* A new alert replaces the one on screen; it leaves by a tap, or once its printer starts
+ * another print or drops off the PC's list. Nothing here reaches the PC or the printer. */
+static void refresh_printer_alert(buddy_print_alert_t alert, unsigned index)
+{
+    const buddy_printers_t *printers = &ui.stats.printers;
+    if (alert == BUDDY_PRINT_ALERT_NONE || index >= printers->count || ui.connection == BUDDY_PROVISIONING) {
+        if (!ui.printer_alert_id) return;
+        const buddy_printer_t *current = NULL;
+        for (unsigned i = 0; printers->present && i < printers->count; ++i)
+            if (printers->items[i].id == ui.printer_alert_id) current = &printers->items[i];
+        if (!current || ui.connection == BUDDY_PROVISIONING ||
+            (current->state != ui.printer_alert_state && buddy_print_active(current->state))) hide_printer_alert();
+        return;
+    }
+    const buddy_printer_t *p = &printers->items[index];
+    if (!ui.printer_alert.page) create_prompt(&ui.printer_alert, printer_alert_clicked);
+    ui.printer_alert_id = p->id;
+    ui.printer_alert_kind = alert;
+    ui.printer_alert_state = p->state;
+    bool finished = alert == BUDDY_PRINT_ALERT_FINISHED, failed = alert == BUDDY_PRINT_ALERT_FAILED;
+    uint32_t ink = finished ? C_ACCENT : C_WARNING;
+    visible(ui.printer_alert.logo, false);
+    lv_label_set_text(ui.printer_alert.eyebrow, BT(finished ? BT_PRINT_FINISHED_TITLE : failed ? BT_PRINT_FAILED_TITLE : BT_PRINT_PAUSED_TITLE));
+    lv_obj_set_style_text_color(ui.printer_alert.eyebrow, color(ink), 0);
+    lv_label_set_text(ui.printer_alert.title, p->file[0] ? p->file : p->name);
+    lv_label_set_text(ui.printer_alert.body, BT(finished ? BT_PRINT_FINISHED_BODY : failed ? BT_PRINT_FAILED_BODY :
+        p->reason == BUDDY_PRINT_REASON_FILAMENT ? BT_PRINT_FILAMENT_BODY : p->reason == BUDDY_PRINT_REASON_ERROR ? BT_PRINT_ERROR_BODY : BT_PRINT_PAUSED_BODY));
+    ui.printer_alert.rows = 0;
+    prompt_row(&ui.printer_alert, BT(BT_PRINTER), p->name);
+    if (!finished) {
+        char value[16];
+        snprintf(value, sizeof(value), "%u%%", (unsigned)p->progress);
+        prompt_row(&ui.printer_alert, BT(BT_PRINT_PROGRESS_LABEL), value);
+        prompt_row(&ui.printer_alert, BT(BT_PRINT_CODE_LABEL), p->error);
+    }
+    lv_label_set_text(ui.printer_alert.secondary_label, BT(BT_CLOSE));
+    lv_label_set_text(ui.printer_alert.primary_label, BT(BT_PRINT_SHOW_PRINTER));
+    prompt_button_primary(ui.printer_alert.primary, ui.printer_alert.primary_label, C_ACCENT);
+    if (ui.printer_alert.tile) lv_obj_set_style_border_color(ui.printer_alert.tile, color(ink), 0);
+    prompt_layout(&ui.printer_alert, false);
+    show_overlay(ui.printer_alert.page);
 }
 
 void buddy_ui_set_album_art(uint32_t id, uint16_t size, uint8_t *pixels)
@@ -3730,6 +3867,8 @@ buddy_ui_state_t buddy_ui_get_state(void)
         .pc_away = ui.pc_away,
         .needs_you = ui.alert_key[0] != 0,
         .install_stage = ui.install_stage,
+        .printer_automatic = ui.printer_automatic,
+        .printer_alert = ui.printer_alert_id ? (uint32_t)ui.printer_alert_kind : 0,
         .game_fps = music_connected() && ui.stats.game.active ? ui.stats.game.fps : NAN,
     };
 }

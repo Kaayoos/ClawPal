@@ -137,6 +137,42 @@ The ones that matter for commands:
 | `music` | `control_id`, `control_ok`, `control_error` | The result of the latest command, whatever its kind |
 | `mixer.channels[]` | `id`, `kind` (0 output, 1 microphone, 2 Windows' sounds, 3 app), `name`, `volume` (0–100), `muted`, `color` | The Audio app's faders. Output is always `id` 0 and microphone `id` 1 |
 | `shortcuts` | `rev`, `on` | The Shortcuts deck the PC means, and which toggle tiles are lit (one bit per slot) |
+| `printer` | `alerts`, `printers[]` | The Printer app's 3D printers (below). Nothing on the display acts on a printer |
+
+### The `printer` object
+
+The Printer app (app 10) shows 3D printers the PC app watches on the local network. The PC
+reads them; the display only draws what telemetry says, and it has no command that reaches a
+printer. See [PRINTERS.md](PRINTERS.md) for how the PC app talks to each kind of printer.
+
+```json
+"printer":{"alerts":true,"printers":[
+  {"id":1,"name":"Bambu P1S","state":"printing","progress":42,"remaining_s":6180,"layer":118,"layers":284,
+   "file":"Desk organizer","nozzle":219.6,"nozzle_target":220,"bed":55,"bed_target":55},
+  {"id":2,"name":"Voron 2.4","state":"paused","reason":"filament","progress":57,"error":"0700_8011"}]}
+```
+
+| Field | Values | Meaning |
+| --- | --- | --- |
+| `alerts` | boolean, missing means `false` | Whether the display may cover the screen when a print ends or stops |
+| `printers[]` | 0–4 items, busiest first | An empty list means the PC app has the Printer app but no printer set up |
+| `id` | 1–255, unique | Stays with a printer while the PC app runs; the display follows printers by it |
+| `name` | 1–31 UTF-8 bytes | What the user called the printer |
+| `state` | `offline`, `idle`, `preparing`, `printing`, `paused`, `finished`, `failed` | `offline`: the PC can't reach it. `failed`: stopped before the end |
+| `reason` | `filament`, `error`, `user`, or missing | Why it paused or stopped, when the printer says |
+| `progress` | 0–100 | Whole percent |
+| `remaining_s` | 0–2592000 | Time left, from the printer's own estimate (Klipper: estimated from time spent) |
+| `layer`, `layers` | 0–1000000 | Current and total layer, 0 when unknown |
+| `file` | 0–63 bytes | The job's name |
+| `nozzle`, `nozzle_target`, `bed`, `bed_target` | number or missing | Degrees Celsius; missing means unknown |
+| `error` | 0–31 bytes | A short code such as an HMS code, for the alert |
+
+Missing numbers count as 0 and missing temperatures as unknown. A display that doesn't know
+`printer` ignores it. The display's alert follows state changes it has seen itself: a print it
+watched that becomes `finished`, `failed` or `paused`, except when `reason` is `user` (someone
+cancelled or paused it on purpose). A printer that is already finished when the PC connects
+never alerts, and `offline` in between does not reset what a printer was doing. When a frame is
+too big, mixer apps drop off first, then printers from the end of the list.
 
 ### Display to PC: `buddy.ack`
 

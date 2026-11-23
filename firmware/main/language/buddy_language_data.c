@@ -279,6 +279,39 @@ static const char text_0_precip[] = "Precip. %";
 static const char text_0_precipitation[] = "Precipitation";
 static const char text_0_pretending_this_is_a_music_video[] = "pretending this is a music video";
 static const char text_0_previous[] = "Previous";
+static const char text_0_print_bed[] = "Bed";
+static const char text_0_print_code_label[] = "Code";
+static const char text_0_print_done_at_s[] = "Done at %s";
+static const char text_0_print_error_body[] = "The printer reported a problem and is waiting for you.";
+static const char text_0_print_failed_body[] = "The printer stopped before the end. Check it before the next print.";
+static const char text_0_print_failed_title[] = "Print stopped";
+static const char text_0_print_filament_body[] = "It is waiting for filament. Load more at the printer to carry on.";
+static const char text_0_print_file_label[] = "File";
+static const char text_0_print_finished[] = "Finished";
+static const char text_0_print_finished_body[] = "It is ready to come off the plate.";
+static const char text_0_print_finished_title[] = "Print finished";
+static const char text_0_print_layer[] = "Layer";
+static const char text_0_print_needs_attention[] = "Needs attention";
+static const char text_0_print_no_printers[] = "No printers";
+static const char text_0_print_no_printers_body[] = "Add a printer in ClawPal on your PC. It only reads progress and never controls the printer.";
+static const char text_0_print_no_printers_title[] = "No printers yet";
+static const char text_0_print_nothing_printing[] = "Nothing printing";
+static const char text_0_print_nozzle[] = "Nozzle";
+static const char text_0_print_offline[] = "Printer offline";
+static const char text_0_print_out_of_filament[] = "Out of filament";
+static const char text_0_print_paused[] = "Paused";
+static const char text_0_print_paused_body[] = "The print is waiting at the printer.";
+static const char text_0_print_paused_title[] = "Print paused";
+static const char text_0_print_pc_offline_body[] = "Printer progress comes through your PC. It shows again when the PC reconnects.";
+static const char text_0_print_preparing[] = "Preparing";
+static const char text_0_print_printing[] = "Printing";
+static const char text_0_print_printing_lu[] = "Printing %lu%%";
+static const char text_0_print_progress_label[] = "Progress";
+static const char text_0_print_ready[] = "Ready";
+static const char text_0_print_show_printer[] = "Show printer";
+static const char text_0_print_stopped[] = "Stopped";
+static const char text_0_print_time_left[] = "Time left";
+static const char text_0_printer[] = "Printer";
 static const char text_0_project_label[] = "Project";
 static const char text_0_rain[] = "Rain";
 static const char text_0_reading_your_claude_account_on_the_pc_your_limits[] = "Enable Live Claude limits in ClawPal settings for account usage. Claude must be signed in to a supported subscription.";
@@ -446,6 +479,7 @@ static const char text_0_your_pc_apps_return_when_it_reconnects[] = "Your PC app
 static const char text_0_your_pc_at_a_tap[] = "Your PC at a tap";
 static const char text_0_your_pc_is_locked_or_asleep[] = "Your PC is locked or asleep";
 static const char text_0_your_pc_s_activity_at_a_glance[] = "Your PC's activity, at a glance";
+static const char text_0_your_prints_at_a_glance[] = "Your 3D prints, at a glance";
 static const char text_1_0f_in_use[] = "Zajęte: %.0f%%";
 static const char text_1_0f_kb_s[] = "%.0f KB/s";
 static const char text_1_0f_km_h[] = "%.0f km/h";
@@ -722,6 +756,39 @@ static const char text_1_precip[] = "Opady %";
 static const char text_1_precipitation[] = "Opady";
 static const char text_1_pretending_this_is_a_music_video[] = "udaję, że to teledysk";
 static const char text_1_previous[] = "Poprzedni";
+static const char text_1_print_bed[] = "Stół";
+static const char text_1_print_code_label[] = "Kod";
+static const char text_1_print_done_at_s[] = "Koniec o %s";
+static const char text_1_print_error_body[] = "Drukarka zgłosiła problem i czeka na Ciebie.";
+static const char text_1_print_failed_body[] = "Drukarka zatrzymała się przed końcem. Sprawdź ją przed kolejnym wydrukiem.";
+static const char text_1_print_failed_title[] = "Wydruk przerwany";
+static const char text_1_print_filament_body[] = "Czeka na filament. Załaduj go w drukarce, aby kontynuować.";
+static const char text_1_print_file_label[] = "Plik";
+static const char text_1_print_finished[] = "Gotowe";
+static const char text_1_print_finished_body[] = "Można go zdjąć z płyty.";
+static const char text_1_print_finished_title[] = "Wydruk gotowy";
+static const char text_1_print_layer[] = "Warstwa";
+static const char text_1_print_needs_attention[] = "Wymaga uwagi";
+static const char text_1_print_no_printers[] = "Brak drukarek";
+static const char text_1_print_no_printers_body[] = "Dodaj drukarkę w ClawPal na komputerze. Aplikacja tylko odczytuje postęp i nigdy nie steruje drukarką.";
+static const char text_1_print_no_printers_title[] = "Brak drukarek";
+static const char text_1_print_nothing_printing[] = "Nic się nie drukuje";
+static const char text_1_print_nozzle[] = "Dysza";
+static const char text_1_print_offline[] = "Drukarka offline";
+static const char text_1_print_out_of_filament[] = "Brak filamentu";
+static const char text_1_print_paused[] = "Wstrzymana";
+static const char text_1_print_paused_body[] = "Wydruk czeka przy drukarce.";
+static const char text_1_print_paused_title[] = "Wydruk wstrzymany";
+static const char text_1_print_pc_offline_body[] = "Postęp wydruku przychodzi przez komputer. Pojawi się znowu, gdy komputer się połączy.";
+static const char text_1_print_preparing[] = "Przygotowanie";
+static const char text_1_print_printing[] = "Drukuje";
+static const char text_1_print_printing_lu[] = "Drukuje %lu%%";
+static const char text_1_print_progress_label[] = "Postęp";
+static const char text_1_print_ready[] = "Gotowa";
+static const char text_1_print_show_printer[] = "Pokaż drukarkę";
+static const char text_1_print_stopped[] = "Przerwany";
+static const char text_1_print_time_left[] = "Pozostało";
+static const char text_1_printer[] = "Drukarka";
 static const char text_1_project_label[] = "Projekt";
 static const char text_1_rain[] = "Deszcz";
 static const char text_1_reading_your_claude_account_on_the_pc_your_limits[] = "Włącz Aktualne limity Claude w ustawieniach ClawPal. Claude musi być zalogowany na koncie z obsługiwaną subskrypcją.";
@@ -889,6 +956,7 @@ static const char text_1_your_pc_apps_return_when_it_reconnects[] = "Apki PC wr�
 static const char text_1_your_pc_at_a_tap[] = "Twój PC jednym dotknięciem";
 static const char text_1_your_pc_is_locked_or_asleep[] = "PC jest zablokowany lub uśpiony";
 static const char text_1_your_pc_s_activity_at_a_glance[] = "Twój komputer w skrócie";
+static const char text_1_your_prints_at_a_glance[] = "Twoje wydruki 3D w skrócie";
 const char *const buddy_language_texts[][BT_COUNT] = {
     { /* en */
         text_0_0f_in_use,
@@ -1167,6 +1235,39 @@ const char *const buddy_language_texts[][BT_COUNT] = {
         text_0_precipitation,
         text_0_pretending_this_is_a_music_video,
         text_0_previous,
+        text_0_print_bed,
+        text_0_print_code_label,
+        text_0_print_done_at_s,
+        text_0_print_error_body,
+        text_0_print_failed_body,
+        text_0_print_failed_title,
+        text_0_print_filament_body,
+        text_0_print_file_label,
+        text_0_print_finished,
+        text_0_print_finished_body,
+        text_0_print_finished_title,
+        text_0_print_layer,
+        text_0_print_needs_attention,
+        text_0_print_no_printers,
+        text_0_print_no_printers_body,
+        text_0_print_no_printers_title,
+        text_0_print_nothing_printing,
+        text_0_print_nozzle,
+        text_0_print_offline,
+        text_0_print_out_of_filament,
+        text_0_print_paused,
+        text_0_print_paused_body,
+        text_0_print_paused_title,
+        text_0_print_pc_offline_body,
+        text_0_print_preparing,
+        text_0_print_printing,
+        text_0_print_printing_lu,
+        text_0_print_progress_label,
+        text_0_print_ready,
+        text_0_print_show_printer,
+        text_0_print_stopped,
+        text_0_print_time_left,
+        text_0_printer,
         text_0_project_label,
         text_0_rain,
         text_0_reading_your_claude_account_on_the_pc_your_limits,
@@ -1334,6 +1435,7 @@ const char *const buddy_language_texts[][BT_COUNT] = {
         text_0_your_pc_at_a_tap,
         text_0_your_pc_is_locked_or_asleep,
         text_0_your_pc_s_activity_at_a_glance,
+        text_0_your_prints_at_a_glance,
     },
     { /* pl */
         text_1_0f_in_use,
@@ -1612,6 +1714,39 @@ const char *const buddy_language_texts[][BT_COUNT] = {
         text_1_precipitation,
         text_1_pretending_this_is_a_music_video,
         text_1_previous,
+        text_1_print_bed,
+        text_1_print_code_label,
+        text_1_print_done_at_s,
+        text_1_print_error_body,
+        text_1_print_failed_body,
+        text_1_print_failed_title,
+        text_1_print_filament_body,
+        text_1_print_file_label,
+        text_1_print_finished,
+        text_1_print_finished_body,
+        text_1_print_finished_title,
+        text_1_print_layer,
+        text_1_print_needs_attention,
+        text_1_print_no_printers,
+        text_1_print_no_printers_body,
+        text_1_print_no_printers_title,
+        text_1_print_nothing_printing,
+        text_1_print_nozzle,
+        text_1_print_offline,
+        text_1_print_out_of_filament,
+        text_1_print_paused,
+        text_1_print_paused_body,
+        text_1_print_paused_title,
+        text_1_print_pc_offline_body,
+        text_1_print_preparing,
+        text_1_print_printing,
+        text_1_print_printing_lu,
+        text_1_print_progress_label,
+        text_1_print_ready,
+        text_1_print_show_printer,
+        text_1_print_stopped,
+        text_1_print_time_left,
+        text_1_printer,
         text_1_project_label,
         text_1_rain,
         text_1_reading_your_claude_account_on_the_pc_your_limits,
@@ -1779,6 +1914,7 @@ const char *const buddy_language_texts[][BT_COUNT] = {
         text_1_your_pc_at_a_tap,
         text_1_your_pc_is_locked_or_asleep,
         text_1_your_pc_s_activity_at_a_glance,
+        text_1_your_prints_at_a_glance,
     },
 };
 

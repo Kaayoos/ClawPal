@@ -26,8 +26,11 @@ public sealed class Connection : IDisposable
     public bool IsConnected { get; private set; }
     public DeviceSettingsClient Settings { get; }
     public FirmwareUpdates Updates { get; }
+    // 3D printers on the network, read-only; runs whether or not the display is connected.
+    public PrinterMonitor Printers { get; }
     private void SetMaintenance(bool value){maintenance=value;IsConnected=false;CancelSession();}
-    public Connection(Configuration config) { this.config = config; Settings=new(config); Updates=new(config,Settings,SetMaintenance); paused = config.Paused; autoOpenApps = config.AutoOpenApps; }
+    public Connection(Configuration config) { this.config = config; Settings=new(config); Updates=new(config,Settings,SetMaintenance); paused = config.Paused; autoOpenApps = config.AutoOpenApps;
+        Printers = new() { Enabled = () => !paused && config.DisplaySettings?.Enabled(10) != false }; }
     public void SetPaused(bool value) { paused = value; if(value)IsConnected=false; CancelSession(); }
     public void SetAutoOpenApps(bool value) { autoOpenApps = value; }
     // Lock and sleep are sent at once, so the display naps instead of reporting the PC offline.
@@ -65,6 +68,7 @@ public sealed class Connection : IDisposable
         var activity = new CodexActivity { Enabled=()=>config.DisplaySettings?.Enabled(4)??true };
         var activityWorker = Task.Run(() => activity.RunAsync(shutdown.Token));
         _ = activityWorker.ContinueWith(task => Log.Write("Codex activity worker stopped: " + task.Exception?.GetBaseException().GetType().Name), TaskContinuationOptions.OnlyOnFaulted);
+        var printerWorker = Task.Run(() => Printers.RunAsync(shutdown.Token));
         Log.Write($"Companion started; GPU source: {metrics.GpuProviderName}. {metrics.CpuTemperatureStatus}");
         var retrySeconds = 1;
         while (!shutdown.IsCancellationRequested)
@@ -134,7 +138,8 @@ public sealed class Connection : IDisposable
                             AutoOpenApps = autoOpenApps,
                             Away = away ? true : null,
                             Shortcuts = deckSupported ? new ShortcutStats(deckRev, lit) : null,
-                            Mixer = config.DisplaySettings?.Enabled(9) != false ? MixerSnapshot(mixer) : null
+                            Mixer = config.DisplaySettings?.Enabled(9) != false ? MixerSnapshot(mixer) : null,
+                            Printer = Printers.Snapshot()
                         };
                         gaming.SetGpuUsage(sample.Gpu.Usage);
                         sample = sample with { Game = gaming.Snapshot };
@@ -146,6 +151,12 @@ public sealed class Connection : IDisposable
                         while (payload.Length > limit && sample.Mixer is { } trimmed)
                         {
                             sample = sample with { Mixer = trimmed.Channels.Count > 2 ? new MixerStats(trimmed.Channels.Where((_, i) => i != trimmed.Channels.Count - 2).ToList()) : null };
+                            payload = JsonSerializer.SerializeToUtf8Bytes(sample, Protocol.Json);
+                        }
+                        // Then printers, from the quietest end of the list.
+                        while (payload.Length > limit && sample.Printer is { Printers.Count: > 0 } printers)
+                        {
+                            sample = sample with { Printer = printers with { Printers = printers.Printers.Take(printers.Printers.Count - 1).ToList() } };
                             payload = JsonSerializer.SerializeToUtf8Bytes(sample, Protocol.Json);
                         }
                         if (payload.Length > limit) throw new IOException(L.Text("telemetry_exceeds_the_device_message_limit"));
@@ -229,6 +240,7 @@ public sealed class Connection : IDisposable
         try { await codexWorker; } catch (OperationCanceledException) { }
         try { await claudeWorker; } catch (OperationCanceledException) { }
         try { await activityWorker; } catch (OperationCanceledException) { }
+        try { await printerWorker; } catch (OperationCanceledException) { }
         try { await settingsWorker; } catch(OperationCanceledException) {}
         try { await updatesWorker; } catch(OperationCanceledException) {}
         SetStatus(L.Text("stopped"));

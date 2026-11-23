@@ -15,6 +15,7 @@ typedef enum {
     BUDDY_APP_CLAUDE = 7,
     BUDDY_APP_SHORTCUTS = 8,
     BUDDY_APP_AUDIO = 9,
+    BUDDY_APP_PRINTER = 10,
     BUDDY_APP_COUNT
 } buddy_app_t;
 
@@ -63,6 +64,9 @@ typedef struct {
     uint32_t pc_away;
     uint32_t needs_you;
     uint32_t install_stage;
+    /* The Printer app: whether it opened by itself, and the print alert on screen (a buddy_print_alert_t). */
+    uint32_t printer_automatic;
+    uint32_t printer_alert;
 } buddy_ui_state_t;
 
 /* Invoke with the board LVGL lock held. The UI owns no network resources. */
