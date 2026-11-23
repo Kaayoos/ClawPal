@@ -8,7 +8,8 @@ internal sealed partial class SettingsForm : ClawWindow
 {
     /* Rail order: what the display shows, then this PC. About opens from the version line. */
     private enum SettingsPage { Home, Apps, Shortcuts, Printers, Clock, Screen, Look, Pc, Connection, Updates, About }
-    private static readonly SettingsPage[][] Groups = [[SettingsPage.Home, SettingsPage.Apps, SettingsPage.Shortcuts, SettingsPage.Printers, SettingsPage.Clock, SettingsPage.Screen, SettingsPage.Look], [SettingsPage.Pc, SettingsPage.Connection, SettingsPage.Updates]];
+    /* Printers opens from Apps (the Printer app's Manage printers); the rail is full at the smallest window. */
+    private static readonly SettingsPage[][] Groups = [[SettingsPage.Home, SettingsPage.Apps, SettingsPage.Shortcuts, SettingsPage.Clock, SettingsPage.Screen, SettingsPage.Look], [SettingsPage.Pc, SettingsPage.Connection, SettingsPage.Updates]];
     private readonly Configuration config;
     private readonly Connection connection;
     private readonly DeviceSettingsClient wireless;
@@ -174,7 +175,7 @@ internal sealed partial class SettingsForm : ClawWindow
     private static ClawStack Column(params Control[] items) { var column = new ClawStack() { Gap = 8 }; foreach (var item in items) column.Add(item); return column; }
     private void ShowPage(SettingsPage index)
     {
-        pageIndex = index; foreach (var (page, button) in navigation) { bool was = button.Selected; button.Selected = page == index; if (button.Selected && !was) button.Grow(); button.Invalidate(); }
+        pageIndex = index; foreach (var (page, button) in navigation) { bool was = button.Selected; button.Selected = page == index || (index == SettingsPage.Printers && page == SettingsPage.Apps); if (button.Selected && !was) button.Grow(); button.Invalidate(); }
         moment = null; crab.State = connection.Updates.Busy ? "working" : Mood(index);
         switch (index)
         {

@@ -6,7 +6,7 @@ display has been watching finishes, fails or pauses for filament or an error, a 
 alert covers whatever app is open, like the needs-you alert for Claude Code and Codex. While a
 print runs, the app opens by itself if **automatically open apps** is on.
 
-Add printers on the PC app's **Printers** page: **Find printers** lists what answers on your
+Add printers in the PC app under **Apps**, **Printer**, **Manage printers**: **Find printers** lists what answers on your
 network, or type the address yourself. The display gets the printers through the PC app's
 telemetry ([PROTOCOL.md](PROTOCOL.md#the-printer-object)). It shows up to four.
 
