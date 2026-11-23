@@ -1067,7 +1067,10 @@ static esp_err_t start_monitor_server(void)
     config.server_port = MONITOR_PORT;
     config.ctrl_port = MONITOR_PORT + 1;
     config.stack_size = 8192;
-    config.max_open_sockets = 4;
+    /* The telemetry socket and the PC's uploads (cover, Shortcuts, icons, lyrics, the clock)
+     * at once. With fewer, the least recently used purge could close the telemetry socket and
+     * set the PC reconnecting in a loop. 7 + the server's own 3 stay well inside lwIP's 16. */
+    config.max_open_sockets = 7;
     config.max_uri_handlers = 18;
     config.lru_purge_enable = true;
     config.close_fn = close_session;

@@ -159,7 +159,11 @@ public sealed class Connection : IDisposable
                             else clockSyncAt = MonotonicClock.NowMs + 10_000;
                         }
                         bool lyricsOn = lyricsSupported && LyricsWanted();
-                        if (lyricsOn && clockTask is null && MonotonicClock.NowMs >= clockSyncAt) clockTask = SyncClockAsync(attempt.Token);
+                        // Lyrics' requests wait until the cover, Shortcuts and icons are through: a display
+                        // allows only a few connections, and too many at once can push out the telemetry socket.
+                        bool uploadsIdle = artTask is null && deckTask is null && iconTask is null;
+                        if (lyricsOn && uploadsIdle && clockTask is null && lyricsTask is null && MonotonicClock.NowMs >= clockSyncAt)
+                            clockTask = SyncClockAsync(attempt.Token);
                         var music = media.Snapshot;
                         LyricsStats? lyricsStats = null;
                         LyricsDocument? lyricsDocument = null;
@@ -228,7 +232,8 @@ public sealed class Connection : IDisposable
                             else if (uploaded == false) { uploadedLyrics = 0; lyricsRetryAt = Environment.TickCount64 + 30000; }
                             lyricsTask = null;
                         }
-                        if (lyricsTask is null && lyricsSupported && lyricsStats is not null && lyricsDocument is { } document &&
+                        if (lyricsTask is null && clockTask is null && artTask is null && deckTask is null && iconTask is null &&
+                            lyricsSupported && lyricsStats is not null && lyricsDocument is { } document &&
                             document.Id != uploadedLyrics && Environment.TickCount64 >= lyricsRetryAt)
                         {
                             uploadedLyrics = document.Id;
