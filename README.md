@@ -47,6 +47,8 @@ Whatever is playing on your PC, with its cover: Spotify, Apple Music, TIDAL, you
 
 <sub>There's a mixer too: a fader and a mute for your speakers, your microphone and every app playing sound, each app with its own icon.</sub>
 
+<sub>Turn on synced lyrics in the PC app and a Lyrics button shows each line as it's sung. Lyrics come from [LRCLIB](https://lrclib.net/), a free community lyrics database.</sub>
+
 <br clear="right">
 
 <img align="right" width="48%" vspace="8" src="assets/readme/app-claude.webp" alt="Claude Code: 64% of the 5-hour limit and 81% of the weekly limit left, with their reset times, and the crab typing.">
@@ -201,6 +203,7 @@ The PC and the display talk over your local network using plain HTTP. Every requ
 - **Open-Meteo** gets your location coordinates for forecasts, and location search uses its geocoding API too.
 - **GitHub** gets update checks.
 - **Anthropic** gets an authenticated usage request, only if you enable Live Claude limits.
+- **LRCLIB** gets the title, artist, album and length of each song you play, only if you turn on synced lyrics. Lyrics are kept on your PC, so each song is looked up once.
 
 **What stays between your PC and the display**
 

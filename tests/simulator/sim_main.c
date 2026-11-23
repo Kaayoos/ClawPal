@@ -571,6 +571,78 @@ static void scroll_page(void){
     touch_x=W/2;touch_y=H-62;touch_state=LV_INDEV_STATE_PRESSED;step(60);
     for(int y=H-62;y>30;y-=6){touch_y=y;step(12);}touch_state=LV_INDEV_STATE_RELEASED;step(600);
 }
+/* Synced lyrics as POST /lyrics delivers them: a fictional song written for these frames. A NULL
+ * line stands for one the PC found the fonts can't draw. */
+static buddy_lyrics_t *sim_lyrics(uint32_t id,bool synced,const uint32_t *times,const char *const *lines,unsigned count){
+    buddy_lyrics_t *lyrics=calloc(1,sizeof(*lyrics));if(!lyrics)exit(1);
+    lyrics->id=id;lyrics->synced=synced;
+    for(unsigned i=0;i<count;++i){const char *text=lines[i]?lines[i]:"";size_t size=strlen(text);
+        lyrics->lines[i]=(buddy_lyric_line_t){synced?times[i]:0,lyrics->used,lines[i]==NULL};
+        memcpy(lyrics->text+lyrics->used,text,size+1);lyrics->used+=(uint32_t)size+1;++lyrics->count;}
+    return lyrics;
+}
+static uint32_t lyric_anchor;
+/* A reference point: the song is at position now on the display's clock, as the PC would send it. */
+static void lyrics_at(uint8_t status,uint32_t id,uint32_t position,bool playing){
+    stats.music.lyrics=(buddy_lyrics_sync_t){.present=true,.playing=playing,.status=status,.id=id,.anchor=++lyric_anchor,
+        .position_ms=position,.at_ms=lv_tick_get()};
+    stats.music.playing=playing;send_stats();
+}
+/* A visible label starting with the line's first words: small screens end long lines with dots. */
+static lv_obj_t *find_prefix(lv_obj_t *root,const char *text){
+    if(lv_obj_has_flag(root,LV_OBJ_FLAG_HIDDEN))return NULL;
+    size_t n=strlen(text)<14?strlen(text):14;
+    if(lv_obj_check_type(root,&lv_label_class)&&strlen(lv_label_get_text(root))>=n&&!strncmp(lv_label_get_text(root),text,n)&&(n||!lv_label_get_text(root)[0]))return root;
+    for(uint32_t i=0;i<lv_obj_get_child_cnt(root);++i){lv_obj_t *found=find_prefix(lv_obj_get_child(root,i),text);if(found)return found;}return NULL;
+}
+static bool shows_line(const char *text){return find_prefix(lv_scr_act(),text)!=NULL;}
+/* `clawpal_sim <dir> <theme> - lyrics`: the Media app's Lyrics view, on its own so the main run's frames keep their timing. */
+static int lyrics_scenes(void){
+    static const uint32_t times[]={12000,16500,21000,24000,28500,33000,37000};
+    static const char *const words[]={"Headlights on the harbour road","The radio hums a golden glow","",
+        "We chase the last light down the coast, past every lamp along the sea wall","Till the evening lets us go",NULL,"Golden hour, drive me home"};
+    if(!buddy_ui_select_app(BUDDY_APP_MUSIC))return 70;live(1400);
+    // Offered while the PC has lyrics on: the button appears, nothing else moves until it is tapped.
+    lyrics_at(BUDDY_LYRICS_LOADING,0,0,true);stats.music.lyrics.anchor=0;send_stats();live(400);
+    if(!shows_line(BT(BT_LYRICS)))return 71;save_frame("lyrics-offered");
+    tap_label(BT(BT_LYRICS));if(!shows_line(BT(BT_LOOKING_FOR_LYRICS)))return 72;save_frame("lyrics-loading");
+    // Synced: the display counts on from the reference point by itself; each line shows 120 ms early.
+    buddy_ui_set_lyrics(sim_lyrics(501,true,times,words,7));
+    lyrics_at(BUDDY_LYRICS_SYNCED,501,15000,true);live(1300);
+    if(!shows_line(words[0]))return 73;
+    live(150);if(!shows_line(words[1]))return 74;
+    live(250);save_frame("lyrics-synced");
+    // No telemetry for a while: the lines keep time on the display's own clock.
+    live(7600);if(!shows_line(words[3]))return 75;save_frame("lyrics-long-line");
+    // A seek is a new reference point: the new line shows at once; an unreadable line is a note.
+    lyrics_at(BUDDY_LYRICS_SYNCED,501,33400,true);live(300);if(!shows_line(LV_SYMBOL_AUDIO)||!shows_line(words[6]))return 76;live(250);save_frame("lyrics-note");
+    // Paused, the line stays put however long the pause.
+    lyrics_at(BUDDY_LYRICS_SYNCED,501,25000,false);live(4000);if(!shows_line(words[3]))return 77;save_frame("lyrics-paused");
+    // Before the first line, a note and the line to come.
+    lyrics_at(BUDDY_LYRICS_SYNCED,501,2000,true);live(300);if(!shows_line(LV_SYMBOL_AUDIO)||!shows_line(words[0]))return 78;save_frame("lyrics-intro");
+    // Plain lyrics scroll as one column.
+    static const char *const verses[]={"Salt on the window, sun on the dash","Counting the bridges as they flash","",
+        "Every mile a little slower","Every song a little louder","","Golden hour, golden hour","Drive me home before it's over",
+        "","Harbour lights are coming on","Hold the note until it's gone"};
+    buddy_ui_set_lyrics(sim_lyrics(502,false,NULL,verses,11));lyrics_at(BUDDY_LYRICS_PLAIN,502,40000,true);live(400);
+    if(H>=400&&!shows_line(BT(BT_LYRICS_NOT_SYNCED)))return 79;save_frame("lyrics-plain");
+    // A swipe on the lyrics scrolls them; at their end it carries on into the page on small screens.
+    {lv_obj_t *first=find_prefix(lv_scr_act(),verses[0]);
+     if(!first){fprintf(stderr,"Plain lyrics are not shown\n");return 84;}
+     lv_obj_t *panel=lv_obj_get_parent(first);lv_area_t a;lv_obj_get_coords(panel,&a);
+     int x=(a.x1+a.x2)/2,top=a.y1+8,bottom=a.y2-8;if(bottom>H-52)bottom=H-52;
+     touch_x=x;touch_y=bottom;touch_state=LV_INDEV_STATE_PRESSED;step(60);
+     for(int y=bottom;y>top;y-=4){touch_y=y;step(12);}touch_state=LV_INDEV_STATE_RELEASED;step(600);
+     if(lv_obj_get_scroll_y(panel)<=0)return 85;save_frame("lyrics-plain-scrolled");}
+    lyrics_at(BUDDY_LYRICS_NONE,0,0,true);live(300);if(!shows_line(BT(BT_NO_LYRICS_FOUND)))return 80;save_frame("lyrics-none");
+    lyrics_at(BUDDY_LYRICS_UNSUPPORTED,0,0,true);live(300);if(!shows_line(BT(BT_LYRICS_UNSUPPORTED)))return 81;save_frame("lyrics-unsupported");
+    // Closing brings the cover back; switching lyrics off takes the button away too.
+    lyrics_at(BUDDY_LYRICS_SYNCED,501,17000,true);live(300);
+    lv_obj_t *button=find_label(lv_scr_act(),BT(BT_LYRICS));if(button)lv_obj_scroll_to_view_recursive(button,LV_ANIM_OFF);
+    tap_label(BT(BT_LYRICS));if(shows_line(words[1]))return 82;save_frame("lyrics-closed");
+    memset(&stats.music.lyrics,0,sizeof(stats.music.lyrics));send_stats();live(400);if(shows_line(BT(BT_LYRICS)))return 83;save_frame("lyrics-off");
+    return 0;
+}
 int main(int argc,char **argv){
     if(argc<2)return 2;snprintf(out_dir,sizeof(out_dir),"%s",argv[1]);
     for(unsigned i=0;argc>2&&i<BUDDY_THEME_COUNT;++i)if(!strcmp(argv[2],buddy_theme_ids[i]))sim_theme=(uint8_t)i;
@@ -578,7 +650,9 @@ int main(int argc,char **argv){
     static const uint8_t order[]={0,2,4,7,6};boot(order,5);
     music_playing("Golden Hour Drive","Neon Harbor","Coastline Sessions",71,204);send_stats();
     // A task waiting for an answer covers every app; Show on PC asks the companion to bring it forward.
-    live(400);if(!buddy_ui_get_state().needs_you||!find_label(lv_scr_act(),BT(BT_CLAUDE_CODE_NEEDS_YOU)))return 40;save_frame("needs-you");
+    live(400);if(!buddy_ui_get_state().needs_you||!find_label(lv_scr_act(),BT(BT_CLAUDE_CODE_NEEDS_YOU)))return 40;
+    if(argc>4&&!strcmp(argv[4],"lyrics")){tap_overlay_label(BT(BT_SHOW_ON_PC));music_reply();live(1000);return lyrics_scenes();}
+    save_frame("needs-you");
     tap_overlay_label(BT(BT_SHOW_ON_PC));if(strcmp(music_last_action,"focus")||music_last_value!=BUDDY_APP_CLAUDE||buddy_ui_get_state().needs_you)return 41;
     music_reply();live(1000);if(buddy_ui_get_state().needs_you)return 42;
     starter_deck(7,8);send_stats();

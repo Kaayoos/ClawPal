@@ -137,6 +137,7 @@ The ones that matter for commands:
 | `music` | `control_id`, `control_ok`, `control_error` | The result of the latest command, whatever its kind |
 | `mixer.channels[]` | `id`, `kind` (0 output, 1 microphone, 2 Windows' sounds, 3 app), `name`, `volume` (0–100), `muted`, `color` | The Audio app's faders. Output is always `id` 0 and microphone `id` 1 |
 | `shortcuts` | `rev`, `on` | The Shortcuts deck the PC means, and which toggle tiles are lit (one bit per slot) |
+| `music.lyrics` | `id`, `state`, `anchor`, `pos_ms`, `at_ms`, `playing` | Synced lyrics, present only while they're switched on in the PC app. See [Synced lyrics](#synced-lyrics) |
 
 ### Display to PC: `buddy.ack`
 
@@ -198,6 +199,8 @@ answers `404`, and the PC app then stops using it for that connection.
 | `POST /shortcuts` | `{rev, size, tiles:[…]}`, at most 4096 bytes | How the Shortcuts tiles look: labels, icons and colours, never what they run |
 | `POST /shortcut-icon` | 48 × 48 RGB565 + alpha; headers `X-ClawPal-Shortcut-Rev`, `X-ClawPal-Shortcut-Slot` | An app's own icon for one tile |
 | `POST /mixer-icon` | 48 × 48 RGB565 + alpha; header `X-ClawPal-Mixer-Id` | An app's icon for one mixer channel |
+| `POST /lyrics` | `{id, kind, lines:[[ms, text\|null], …]}`, at most 49152 bytes | One song's lyrics, sent once per song |
+| `GET /clock` | – | `{"ms":…}`: the display's millisecond clock, for timing lyrics |
 | `POST /confirm` | `{"action":"firmware"}` or `{"action":"wifi"}` | Shows Allow/Deny on the display; answers `pending`, `approved` or `denied` |
 | `POST /wifi` | SSID and password | Changes Wi-Fi and restarts. Needs a fresh approval from `/confirm` |
 | `GET /firmware` | – | Board, layout, version, running slot and boot state |
@@ -209,6 +212,61 @@ answers `404`, and the PC app then stops using it for that connection.
 `/wifi` and `/firmware` answer `403` with `X-ClawPal-Confirm: required` without a fresh
 approval. One approval allows one request within two minutes. Someone has to be at the
 display to change its Wi-Fi or its firmware, even with the token.
+
+## Synced lyrics
+
+The PC app looks lyrics up on [LRCLIB](https://lrclib.net/) only while **Show synced
+lyrics** is on (Settings → Apps → Media). The display never talks to LRCLIB. Lines must
+appear in time with the music although Wi-Fi delivers frames late and unevenly, so the
+lines and their timing travel separately:
+
+1. **The lyrics, once per song.** `POST /lyrics` carries the whole song:
+
+   ```json
+   {"id":1834,"kind":"synced","lines":[[12340,"First line"],[15000,""],[18200,null]]}
+   ```
+
+   `id` is positive and names this document. `kind` is `synced` (times in milliseconds,
+   never going backwards) or `plain` (every time is 0). A line is at most 255 bytes of
+   display text, and there are at most 400 lines. `""` is a pause. `null` is a line the
+   display's fonts can't draw, which the display shows as a music note instead of empty
+   boxes. The display keeps one document and forgets it on restart, so the PC app sends it
+   again on every new connection.
+2. **The display's clock, measured.** `GET /clock` answers `{"ms":n}`, where `n` is the
+   display's LVGL tick: milliseconds since it started, wrapping at 2³². The PC app sends
+   six of these on one kept-alive connection, timing each on its own monotonic clock. It
+   ignores the first, which also opens the connection, and keeps the one with the shortest
+   round trip, at most 400 ms. As in NTP, it assumes the display read its clock halfway
+   through: `offset = ms − (sent + received) / 2`. It measures again every two minutes.
+3. **Reference points in telemetry.** `music.lyrics` says the song was at `pos_ms` when the
+   display's clock read `at_ms`:
+
+   ```json
+   "lyrics":{"id":1834,"state":"synced","anchor":12,"pos_ms":83400,"at_ms":2914551,"playing":true}
+   ```
+
+   The display counts on from there by itself: `pos_ms + (now − at_ms)` while `playing`,
+   `pos_ms` while paused. It takes a new point only when `anchor` changes. The PC app
+   makes a new point when the song changes, the player pauses or resumes, the position
+   jumps by more than 300 ms (a seek), the clock or the user's timing offset changes, and
+   every ten seconds as a safety resync. `anchor` is 0 until the clock has been measured.
+   `pos_ms` already includes the user's offset (±1 s, positive is earlier). The display
+   shows each line 120 ms before its time, because a late line is noticed and an early one
+   isn't.
+
+Windows media controls report the player's position only now and then; Spotify reports
+it on play, pause and seek. Each report carries the time it was true, and the PC app
+carries the position forward from it.
+
+`state` is `loading`, `synced`, `plain`, `none` (LRCLIB has nothing), `instrumental`,
+`unsupported` (most lines use letters the display can't draw) or `unavailable` (LRCLIB
+couldn't be reached; the PC app tries again after one minute, then two). A display reads a
+state it doesn't know as `unavailable`. `id` names the document that goes with `synced` or
+`plain`. Until a document with that `id` arrives, the display says it is looking for lyrics.
+
+Older displays ignore `music.lyrics` and answer `404` to `/lyrics` and `/clock`. The PC
+app then stops both for that connection. Older PC apps send no `lyrics`, and the display
+offers no Lyrics button.
 
 ## Building a hardware mod
 

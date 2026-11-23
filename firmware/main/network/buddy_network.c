@@ -11,6 +11,7 @@
 #include "buddy_shortcuts.h"
 #include "buddy_shortcuts_page.h"
 #include "buddy_audio_page.h"
+#include "buddy_lyrics_parse.h"
 
 #include <ctype.h>
 #include <errno.h>
@@ -799,6 +800,45 @@ static esp_err_t shortcuts_handler(httpd_req_t *request)
     return httpd_resp_sendstr(request, "{\"saved\":true}");
 }
 
+/* POST /lyrics: one song's lyrics, sent once per song. Telemetry names them by id and carries
+ * only the timing, so the lines never have to cross Wi-Fi in time with the music. */
+static esp_err_t lyrics_handler(httpd_req_t *request)
+{
+    if (require_auth(request) != ESP_OK) return ESP_FAIL;
+    if (request->content_len <= 0 || request->content_len > BUDDY_LYRICS_BODY_MAX)
+        return httpd_resp_send_err(request, HTTPD_400_BAD_REQUEST, "Invalid lyrics");
+    uint8_t *body = read_signed_body(request, 1);
+    if (!body) return httpd_resp_send_err(request, HTTPD_400_BAD_REQUEST, "Lyrics do not match their signature");
+    body[request->content_len] = 0;
+    buddy_lyrics_t *lyrics = heap_caps_malloc(sizeof(*lyrics), MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+    bool valid = lyrics && buddy_lyrics_parse((const char *)body, request->content_len, lyrics);
+    free(body);
+    if (!valid) {
+        free(lyrics);
+        return httpd_resp_send_err(request, HTTPD_400_BAD_REQUEST, "Invalid lyrics");
+    }
+    if (!board_lvgl_lock(1000)) {
+        free(lyrics);
+        return httpd_resp_send_err(request, HTTPD_500_INTERNAL_SERVER_ERROR, BT(BT_DISPLAY_BUSY));
+    }
+    buddy_ui_set_lyrics(lyrics);
+    board_lvgl_unlock();
+    httpd_resp_set_type(request, "application/json");
+    return httpd_resp_sendstr(request, "{\"saved\":true}");
+}
+
+/* GET /clock: the display's millisecond clock, the one lyrics reference points are given in.
+ * The PC times a few of these to learn how this clock relates to its own. */
+static esp_err_t clock_handler(httpd_req_t *request)
+{
+    if (require_auth(request) != ESP_OK) return ESP_FAIL;
+    char body[32];
+    snprintf(body, sizeof(body), "{\"ms\":%lu}", (unsigned long)lv_tick_get());
+    httpd_resp_set_type(request, "application/json");
+    httpd_resp_set_hdr(request, "Cache-Control", "no-store");
+    return httpd_resp_sendstr(request, body);
+}
+
 /* POST /shortcut-icon: one tile's own app icon, for the deck revision it was made for. */
 static esp_err_t shortcut_icon_handler(httpd_req_t *request)
 {
@@ -1028,7 +1068,7 @@ static esp_err_t start_monitor_server(void)
     config.ctrl_port = MONITOR_PORT + 1;
     config.stack_size = 8192;
     config.max_open_sockets = 4;
-    config.max_uri_handlers = 16;
+    config.max_uri_handlers = 18;
     config.lru_purge_enable = true;
     config.close_fn = close_session;
     config.recv_wait_timeout = 3;
@@ -1065,6 +1105,10 @@ static esp_err_t start_monitor_server(void)
     ESP_RETURN_ON_ERROR(httpd_register_uri_handler(monitor_server, &shortcut_icon), TAG, "Shortcut icon URI");
     const httpd_uri_t mixer_icon = {.uri = "/mixer-icon", .method = HTTP_POST, .handler = mixer_icon_handler};
     ESP_RETURN_ON_ERROR(httpd_register_uri_handler(monitor_server, &mixer_icon), TAG, "Mixer icon URI");
+    const httpd_uri_t lyrics = {.uri = "/lyrics", .method = HTTP_POST, .handler = lyrics_handler};
+    const httpd_uri_t clock_uri = {.uri = "/clock", .method = HTTP_GET, .handler = clock_handler};
+    ESP_RETURN_ON_ERROR(httpd_register_uri_handler(monitor_server, &lyrics), TAG, "Lyrics URI");
+    ESP_RETURN_ON_ERROR(httpd_register_uri_handler(monitor_server, &clock_uri), TAG, "Clock URI");
     return httpd_register_uri_handler(monitor_server, &snapshot);
 }
 

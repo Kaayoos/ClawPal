@@ -290,6 +290,8 @@ internal sealed class ClawSlider : Control
     private bool dragging;
     internal int Minimum { get; set; } = 5;
     internal int Maximum { get; set; } = 90;
+    // How the value reads beside the track; a percentage unless a page says otherwise.
+    internal Func<int, string> Format { get; set; } = value => $"{value}%";
     internal event EventHandler? ValueChanged;
     internal int Value { get => value; set { int next = Math.Clamp(value, Minimum, Maximum); if (this.value == next) return; this.value = next; Invalidate(); ValueChanged?.Invoke(this, EventArgs.Empty); AccessibilityNotifyClients(AccessibleEvents.ValueChange, -1); } }
     internal ClawSlider() { Size = new(320, 52); TabStop = true; DoubleBuffered = true; Cursor = Cursors.Hand; AccessibleRole = AccessibleRole.Slider; AccessibleName = L.Text("dimmed_brightness_percent"); Font = ClawTheme.Display(ClawTheme.Head + 1); }
@@ -318,12 +320,12 @@ internal sealed class ClawSlider : Control
         var knob = new Rectangle(x - kw / 2, Height / 2 - kh / 2, kw, kh);
         ClawTheme.Fill(g, !Enabled ? ClawTheme.Faint : dragging ? ClawTheme.Accent : ClawTheme.Ink, knob);
         if (Focused && ShowFocusCues) ClawTheme.Frame(g, ClawTheme.Ink, Rectangle.Inflate(knob, 5, 5));
-        ClawTheme.Text(g, $"{Value}%", Font, Enabled ? ClawTheme.Ink : ClawTheme.Faint, new Rectangle(Width - LogicalToDeviceUnits(80), 0, LogicalToDeviceUnits(80), Height), TextFormatFlags.Right | TextFormatFlags.VerticalCenter);
+        ClawTheme.Text(g, Format(Value), Font, Enabled ? ClawTheme.Ink : ClawTheme.Faint, new Rectangle(Width - LogicalToDeviceUnits(80), 0, LogicalToDeviceUnits(80), Height), TextFormatFlags.Right | TextFormatFlags.VerticalCenter);
     }
     protected override AccessibleObject CreateAccessibilityInstance() => new SliderAccessibility(this);
     private sealed class SliderAccessibility(ClawSlider owner) : ControlAccessibleObject(owner)
     {
-        public override string? Value { get => $"{owner.Value}%"; set { if (int.TryParse(value?.TrimEnd('%'), out int number)) owner.Value = number; } }
+        public override string? Value { get => owner.Format(owner.Value); set { if (int.TryParse(value?.TrimEnd('%'), out int number)) owner.Value = number; } }
         public override string? DefaultAction => L.Text("increase_brightness");
         public override void DoDefaultAction() { if (owner.Enabled) owner.Value++; }
     }

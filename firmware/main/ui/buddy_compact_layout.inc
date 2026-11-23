@@ -115,6 +115,8 @@ static void tiny_music(void){
     lv_obj_set_size(ui.music_buttons[MUSIC_MUTE_BUTTON],36,36);lv_obj_set_pos(ui.music_buttons[MUSIC_MUTE_BUTTON],8,142);
     lv_obj_set_ext_click_area(ui.music_progress,8);lv_obj_set_ext_click_area(ui.music_volume,8);
     small_text(ui.music_feedback,12,177,w-24,18,&buddy_language_font_14);lv_obj_set_style_text_align(ui.music_feedback,LV_TEXT_ALIGN_CENTER,0);
+    // Lyrics: the current line and the next in the track's place; the credit shares the feedback band.
+    music_lyrics_layout(w-72,3,60,22,&buddy_language_font_14);buddy_lyrics_view_place(12,26,w-24,52,12,177,w-24);
 }
 /* Timer: the ring with Start and Reset beside it; a swipe brings the steppers and presets. */
 static void tiny_timer(void){
@@ -170,6 +172,8 @@ static void compact_layout(void){
         music_transport_layout(w/2,282,64,52,44,88,170,&buddy_language_font_24,&buddy_language_font_20,&buddy_language_font_16);
         small_text(ui.music_feedback,12,322,w-24,36,&buddy_language_font_14);
         music_volume_layout(12,372,w-24,&buddy_language_font_16);
+        // Lyrics fill the cover's row; the credit sits between the timeline's two times.
+        music_lyrics_layout(w-100,8,88,32,&buddy_language_font_14);buddy_lyrics_view_place(12,44,w-24,164,112,226,w-224);
     }
     fit_labels(ui.timer_page,w);
     if(tiny)tiny_timer();

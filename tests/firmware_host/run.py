@@ -34,7 +34,7 @@ def main():
     sources = [HERE / "test_parsers.c", MAIN / "settings/buddy_settings.c", MAIN / "ui/buddy_theme_data.c",
                MAIN / "weather/buddy_weather_parse.c",
                MAIN / "network/buddy_telemetry_parse.c", MAIN / "network/buddy_auth.c",
-               MAIN / "network/buddy_shortcuts_parse.c", MAIN / "ui/buddy_shortcut_data.c", args.cjson / "cJSON.c"]
+               MAIN / "network/buddy_shortcuts_parse.c", MAIN / "network/buddy_lyrics_parse.c", MAIN / "ui/buddy_shortcut_data.c", args.cjson / "cJSON.c"]
     includes = [HERE / "shim", args.cjson, MAIN / "settings", MAIN / "weather", MAIN / "language", MAIN / "ui",
                 MAIN / "network", MAIN / "include"]
     with tempfile.TemporaryDirectory() as out:

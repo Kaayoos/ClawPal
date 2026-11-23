@@ -25,6 +25,7 @@ static void check(bool value, const char *name)
 
 #include "test_telemetry.c"
 #include "test_auth.c"
+#include "test_lyrics.c"
 
 /* `look` holds the schema 7 theme fields, or nothing for older payloads. */
 static bool settings_look(const char *city, const char *timezone, int schema, int apps, const char *look, buddy_settings_t *out)
@@ -188,6 +189,7 @@ int main(int argc, char **argv)
     shortcut_checks();
     telemetry_checks();
     auth_checks();
+    lyrics_checks();
     telemetry_fuzz(argc > 1 ? (unsigned)strtoul(argv[1], NULL, 10) : 200000);
     printf("%d firmware parser checks passed, %d failed\n", passed, failed);
     return failed ? 1 : 0;

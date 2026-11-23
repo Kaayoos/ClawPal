@@ -172,6 +172,7 @@ static const char text_0_loading_weather[] = "Loading weather";
 static const char text_0_local_snapshot[] = "Local snapshot";
 static const char text_0_local_time[] = "Local time";
 static const char text_0_lock_pc[] = "Lock PC";
+static const char text_0_looking_for_lyrics[] = "Looking for lyrics...";
 static const char text_0_lu_d_ago[] = "%lu d ago";
 static const char text_0_lu_d_lu_h[] = "%lu d %lu h";
 static const char text_0_lu_day_limit[] = "%lu-day limit";
@@ -184,6 +185,12 @@ static const char text_0_lu_minute_limit[] = "%lu-minute limit";
 static const char text_0_lu_recently_working[] = "%lu recently working";
 static const char text_0_lu_recently_working_lu_recorded[] = "%lu recently working / %lu recorded";
 static const char text_0_lu_s_ago[] = "%lu s ago";
+static const char text_0_lyrics[] = "Lyrics";
+static const char text_0_lyrics_credit[] = "Lyrics: LRCLIB";
+static const char text_0_lyrics_instrumental[] = "Instrumental, no lyrics";
+static const char text_0_lyrics_not_synced[] = "Not timed to the music";
+static const char text_0_lyrics_unavailable[] = "Lyrics are unavailable right now";
+static const char text_0_lyrics_unsupported[] = "This song's lyrics use letters the display can't show yet";
 static const char text_0_making_the_pixels_behave[] = "making the pixels behave";
 static const char text_0_master[] = "Master";
 static const char text_0_maximum_crab_vibes[] = "maximum crab vibes";
@@ -230,6 +237,7 @@ static const char text_0_next[] = "Next";
 static const char text_0_no_account_limits_available[] = "No account limits available";
 static const char text_0_no_limits_reported[] = "No limits reported";
 static const char text_0_no_local_task_snapshot_available[] = "No local task snapshot available";
+static const char text_0_no_lyrics_found[] = "No lyrics found for this song";
 static const char text_0_no_project_recorded[] = "No project recorded";
 static const char text_0_no_recent_tasks_recorded[] = "No recent tasks recorded";
 static const char text_0_no_reply_from_spotify_try_again[] = "No reply from the player. Try again.";
@@ -615,6 +623,7 @@ static const char text_1_loading_weather[] = "Wczytuję pogodę";
 static const char text_1_local_snapshot[] = "Lokalny zapis";
 static const char text_1_local_time[] = "Czas lokalny";
 static const char text_1_lock_pc[] = "Zablokuj PC";
+static const char text_1_looking_for_lyrics[] = "Szukam tekstu...";
 static const char text_1_lu_d_ago[] = "%lu dni temu";
 static const char text_1_lu_d_lu_h[] = "%lu dni %lu godz.";
 static const char text_1_lu_day_limit[] = "Limit na %lu dni";
@@ -627,6 +636,12 @@ static const char text_1_lu_minute_limit[] = "Limit na %lu min";
 static const char text_1_lu_recently_working[] = "Ostatnio pracowało: %lu";
 static const char text_1_lu_recently_working_lu_recorded[] = "Ostatnio aktywne: %lu / Zapisane: %lu";
 static const char text_1_lu_s_ago[] = "%lu s temu";
+static const char text_1_lyrics[] = "Tekst";
+static const char text_1_lyrics_credit[] = "Tekst: LRCLIB";
+static const char text_1_lyrics_instrumental[] = "Utwór instrumentalny, bez tekstu";
+static const char text_1_lyrics_not_synced[] = "Bez synchronizacji z muzyką";
+static const char text_1_lyrics_unavailable[] = "Tekst jest teraz niedostępny";
+static const char text_1_lyrics_unsupported[] = "Tekst tej piosenki ma litery, których ekran jeszcze nie pokazuje";
 static const char text_1_making_the_pixels_behave[] = "uczę piksele porządku";
 static const char text_1_master[] = "Główna";
 static const char text_1_maximum_crab_vibes[] = "maksymalny krabi klimat";
@@ -673,6 +688,7 @@ static const char text_1_next[] = "Następny";
 static const char text_1_no_account_limits_available[] = "Brak dostępnych limitów konta";
 static const char text_1_no_limits_reported[] = "Brak zgłoszonych limitów";
 static const char text_1_no_local_task_snapshot_available[] = "Brak lokalnego zapisu zadań";
+static const char text_1_no_lyrics_found[] = "Nie znaleziono tekstu tej piosenki";
 static const char text_1_no_project_recorded[] = "Bez projektu";
 static const char text_1_no_recent_tasks_recorded[] = "Brak ostatnich zadań";
 static const char text_1_no_reply_from_spotify_try_again[] = "Brak odpowiedzi odtwarzacza. Spróbuj ponownie.";
@@ -1060,6 +1076,7 @@ const char *const buddy_language_texts[][BT_COUNT] = {
         text_0_local_snapshot,
         text_0_local_time,
         text_0_lock_pc,
+        text_0_looking_for_lyrics,
         text_0_lu_d_ago,
         text_0_lu_d_lu_h,
         text_0_lu_day_limit,
@@ -1072,6 +1089,12 @@ const char *const buddy_language_texts[][BT_COUNT] = {
         text_0_lu_recently_working,
         text_0_lu_recently_working_lu_recorded,
         text_0_lu_s_ago,
+        text_0_lyrics,
+        text_0_lyrics_credit,
+        text_0_lyrics_instrumental,
+        text_0_lyrics_not_synced,
+        text_0_lyrics_unavailable,
+        text_0_lyrics_unsupported,
         text_0_making_the_pixels_behave,
         text_0_master,
         text_0_maximum_crab_vibes,
@@ -1118,6 +1141,7 @@ const char *const buddy_language_texts[][BT_COUNT] = {
         text_0_no_account_limits_available,
         text_0_no_limits_reported,
         text_0_no_local_task_snapshot_available,
+        text_0_no_lyrics_found,
         text_0_no_project_recorded,
         text_0_no_recent_tasks_recorded,
         text_0_no_reply_from_spotify_try_again,
@@ -1505,6 +1529,7 @@ const char *const buddy_language_texts[][BT_COUNT] = {
         text_1_local_snapshot,
         text_1_local_time,
         text_1_lock_pc,
+        text_1_looking_for_lyrics,
         text_1_lu_d_ago,
         text_1_lu_d_lu_h,
         text_1_lu_day_limit,
@@ -1517,6 +1542,12 @@ const char *const buddy_language_texts[][BT_COUNT] = {
         text_1_lu_recently_working,
         text_1_lu_recently_working_lu_recorded,
         text_1_lu_s_ago,
+        text_1_lyrics,
+        text_1_lyrics_credit,
+        text_1_lyrics_instrumental,
+        text_1_lyrics_not_synced,
+        text_1_lyrics_unavailable,
+        text_1_lyrics_unsupported,
         text_1_making_the_pixels_behave,
         text_1_master,
         text_1_maximum_crab_vibes,
@@ -1563,6 +1594,7 @@ const char *const buddy_language_texts[][BT_COUNT] = {
         text_1_no_account_limits_available,
         text_1_no_limits_reported,
         text_1_no_local_task_snapshot_available,
+        text_1_no_lyrics_found,
         text_1_no_project_recorded,
         text_1_no_recent_tasks_recorded,
         text_1_no_reply_from_spotify_try_again,
