@@ -43,8 +43,9 @@ public sealed class LrclibClient
     }
 
     // GET /api/get first: an exact match on title, artist, album and length (within 2 s).
-    // Then /api/search, keeping only a result whose length matches, so a cover version or a
-    // different edit never borrows another song's timing.
+    // Then /api/search, keeping only a result whose length fits, so a cover version or a
+    // different edit never borrows another song's timing. "Fits" allows for Spotify's crossfade
+    // (up to 12 s), which can make a player report a song that much shorter than it is.
     public async Task<(LrclibOutcome Outcome, LrclibRecord? Record)> FindAsync(string title, string artist, string album, long durationS, CancellationToken cancellationToken)
     {
         var query = new List<string> { "track_name=" + Uri.EscapeDataString(title), "artist_name=" + Uri.EscapeDataString(artist) };
@@ -64,10 +65,17 @@ public sealed class LrclibClient
         return best is null ? (LrclibOutcome.NotFound, null) : (LrclibOutcome.Found, best);
     }
 
+    public const int CrossfadeS = 13;
+    public static bool LengthFits(double? lyricsS, long reportedS) =>
+        reportedS <= 0 || (lyricsS is { } d && d - reportedS >= -3 && d - reportedS <= CrossfadeS);
+
+    // The same length first, then synced lyrics, the same artist, and the nearest length.
     public static LrclibRecord? PickSearchResult(IEnumerable<LrclibRecord> results, string artist, long durationS) =>
-        results.Where(r => durationS <= 0 || (r.Duration is { } d && Math.Abs(d - durationS) <= 3))
-            .OrderByDescending(r => !string.IsNullOrWhiteSpace(r.SyncedLyrics))
+        results.Where(r => LengthFits(r.Duration, durationS))
+            .OrderByDescending(r => durationS <= 0 || Math.Abs(r.Duration!.Value - durationS) <= 3)
+            .ThenByDescending(r => !string.IsNullOrWhiteSpace(r.SyncedLyrics))
             .ThenByDescending(r => string.Equals(r.ArtistName?.Trim(), artist.Trim(), StringComparison.OrdinalIgnoreCase))
+            .ThenBy(r => durationS <= 0 ? 0 : Math.Abs(r.Duration!.Value - durationS))
             .ThenByDescending(r => !string.IsNullOrWhiteSpace(r.PlainLyrics) || r.Instrumental)
             .FirstOrDefault(r => !string.IsNullOrWhiteSpace(r.SyncedLyrics) || !string.IsNullOrWhiteSpace(r.PlainLyrics) || r.Instrumental);
 

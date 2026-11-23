@@ -1624,20 +1624,19 @@ static uint32_t music_song_key(const buddy_music_t *music)
 }
 
 /* With auto-open on in the PC app, a new song's lyrics open by themselves once they arrive, and
- * close again for a song without any if they opened that way. A tap decides for the rest of
- * the song. */
+ * close again whenever the song turns out to have none, if they opened that way: auto-open
+ * never leaves "No lyrics found" on screen. A tap decides for the rest of the song, and a song
+ * opens by itself at most once, so lyrics that come and go can't make the view flap. */
 static void music_lyrics_auto(const buddy_music_t *music)
 {
     uint32_t song = music_song_key(music);
     bool open = buddy_lyrics_view_is_open();
     const uint8_t status = music->lyrics.status;
-    if (buddy_lyrics_view_ready()) {
-        if (song != ui.music_lyrics_song) {
-            ui.music_lyrics_song = song;
-            if (!open) { music_lyrics_open(true); ui.music_lyrics_auto_opened = true; }
-        }
-    } else if (ui.music_lyrics_auto_opened && open && song != ui.music_lyrics_song &&
-               (status == BUDDY_LYRICS_NONE || status == BUDDY_LYRICS_INSTRUMENTAL || status == BUDDY_LYRICS_UNSUPPORTED)) {
+    bool none = status == BUDDY_LYRICS_NONE || status == BUDDY_LYRICS_INSTRUMENTAL || status == BUDDY_LYRICS_UNSUPPORTED;
+    if (buddy_lyrics_view_ready() && song != ui.music_lyrics_song) {
+        ui.music_lyrics_song = song;
+        if (!open) { music_lyrics_open(true); ui.music_lyrics_auto_opened = true; }
+    } else if (none && open && ui.music_lyrics_auto_opened) {
         ui.music_lyrics_song = song;
         ui.music_lyrics_auto_opened = false;
         music_lyrics_open(false);

@@ -160,10 +160,11 @@ public static class LyricsContract
         return id == 0 ? 1 : id;
     }
 
-    // One song as LRCLIB and the cache know it. Whole seconds: players round differently.
-    public static string TrackKey(string title, string artist, string album, long durationS) =>
-        string.Join('\u001f', CleanText(title).ToLowerInvariant(), CleanText(artist).ToLowerInvariant(), CleanText(album).ToLowerInvariant(),
-            durationS.ToString(CultureInfo.InvariantCulture));
+    // One song as the cache and the display know it. Not its length: Spotify with crossfade on
+    // reports a song's length now in full and now shortened by the crossfade, and the same song
+    // must not turn into two (one with lyrics, one without).
+    public static string TrackKey(string title, string artist, string album) =>
+        string.Join('\u001f', CleanText(title).ToLowerInvariant(), CleanText(artist).ToLowerInvariant(), CleanText(album).ToLowerInvariant());
 
     // Where the playback is now, carried forward from the player's last report. Windows media
     // controls report the position only now and then (Spotify: on play, pause and seek), each

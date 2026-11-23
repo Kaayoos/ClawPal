@@ -13,7 +13,7 @@ public sealed record AlbumCover(int Id, int Size, byte[] Pixels);
 // lyrics carry it forward with LyricsContract.PositionAt instead of trusting a once-a-second poll.
 public sealed record PlaybackReport(string Title, string Artist, string Album, long DurationMs, long PositionMs, DateTimeOffset ReportedAt, bool Playing, double Rate)
 {
-    public string TrackKey => LyricsContract.TrackKey(Title, Artist, Album, (DurationMs + 500) / 1000);
+    public string TrackKey => LyricsContract.TrackKey(Title, Artist, Album);
     public long PositionAt(DateTimeOffset now) => LyricsContract.PositionAt(PositionMs, ReportedAt, Playing, Rate, now, DurationMs);
 }
 

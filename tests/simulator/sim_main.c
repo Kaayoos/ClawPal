@@ -662,6 +662,13 @@ static int lyrics_scenes(void){
     if(!shows_line(BT(BT_LYRICS_CREDIT))||!sings(words[0]))return 91;save_frame("lyrics-auto-open");
     snprintf(stats.music.title,sizeof(stats.music.title),"Harbour Interlude");
     lyrics_at(BUDDY_LYRICS_NONE,0,0,true);live(400);if(shows_line(BT(BT_LYRICS_CREDIT)))return 92;save_frame("lyrics-auto-closed");
+    // The same song's lyrics found and then lost (an older PC app saw two lengths for one song):
+    // auto-open never leaves "No lyrics found" up, and doesn't flap when they come back.
+    snprintf(stats.music.title,sizeof(stats.music.title),"Ca\xc5\x82" "e lata");
+    buddy_ui_set_lyrics(sim_lyrics(505,true,times,words,7));lyrics_at(BUDDY_LYRICS_SYNCED,505,13000,true);live(400);
+    if(!shows_line(BT(BT_LYRICS_CREDIT)))return 95;
+    lyrics_at(BUDDY_LYRICS_NONE,0,0,true);live(400);if(shows_line(BT(BT_LYRICS_CREDIT))||shows_line(BT(BT_NO_LYRICS_FOUND)))return 96;
+    lyrics_at(BUDDY_LYRICS_SYNCED,505,15000,true);live(400);if(shows_line(BT(BT_LYRICS_CREDIT)))return 97;
     // A tap decides for the rest of the song: closed by hand, the next lyrics for it don't reopen.
     snprintf(stats.music.title,sizeof(stats.music.title),"Lighthouse Waltz");
     buddy_ui_set_lyrics(sim_lyrics(504,true,times,words,7));lyrics_at(BUDDY_LYRICS_SYNCED,504,13000,true);live(400);

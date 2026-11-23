@@ -49,8 +49,12 @@ internal static class LyricsChecks
               json.GetProperty("lines")[2][1].ValueKind == JsonValueKind.Null, "POST /lyrics body: id, kind and [time, text|null] pairs");
         Check(document.Id > 0 && document.Id != LyricsContract.ForDisplay("other", LyricsKind.Synced, mixed, Latin).Document!.Id,
             "Document IDs are positive and differ between songs");
-        Check(LyricsContract.TrackKey(" Song ", "Artist", "Album", 200) == LyricsContract.TrackKey("song", "ARTIST", "album", 200) &&
-              LyricsContract.TrackKey("song", "artist", "album", 200) != LyricsContract.TrackKey("song", "artist", "album", 201), "Track keys ignore case and spacing but not length");
+        Check(LyricsContract.TrackKey(" Song ", "Artist", "Album") == LyricsContract.TrackKey("song", "ARTIST", "album") &&
+              LyricsContract.TrackKey("song", "artist", "album") != LyricsContract.TrackKey("song", "artist", "other album"), "Track keys ignore case and spacing");
+        // Spotify with a 6 s crossfade reported "Całe lata" (237 s) now as 237, now as 231.
+        Check(new PlaybackReport("Całe lata", "Taco Hemingway", "1-800-OŚWIECENIE", 237_218, 0, DateTimeOffset.UnixEpoch, true, 1).TrackKey ==
+              new PlaybackReport("Całe lata", "Taco Hemingway", "1-800-OŚWIECENIE", 231_218, 0, DateTimeOffset.UnixEpoch, true, 1).TrackKey,
+            "A song stays one song whatever length the player reports for it");
 
         // Carrying the position forward
         var at = DateTimeOffset.FromUnixTimeSeconds(1_800_000_000);
@@ -61,8 +65,8 @@ internal static class LyricsChecks
         Check(LyricsContract.PositionAt(199_000, at, true, 1, at.AddSeconds(5), 200_000) == 200_000, "Position: never past the end of the track");
         Check(LyricsContract.PositionAt(10_000, at, true, 1, at.AddSeconds(-3), 200_000) == 10_000, "Position: a report from the future doesn't move backwards");
         var report = new PlaybackReport("Song", "Artist", "Album", 200_400, 5_000, at, true, 1);
-        Check(report.PositionAt(at.AddMilliseconds(750)) == 5_750 && report.TrackKey == LyricsContract.TrackKey("Song", "Artist", "Album", 200),
-            "PlaybackReport carries forward and rounds its length to seconds for the key");
+        Check(report.PositionAt(at.AddMilliseconds(750)) == 5_750 && report.TrackKey == LyricsContract.TrackKey("Song", "Artist", "Album"),
+            "PlaybackReport carries forward from its report");
 
         // Measuring the display's clock (NTP's midpoint)
         var sample = new LyricsContract.ClockSample(1_000, 50_040, 1_080);
@@ -143,6 +147,19 @@ internal static class LyricsChecks
         Check(client.FindAsync("Third", "Artist", "Album", 100, CancellationToken.None).GetAwaiter().GetResult().Outcome == LrclibOutcome.Failed && requests.Count == sent,
             "LRCLIB: Retry-After is honoured; nothing is sent while waiting");
         Check(LrclibClient.PickSearchResult([new(9, "S", "A", null, 100, false, null, null)], "A", 100) is null, "LRCLIB: a result without lyrics is no result");
+        LrclibRecord Lrc(long id, double duration, bool synced = true) => new(id, "Całe lata", "Taco Hemingway", "1-800-OŚWIECENIE", duration, false, synced ? null : "Plain", synced ? "[00:01.00]Line" : null);
+        Check(LrclibClient.PickSearchResult([Lrc(1, 258.5), Lrc(2, 237.0), Lrc(3, 285)], "Taco Hemingway", 231)?.Id == 2,
+            "LRCLIB: a length shortened by Spotify's crossfade still finds the song, and not a longer edit");
+        Check(LrclibClient.PickSearchResult([Lrc(1, 237.0), Lrc(2, 231.5, synced: false)], "Taco Hemingway", 231)?.Id == 2 &&
+              LrclibClient.PickSearchResult([Lrc(1, 244.0), Lrc(2, 237.0)], "Taco Hemingway", 231)?.Id == 2,
+            "LRCLIB: the reported length wins when it matches; otherwise the nearest longer one");
+        Check(LrclibClient.PickSearchResult([Lrc(1, 225.0), Lrc(2, 250.0)], "Taco Hemingway", 231) is null,
+            "LRCLIB: a version clearly shorter, or longer than any crossfade, is a different song");
+        var fresh = new LrclibClient(new FakeHandler(requests, replies));
+        replies.Enqueue(new HttpResponseMessage(HttpStatusCode.NotFound));
+        replies.Enqueue(Json("[{\"id\":10114803,\"trackName\":\"Całe Lata\",\"artistName\":\"Taco Hemingway\",\"duration\":237.0,\"syncedLyrics\":\"[00:01.00]Line\"}]"));
+        Check(fresh.FindAsync("Całe lata", "Taco Hemingway", "1-800-OŚWIECENIE", 231, CancellationToken.None).GetAwaiter().GetResult().Record?.Id == 10114803,
+            "LRCLIB: the crossfade case end to end, from a 404 on the exact length to the search");
         return count;
     }
 
