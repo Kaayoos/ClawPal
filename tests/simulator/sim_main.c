@@ -583,8 +583,9 @@ static buddy_lyrics_t *sim_lyrics(uint32_t id,bool synced,const uint32_t *times,
 }
 static uint32_t lyric_anchor;
 /* A reference point: the song is at position now on the display's clock, as the PC would send it. */
+static bool lyric_auto;
 static void lyrics_at(uint8_t status,uint32_t id,uint32_t position,bool playing){
-    stats.music.lyrics=(buddy_lyrics_sync_t){.present=true,.playing=playing,.status=status,.id=id,.anchor=++lyric_anchor,
+    stats.music.lyrics=(buddy_lyrics_sync_t){.present=true,.playing=playing,.auto_open=lyric_auto,.status=status,.id=id,.anchor=++lyric_anchor,
         .position_ms=position,.at_ms=lv_tick_get()};
     stats.music.playing=playing;send_stats();
 }
@@ -596,6 +597,12 @@ static lv_obj_t *find_prefix(lv_obj_t *root,const char *text){
     for(uint32_t i=0;i<lv_obj_get_child_cnt(root);++i){lv_obj_t *found=find_prefix(lv_obj_get_child(root,i),text);if(found)return found;}return NULL;
 }
 static bool shows_line(const char *text){return find_prefix(lv_scr_act(),text)!=NULL;}
+/* The lit line: the reel shows the lines around it too, dimmed. */
+static bool sings(const char *text){
+    lv_obj_t *label=find_prefix(lv_scr_act(),text);
+    return label&&lv_obj_get_style_text_color(label,LV_PART_MAIN).full==lv_color_hex(BUDDY_COLOR_TEXT).full&&
+        lv_obj_get_style_text_opa(label,LV_PART_MAIN)==LV_OPA_COVER;
+}
 /* `clawpal_sim <dir> <theme> - lyrics`: the Media app's Lyrics view, on its own so the main run's frames keep their timing. */
 static int lyrics_scenes(void){
     static const uint32_t times[]={12000,16500,21000,24000,28500,33000,37000};
@@ -605,21 +612,28 @@ static int lyrics_scenes(void){
     // Offered while the PC has lyrics on: the button appears, nothing else moves until it is tapped.
     lyrics_at(BUDDY_LYRICS_LOADING,0,0,true);stats.music.lyrics.anchor=0;send_stats();live(400);
     if(!shows_line(BT(BT_LYRICS)))return 71;save_frame("lyrics-offered");
-    tap_label(BT(BT_LYRICS));if(!shows_line(BT(BT_LOOKING_FOR_LYRICS)))return 72;save_frame("lyrics-loading");
-    // Synced: the display counts on from the reference point by itself; each line shows 120 ms early.
+    tap_label(BT(BT_LYRICS));if(!shows_line(BT(BT_LOOKING_FOR_LYRICS)))return 72;
+    // The credit sits in the footer; smaller screens keep only the transport beside the lines.
+    if(!shows_line(BT(BT_LYRICS_CREDIT)))return 86;
+    if(W<800&&visible_slider(0))return 87;
+    if(W>=800&&!visible_slider(0))return 88;
+    save_frame("lyrics-loading");
+    // Synced: the display counts on from the reference point by itself; each line lights 150 ms early.
     buddy_ui_set_lyrics(sim_lyrics(501,true,times,words,7));
     lyrics_at(BUDDY_LYRICS_SYNCED,501,15000,true);live(1300);
-    if(!shows_line(words[0]))return 73;
-    live(150);if(!shows_line(words[1]))return 74;
-    live(250);save_frame("lyrics-synced");
+    if(!sings(words[0])||!shows_line(words[1]))return 73;
+    // The next line slides up into place: caught mid-slide, then settled.
+    live(150);if(!sings(words[1]))return 74;
+    save_frame("lyrics-sliding");
+    live(300);save_frame("lyrics-synced");
     // No telemetry for a while: the lines keep time on the display's own clock.
-    live(7600);if(!shows_line(words[3]))return 75;save_frame("lyrics-long-line");
-    // A seek is a new reference point: the new line shows at once; an unreadable line is a note.
-    lyrics_at(BUDDY_LYRICS_SYNCED,501,33400,true);live(300);if(!shows_line(LV_SYMBOL_AUDIO)||!shows_line(words[6]))return 76;live(250);save_frame("lyrics-note");
+    live(7400);if(!sings(words[3]))return 75;save_frame("lyrics-long-line");
+    // A seek is a new reference point: the new line lights at once; an unreadable line is a note.
+    lyrics_at(BUDDY_LYRICS_SYNCED,501,33400,true);live(400);if(!sings(LV_SYMBOL_AUDIO)||!shows_line(words[6]))return 76;save_frame("lyrics-note");
     // Paused, the line stays put however long the pause.
-    lyrics_at(BUDDY_LYRICS_SYNCED,501,25000,false);live(4000);if(!shows_line(words[3]))return 77;save_frame("lyrics-paused");
+    lyrics_at(BUDDY_LYRICS_SYNCED,501,25000,false);live(4000);if(!sings(words[3]))return 77;save_frame("lyrics-paused");
     // Before the first line, a note and the line to come.
-    lyrics_at(BUDDY_LYRICS_SYNCED,501,2000,true);live(300);if(!shows_line(LV_SYMBOL_AUDIO)||!shows_line(words[0]))return 78;save_frame("lyrics-intro");
+    lyrics_at(BUDDY_LYRICS_SYNCED,501,2000,true);live(400);if(!sings(LV_SYMBOL_AUDIO)||!shows_line(words[0]))return 78;save_frame("lyrics-intro");
     // Plain lyrics scroll as one column.
     static const char *const verses[]={"Salt on the window, sun on the dash","Counting the bridges as they flash","",
         "Every mile a little slower","Every song a little louder","","Golden hour, golden hour","Drive me home before it's over",
@@ -639,7 +653,21 @@ static int lyrics_scenes(void){
     // Closing brings the cover back; switching lyrics off takes the button away too.
     lyrics_at(BUDDY_LYRICS_SYNCED,501,17000,true);live(300);
     lv_obj_t *button=find_label(lv_scr_act(),BT(BT_LYRICS));if(button)lv_obj_scroll_to_view_recursive(button,LV_ANIM_OFF);
-    tap_label(BT(BT_LYRICS));if(shows_line(words[1]))return 82;save_frame("lyrics-closed");
+    tap_label(BT(BT_LYRICS));if(shows_line(words[1])||shows_line(BT(BT_LYRICS_CREDIT)))return 82;
+    if(!visible_slider(0))return 89;save_frame("lyrics-closed");
+    // Auto-open: a new song whose lyrics arrive opens them by itself; a song without closes them.
+    lyric_auto=true;snprintf(stats.music.title,sizeof(stats.music.title),"Coastline Night Run");
+    lyrics_at(BUDDY_LYRICS_LOADING,0,0,true);live(300);if(shows_line(BT(BT_LYRICS_CREDIT)))return 90;
+    buddy_ui_set_lyrics(sim_lyrics(503,true,times,words,7));lyrics_at(BUDDY_LYRICS_SYNCED,503,13000,true);live(500);
+    if(!shows_line(BT(BT_LYRICS_CREDIT))||!sings(words[0]))return 91;save_frame("lyrics-auto-open");
+    snprintf(stats.music.title,sizeof(stats.music.title),"Harbour Interlude");
+    lyrics_at(BUDDY_LYRICS_NONE,0,0,true);live(400);if(shows_line(BT(BT_LYRICS_CREDIT)))return 92;save_frame("lyrics-auto-closed");
+    // A tap decides for the rest of the song: closed by hand, the next lyrics for it don't reopen.
+    snprintf(stats.music.title,sizeof(stats.music.title),"Lighthouse Waltz");
+    buddy_ui_set_lyrics(sim_lyrics(504,true,times,words,7));lyrics_at(BUDDY_LYRICS_SYNCED,504,13000,true);live(400);
+    if(!shows_line(BT(BT_LYRICS_CREDIT)))return 93;
+    tap_label(BT(BT_LYRICS));lyrics_at(BUDDY_LYRICS_SYNCED,504,14000,true);live(400);if(shows_line(BT(BT_LYRICS_CREDIT)))return 94;
+    lyric_auto=false;
     memset(&stats.music.lyrics,0,sizeof(stats.music.lyrics));send_stats();live(400);if(shows_line(BT(BT_LYRICS)))return 83;save_frame("lyrics-off");
     return 0;
 }

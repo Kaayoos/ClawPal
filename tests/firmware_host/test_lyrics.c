@@ -23,6 +23,9 @@ static void lyrics_checks(void)
           s.music.lyrics.present && s.music.lyrics.status == BUDDY_LYRICS_SYNCED && s.music.lyrics.id == 7 && s.music.lyrics.anchor == 3 &&
           s.music.lyrics.position_ms == 61500 && s.music.lyrics.at_ms == UINT32_MAX && s.music.lyrics.playing,
           "lyrics: a reference point parses, including a wrapped display clock");
+    check(!s.music.lyrics.auto_open && telemetry_lyrics("{\"state\":\"none\",\"auto_open\":true}", &s) && s.music.lyrics.auto_open &&
+          !telemetry_lyrics("{\"state\":\"none\",\"auto_open\":1}", &s),
+          "lyrics: auto-open is off unless the PC app asks, and must be a boolean");
     const char *states[] = { "loading", "synced", "plain", "none", "instrumental", "unsupported", "unavailable" };
     bool all = true;
     for (unsigned i = 0; i < 7; ++i) {

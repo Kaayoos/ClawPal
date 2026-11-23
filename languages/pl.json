@@ -657,6 +657,8 @@
     "audio_app_note": "Suwaki zmieniają te same poziomy co mikser głośności Windows. Wyświetlacz dostaje tylko nazwę i ikonę każdej aplikacji.",
     "synced_lyrics": "Pokazuj tekst w rytm muzyki",
     "synced_lyrics_description": "Dodaje przycisk Tekst w aplikacji Multimedia na wyświetlaczu: każdy wers pojawia się, gdy jest śpiewany. Teksty pochodzą z LRCLIB (lrclib.net), darmowej bazy tekstów tworzonej przez społeczność. Gdy ta opcja jest włączona, komputer wysyła do lrclib.net tytuł, wykonawcę, album i długość każdego odtwarzanego utworu, nic więcej. Teksty zostają na tym komputerze, więc każdy utwór jest wyszukiwany raz. Domyślnie wyłączone.",
+    "lyrics_auto_open": "Otwieraj tekst automatycznie",
+    "lyrics_auto_open_note": "Gdy nowy utwór ma tekst, wyświetlacz pokazuje go bez dotykania, a przy utworze bez tekstu wraca do okładki. Dotknięcie przycisku Tekst decyduje do końca utworu. Domyślnie wyłączone.",
     "lyrics_timing": "Przesunięcie tekstu",
     "lyrics_timing_note": "Jeśli wersy pojawiają się za wcześnie lub za późno, na przykład ze słuchawkami Bluetooth, przesuń suwak. Plus pokazuje wersy wcześniej.",
     "lyrics_timing_value": "Przesunięcie tekstu w sekundach",

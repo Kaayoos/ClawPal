@@ -94,6 +94,9 @@ internal static class LyricsChecks
         Check(lyricsJson.GetProperty("id").GetInt32() == 7 && lyricsJson.GetProperty("state").GetString() == "synced" && lyricsJson.GetProperty("anchor").GetInt32() == 3 &&
               lyricsJson.GetProperty("pos_ms").GetInt64() == 1234 && lyricsJson.GetProperty("at_ms").GetUInt32() == 4_000_000_000 && lyricsJson.GetProperty("playing").GetBoolean(),
             "Telemetry: music.lyrics carries id, state and the reference point");
+        Check(!lyricsJson.TryGetProperty("auto_open", out _) &&
+              JsonDocument.Parse(JsonSerializer.SerializeToUtf8Bytes(new LyricsStats(7, "synced", 3, 0, 0, true, true), Protocol.Json)).RootElement.GetProperty("auto_open").GetBoolean(),
+            "Telemetry: auto_open is sent only while it is on");
         Check(!JsonDocument.Parse(JsonSerializer.SerializeToUtf8Bytes(music, Protocol.Json)).RootElement.TryGetProperty("lyrics", out _),
             "Telemetry: no lyrics object while lyrics are off");
         Check(Enum.GetValues<LyricsState>().Select(LyricsContract.Wire).Distinct().Count() == Enum.GetValues<LyricsState>().Length, "Every lyrics state has its own wire name");

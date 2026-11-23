@@ -175,10 +175,12 @@ public sealed class Connection : IDisposable
                                 long pcNow = MonotonicClock.NowMs;
                                 anchors.Update(playback.TrackKey, playback.Playing, playback.PositionAt(DateTimeOffset.UtcNow), pcNow);
                                 lyricsStats = new LyricsStats(lyricsDocument?.Id ?? 0, LyricsContract.Wire(state), anchors.Counter,
-                                    Math.Clamp(anchors.PositionMs + offsetMs, 0, LyricsContract.MaxPositionMs), LyricsContract.DisplayTime(anchors.AtMs, offset), anchors.Playing);
+                                    Math.Clamp(anchors.PositionMs + offsetMs, 0, LyricsContract.MaxPositionMs), LyricsContract.DisplayTime(anchors.AtMs, offset), anchors.Playing,
+                                    config.LyricsAutoOpen);
                             }
                             // Until the display's clock is known, synced lines can't be placed yet.
-                            else lyricsStats = new LyricsStats(lyricsDocument?.Id ?? 0, LyricsContract.Wire(state == LyricsState.Synced ? LyricsState.Loading : state), 0, 0, 0, playback.Playing);
+                            else lyricsStats = new LyricsStats(lyricsDocument?.Id ?? 0, LyricsContract.Wire(state == LyricsState.Synced ? LyricsState.Loading : state), 0, 0, 0, playback.Playing,
+                                config.LyricsAutoOpen);
                         }
                         var sample = metrics.Sample(Interlocked.Increment(ref sequence)) with
                         {

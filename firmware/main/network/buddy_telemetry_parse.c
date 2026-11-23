@@ -132,7 +132,8 @@ static bool parse_lyrics(const cJSON *music, buddy_lyrics_sync_t *lyrics)
         !get_optional_uint32(value, "anchor", INT_MAX, &lyrics->anchor) ||
         !get_optional_uint32(value, "pos_ms", BUDDY_LYRICS_MAX_MS, &lyrics->position_ms) ||
         !get_optional_uint32(value, "at_ms", UINT32_MAX, &lyrics->at_ms) ||
-        !get_optional_boolean(value, "playing", &lyrics->playing)) return false;
+        !get_optional_boolean(value, "playing", &lyrics->playing) ||
+        !get_optional_boolean(value, "auto_open", &lyrics->auto_open)) return false;
     lyrics->status = BUDDY_LYRICS_UNAVAILABLE;
     for (unsigned i = 0; i < sizeof(states) / sizeof(states[0]); ++i)
         if (strcmp(state, states[i]) == 0) lyrics->status = (uint8_t)i;

@@ -14,7 +14,7 @@ internal sealed class SettingsForm : ClawWindow
     private readonly DeviceSettingsClient wireless;
     private DeviceSettings draft;
     private string pcLanguage;
-    private bool fps, auto, startup, paused, claudeLive, lyricsOn, deviceDirty, pcDirty, saving, shortcutsDirty;
+    private bool fps, auto, startup, paused, claudeLive, lyricsOn, lyricsAuto, deviceDirty, pcDirty, saving, shortcutsDirty;
     private int lyricsOffset;
     private ShortcutDeck shortcutDeck;
     private readonly bool preview;
@@ -42,7 +42,7 @@ internal sealed class SettingsForm : ClawWindow
     internal SettingsForm(Configuration config, Connection connection, bool preview = false)
     {
         this.config = config; this.connection = connection; pcLanguage = L.Normalize(config.CompanionLanguage); this.preview = preview; wireless = connection.Settings;
-        draft = config.DisplaySettings ?? DeviceSettings.FromConfiguration(config); shortcutDeck = config.Shortcuts ?? ShortcutDeck.Starter(draft.Language); fps = config.TrackFps; auto = config.AutoOpenApps; paused = config.Paused; claudeLive = config.ClaudeLiveUsage; lyricsOn = config.SyncedLyrics; lyricsOffset = config.LyricsOffsetMs; startup = !preview && Startup.Enabled;
+        draft = config.DisplaySettings ?? DeviceSettings.FromConfiguration(config); shortcutDeck = config.Shortcuts ?? ShortcutDeck.Starter(draft.Language); fps = config.TrackFps; auto = config.AutoOpenApps; paused = config.Paused; claudeLive = config.ClaudeLiveUsage; lyricsOn = config.SyncedLyrics; lyricsAuto = config.LyricsAutoOpen; lyricsOffset = config.LyricsOffsetMs; startup = !preview && Startup.Enabled;
         L.SetVariant(draft.Theme);
         Text = L.Text("clawpal_your_desk_companion"); ClientSize = new(1140, 800); AutoScaleMode = AutoScaleMode.Dpi;
         using (var stream = typeof(SettingsForm).Assembly.GetManifestResourceStream("ClawPal.Companion.CrabIcon")) if (stream is not null) Icon = new Icon(stream);
@@ -313,8 +313,12 @@ internal sealed class SettingsForm : ClawWindow
         };
         timing.Value = Math.Clamp(lyricsOffset, -LyricsContract.MaxOffsetMs, LyricsContract.MaxOffsetMs) / 10;
         timing.ValueChanged += (_, _) => { lyricsOffset = timing.Value * 10; Dirty(false); };
-        card.Add(Switch(L.Text("synced_lyrics"), lyricsOn, value => { lyricsOn = value; timing.Enabled = value; Dirty(false); }), 2);
+        var automatic = Switch(L.Text("lyrics_auto_open"), lyricsAuto, value => { lyricsAuto = value; Dirty(false); });
+        automatic.Enabled = lyricsOn;
+        card.Add(Switch(L.Text("synced_lyrics"), lyricsOn, value => { lyricsOn = value; timing.Enabled = automatic.Enabled = value; Dirty(false); }), 2);
         card.Add(Note(L.Text("synced_lyrics_description")), 14);
+        card.Add(automatic, 2);
+        card.Add(Note(L.Text("lyrics_auto_open_note")), 14);
         card.Add(Column(Caption(L.Text("lyrics_timing")), timing, Note(L.Text("lyrics_timing_note"))));
     }
     private void ClaudeOptions(ClawStack card)
@@ -593,7 +597,7 @@ internal sealed class SettingsForm : ClawWindow
         {
             draft.Validate(); shortcutDeck.Validate();
             if (preview) { deviceDirty = pcDirty = shortcutsDirty = false; status.Text = L.Text("preview_only_no_settings_changed"); SetMoment("happy"); return; }
-            if (pcDirty) { Startup.Set(startup); config.TrackFps = fps; config.AutoOpenApps = auto; config.Paused = paused; config.ClaudeLiveUsage = claudeLive; config.SyncedLyrics = lyricsOn; config.LyricsOffsetMs = lyricsOffset; config.CompanionLanguage = pcLanguage; config.Save(); L.SetLanguage(pcLanguage); connection.SetAutoOpenApps(auto); connection.SetPaused(paused); pcDirty = false; }
+            if (pcDirty) { Startup.Set(startup); config.TrackFps = fps; config.AutoOpenApps = auto; config.Paused = paused; config.ClaudeLiveUsage = claudeLive; config.SyncedLyrics = lyricsOn; config.LyricsAutoOpen = lyricsAuto; config.LyricsOffsetMs = lyricsOffset; config.CompanionLanguage = pcLanguage; config.Save(); L.SetLanguage(pcLanguage); connection.SetAutoOpenApps(auto); connection.SetPaused(paused); pcDirty = false; }
             if (shortcutsDirty) { config.SetShortcuts(shortcutDeck); connection.ShortcutsChanged(); shortcutsDirty = false; }
             if (deviceDirty) { config.SetDisplaySettings(draft); deviceDirty = false; }
             if (config.SettingsPending) { using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(16)); await wireless.SyncAsync(timeout.Token); }

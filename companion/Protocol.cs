@@ -189,8 +189,10 @@ public sealed record MusicStats(bool Running, bool Available, string Title, stri
 // uploaded to POST /lyrics (0 while there is none). State is a LyricsContract.Wire name. The
 // reference point says the track was at PosMs when the display's own clock (GET /clock) read
 // AtMs; the display counts on from there while Playing. Anchor rises with each new point, and
-// is 0 until the PC has measured the display's clock.
-public sealed record LyricsStats(int Id, string State, int Anchor, long PosMs, uint AtMs, bool Playing);
+// is 0 until the PC has measured the display's clock. AutoOpen asks the display to open its
+// Lyrics view by itself when a new song has lyrics; it is left out while off.
+public sealed record LyricsStats(int Id, string State, int Anchor, long PosMs, uint AtMs, bool Playing,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)] bool AutoOpen = false);
 public sealed record DeviceControl(int Id, string Action, int Value = 0);
 public sealed record MusicControlResult(int Id, bool Ok, string Error);
 

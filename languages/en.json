@@ -657,6 +657,8 @@
     "audio_app_note": "Faders change the same volumes as the Windows volume mixer. The display gets each app's name and icon, nothing else.",
     "synced_lyrics": "Show synced lyrics",
     "synced_lyrics_description": "Adds a Lyrics button to Media on the display, with each line shown as it is sung. Lyrics come from LRCLIB (lrclib.net), a free lyrics database written by its community. While this is on, the PC sends the title, artist, album and length of each song you play to lrclib.net, and nothing else. Lyrics are kept on this PC, so each song is looked up once. Off by default.",
+    "lyrics_auto_open": "Open lyrics by themselves",
+    "lyrics_auto_open_note": "When a new song has lyrics, the display shows them without a tap, and goes back to the cover for a song without. Tapping Lyrics decides for the rest of that song. Off by default.",
     "lyrics_timing": "Lyrics timing",
     "lyrics_timing_note": "If lines come too early or too late, for example with Bluetooth headphones, move this. Plus shows each line earlier.",
     "lyrics_timing_value": "Lyrics timing, seconds",

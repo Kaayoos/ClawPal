@@ -47,6 +47,7 @@ typedef enum {
 typedef struct {
     bool present; /* false while lyrics are off in the PC app, or from an older PC app */
     bool playing;
+    bool auto_open; /* open the Lyrics view by itself when a new song has lyrics */
     uint8_t status; /* buddy_lyrics_status_t */
     uint32_t id, anchor, position_ms, at_ms;
 } buddy_lyrics_sync_t;

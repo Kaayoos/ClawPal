@@ -101,12 +101,8 @@ static void tiny_clock(void){
 /* Media fits one screen: source and state, the track, the timeline with its times beside it,
  * transport and volume. The sliders' touch bands are narrowed so they don't overlap the transport,
  * and the bottom band holds only command feedback, so a stray swipe there changes nothing. */
-static void tiny_music(void){
+static void tiny_music_controls(void){
     int w=BOARD_DISPLAY_WIDTH;
-    visible(ui.music_cover,false);visible(ui.music_album,false);ui.music_title_lines=1;
-    small_text(ui.music_heading,12,6,w-152,18,&buddy_language_font_14);small_text(ui.music_status,w-142,6,130,18,&buddy_language_font_14);
-    place(ui.music_meta,12,26,w-24,52);
-    lv_obj_set_style_text_font(ui.music_title,&buddy_language_font_20,0);lv_obj_set_style_text_font(ui.music_artist,&buddy_language_font_14,0);
     small_text(ui.music_elapsed,12,80,44,18,&buddy_language_font_14);lv_obj_set_style_text_align(ui.music_elapsed,LV_TEXT_ALIGN_LEFT,0);
     place(ui.music_progress,60,86,w-120,6);
     small_text(ui.music_duration,w-56,80,44,18,&buddy_language_font_14);lv_obj_set_style_text_align(ui.music_duration,LV_TEXT_ALIGN_RIGHT,0);
@@ -115,8 +111,23 @@ static void tiny_music(void){
     lv_obj_set_size(ui.music_buttons[MUSIC_MUTE_BUTTON],36,36);lv_obj_set_pos(ui.music_buttons[MUSIC_MUTE_BUTTON],8,142);
     lv_obj_set_ext_click_area(ui.music_progress,8);lv_obj_set_ext_click_area(ui.music_volume,8);
     small_text(ui.music_feedback,12,177,w-24,18,&buddy_language_font_14);lv_obj_set_style_text_align(ui.music_feedback,LV_TEXT_ALIGN_CENTER,0);
-    // Lyrics: the current line and the next in the track's place; the credit shares the feedback band.
-    music_lyrics_layout(w-72,3,60,22,&buddy_language_font_14);buddy_lyrics_view_place(12,26,w-24,52,12,177,w-24);
+}
+static void square_music_controls(void){
+    int w=BOARD_DISPLAY_WIDTH;
+    place(ui.music_progress,12,214,w-24,6);small_text(ui.music_elapsed,12,226,100,18,&buddy_language_font_14);small_text(ui.music_duration,w-112,226,100,18,&buddy_language_font_14);
+    music_transport_layout(w/2,282,64,52,44,88,170,&buddy_language_font_24,&buddy_language_font_20,&buddy_language_font_16);
+    small_text(ui.music_feedback,12,322,w-24,36,&buddy_language_font_14);
+    music_volume_layout(12,372,w-24,&buddy_language_font_16);
+}
+static void tiny_music(void){
+    int w=BOARD_DISPLAY_WIDTH;
+    visible(ui.music_cover,false);visible(ui.music_album,false);ui.music_title_lines=1;
+    small_text(ui.music_heading,12,6,w-152,18,&buddy_language_font_14);small_text(ui.music_status,w-142,6,130,18,&buddy_language_font_14);
+    place(ui.music_meta,12,26,w-24,52);
+    lv_obj_set_style_text_font(ui.music_title,&buddy_language_font_20,0);lv_obj_set_style_text_font(ui.music_artist,&buddy_language_font_14,0);
+    tiny_music_controls();
+    // Lyrics fill the page above the transport; the song's name stays in the header.
+    music_lyrics_layout(w-72,3,60,22,&buddy_language_font_14);buddy_lyrics_view_place(12,28,w-24,100,&buddy_language_font_20,false);
 }
 /* Timer: the ring with Start and Reset beside it; a swipe brings the steppers and presets. */
 static void tiny_timer(void){
@@ -168,12 +179,9 @@ static void compact_layout(void){
         small_text(ui.music_heading,12,8,w-150,28,&buddy_language_font_20);small_text(ui.music_status,w-142,12,130,22,&buddy_language_font_14);
         music_cover_layout(12,48,148);place(ui.music_meta,174,48,w-186,150);
         lv_obj_set_style_text_font(ui.music_title,&buddy_language_font_24,0);lv_obj_set_style_text_font(ui.music_artist,&buddy_language_font_16,0);lv_obj_set_style_text_font(ui.music_album,&buddy_language_font_14,0);
-        place(ui.music_progress,12,214,w-24,6);small_text(ui.music_elapsed,12,226,100,18,&buddy_language_font_14);small_text(ui.music_duration,w-112,226,100,18,&buddy_language_font_14);
-        music_transport_layout(w/2,282,64,52,44,88,170,&buddy_language_font_24,&buddy_language_font_20,&buddy_language_font_16);
-        small_text(ui.music_feedback,12,322,w-24,36,&buddy_language_font_14);
-        music_volume_layout(12,372,w-24,&buddy_language_font_16);
-        // Lyrics fill the cover's row; the credit sits between the timeline's two times.
-        music_lyrics_layout(w-100,8,88,32,&buddy_language_font_14);buddy_lyrics_view_place(12,44,w-24,164,112,226,w-224);
+        square_music_controls();
+        // Lyrics fill the page above the transport.
+        music_lyrics_layout(w-100,8,88,32,&buddy_language_font_14);buddy_lyrics_view_place(12,48,w-24,272,&buddy_language_font_24,true);
     }
     fit_labels(ui.timer_page,w);
     if(tiny)tiny_timer();
@@ -193,6 +201,20 @@ static void compact_layout(void){
     if(tiny){place(ui.timer_link,100,body+6,w-200,32);small_text(ui.timer_link_title,8,5,w-216,20,&buddy_language_font_14);place(ui.timer_link_progress,8,27,w-216,2);}
     else{place(ui.timer_link,100,body+7,w-200,30);small_text(ui.timer_link_title,10,4,w-220,18,&buddy_language_font_14);place(ui.timer_link_progress,10,23,w-220,2);}
 }
+/* Lyrics on the smaller screens: the lines take the page and only the transport stays, at the
+ * bottom. The timeline, volume, shuffle and repeat come back when lyrics close (refresh_music
+ * keeps the toggles hidden meanwhile). */
+static void music_focus_layout(bool focus){
+    int w=BOARD_DISPLAY_WIDTH;bool tiny=BOARD_DISPLAY_HEIGHT<400;
+    visible(ui.music_progress,!focus);visible(ui.music_elapsed,!focus);visible(ui.music_duration,!focus);
+    if(!focus){if(tiny)tiny_music_controls();else square_music_controls();return;}
+    lv_obj_scroll_to_y(ui.music_page,0,LV_ANIM_OFF);
+    if(tiny){music_transport_layout(w/2,172,40,32,30,58,112,&buddy_language_font_20,&buddy_language_font_16,&buddy_language_font_16);
+        small_text(ui.music_feedback,12,130,w-24,18,&buddy_language_font_14);}
+    else{music_transport_layout(w/2,396,64,52,44,88,170,&buddy_language_font_24,&buddy_language_font_20,&buddy_language_font_16);
+        small_text(ui.music_feedback,12,326,w-24,36,&buddy_language_font_14);}
+}
 #else
 static void compact_layout(void){}
+static void music_focus_layout(bool focus){(void)focus;}
 #endif

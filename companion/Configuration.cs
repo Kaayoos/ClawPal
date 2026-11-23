@@ -20,6 +20,8 @@ public sealed class Configuration
     // Synced lyrics from LRCLIB in the display's Media app. Off unless the user turns it on,
     // because it sends the playing song's title and artist to lrclib.net.
     public bool SyncedLyrics { get; set; }
+    // The display opens its Lyrics view by itself when a song has lyrics. Off by default.
+    public bool LyricsAutoOpen { get; set; }
     // Positive shows each line earlier, negative later; ±LyricsContract.MaxOffsetMs.
     public int LyricsOffsetMs { get; set; }
     public string City { get; set; } = "";

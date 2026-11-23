@@ -251,8 +251,8 @@ lines and their timing travel separately:
    jumps by more than 300 ms (a seek), the clock or the user's timing offset changes, and
    every ten seconds as a safety resync. `anchor` is 0 until the clock has been measured.
    `pos_ms` already includes the user's offset (±1 s, positive is earlier). The display
-   shows each line 120 ms before its time, because a late line is noticed and an early one
-   isn't.
+   lights each line 150 ms before its time, because a late line is noticed and an early one
+   isn't, and slides it into place over about a quarter of a second.
 
 Windows media controls report the player's position only now and then; Spotify reports
 it on play, pause and seek. Each report carries the time it was true, and the PC app
@@ -263,6 +263,12 @@ carries the position forward from it.
 couldn't be reached; the PC app tries again after one minute, then two). A display reads a
 state it doesn't know as `unavailable`. `id` names the document that goes with `synced` or
 `plain`. Until a document with that `id` arrives, the display says it is looking for lyrics.
+
+`"auto_open":true` appears while **Open lyrics by themselves** is on in the PC app (off by
+default). The display then opens its Lyrics view when a new song's lyrics arrive, and closes
+it again for a song with none (`none`, `instrumental` or `unsupported`) if it opened that
+way. A tap on Lyrics decides for the rest of that song. Songs are told apart by title and
+artist.
 
 Older displays ignore `music.lyrics` and answer `404` to `/lyrics` and `/clock`. The PC
 app then stops both for that connection. Older PC apps send no `lyrics`, and the display
