@@ -611,7 +611,7 @@ static int printer_scenes(void)
     bambu(BUDDY_PRINT_PREPARING,0,0,0,0,"");send_stats();live(1400);
     if(buddy_ui_get_state().active_app!=BUDDY_APP_PRINTER||!buddy_ui_get_state().printer_automatic)return 71;save_frame("printer-preparing");
     bambu(BUDDY_PRINT_PRINTING,0,42,6180,118,"");send_stats();live(600);
-    if(!find_label(lv_scr_act(),"42%")||!find_label(lv_scr_act(),"118 / 284"))return 72;save_frame("printer");
+    {char layer[48];snprintf(layer,sizeof(layer),"%s 118 / 284",BT(BT_PRINT_LAYER));if(!find_label(lv_scr_act(),"42")||!find_label(lv_scr_act(),"%")||!find_label(lv_scr_act(),layer))return 72;}save_frame("printer");
     // The chip steps to the next printer and back.
     tap_label(chip(1,2));if(!find_label(lv_scr_act(),"Voron 2.4"))return 73;save_frame("printer-second");tap_label(chip(2,2));
     if(!find_label(lv_scr_act(),"Bambu P1S"))return 74;
