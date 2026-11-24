@@ -646,12 +646,35 @@ static int printer_scenes(void)
     return 0;
 }
 
+/* PC Monitor's pixel PC with fixed readings: flat out, a step later, idle, and the PC offline. */
+static void monitor_reading(float cpu,float cpu_t,float gpu,float gpu_t,float memory,float vram,double rx){
+    send_stats();buddy_stats_t fixed=stats;
+    fixed.cpu_usage=cpu;fixed.cpu_temperature=cpu_t;fixed.gpu_usage=gpu;fixed.gpu_temperature=gpu_t;
+    fixed.memory_usage=memory;fixed.memory_used_mb=memory/100.f*fixed.memory_total_mb;
+    fixed.vram_used_mb=vram/100.f*fixed.vram_total_mb;fixed.network_rx_bps=rx;fixed.network_tx_bps=rx/10;
+    buddy_ui_update_stats(&fixed);
+}
+static int monitor_scenes(void)
+{
+    // Nobody waiting, so no overlay covers the page; wait_ms keeps the simulated feed from replacing the readings.
+    stats.codex.running=stats.claude.running=false;snprintf(stats.claude.activity.items[1].state,16,"completed");send_stats();live(1000);
+    if(!buddy_ui_select_app(BUDDY_APP_MONITOR)||buddy_ui_get_state().needs_you)return 90;
+    monitor_reading(100,93,99,88,91,97,3e7);wait_ms(3000);
+    if(!find_label(lv_scr_act(),"93\xC2\xB0" "C")||!find_label(lv_scr_act(),"88\xC2\xB0" "C"))return 91;save_frame("monitor-busy");
+    wait_ms(140);save_frame("monitor-busy-next");
+    monitor_reading(2,38,1,33,18,4,300);wait_ms(700);save_frame("monitor-idle");
+    buddy_ui_set_connection(BUDDY_PC_OFFLINE,"Home Wi-Fi","192.168.1.40","");wait_ms(400);save_frame("monitor-offline");
+    printf("PASS %dx%d: monitor pixel PC busy, idle and offline\n",W,H);
+    return 0;
+}
+
 int main(int argc,char **argv){
     if(argc<2)return 2;snprintf(out_dir,sizeof(out_dir),"%s",argv[1]);
     for(unsigned i=0;argc>2&&i<BUDDY_THEME_COUNT;++i)if(!strcmp(argv[2],buddy_theme_ids[i]))sim_theme=(uint8_t)i;
     for(unsigned i=0;argc>3&&i<BUDDY_ACCENT_COUNT;++i)if(!strcmp(argv[3],buddy_accent_ids[i]))sim_accent=(uint8_t)i;
     static const uint8_t order[]={0,2,4,7,6};boot(order,5);
     if(argc>4&&!strcmp(argv[4],"printer"))return printer_scenes();
+    if(argc>4&&!strcmp(argv[4],"monitor"))return monitor_scenes();
     music_playing("Golden Hour Drive","Neon Harbor","Coastline Sessions",71,204);send_stats();
     // A task waiting for an answer covers every app; Show on PC asks the companion to bring it forward.
     live(400);if(!buddy_ui_get_state().needs_you||!find_label(lv_scr_act(),BT(BT_CLAUDE_CODE_NEEDS_YOU)))return 40;save_frame("needs-you");

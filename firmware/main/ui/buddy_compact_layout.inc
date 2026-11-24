@@ -73,21 +73,23 @@ static void compact_agent(agent_view_t *view){
     small_text(view->status,12,below,w-24,22,&buddy_language_font_14);lv_obj_set_style_text_align(view->status,LV_TEXT_ALIGN_LEFT,0);
     small_text(view->age,12,below+24,w-24,40,&buddy_language_font_14);lv_obj_set_style_text_align(view->age,LV_TEXT_ALIGN_LEFT,0);
 }
-/* PC Monitor: title and connection on one line, then one card per view: CPU, GPU, both memories,
- * network and the history chart. */
+/* PC Monitor: title and connection on one line, then one view each: the pixel PC beside short CPU
+ * and GPU cards, both memories, network and the history chart. */
 static void tiny_monitor(void){
     int w=BOARD_DISPLAY_WIDTH,body=BOARD_DISPLAY_HEIGHT-44,W=w-24,top=36,view=body-top,card=view-10;
     visible(ui.mascot,false);small_text(ui.monitor_title,12,8,w-160,22,&buddy_language_font_16);
     small_text(ui.status,w-148,10,136,20,&buddy_language_font_14);lv_obj_set_style_text_align(ui.status,LV_TEXT_ALIGN_RIGHT,0);
     place(ui.overview,12,top,W,view);scrollable(ui.overview);lv_obj_set_style_pad_bottom(ui.overview,10,0);
-    channel_layout(&ui.cpu,0,0,W,card,100,&buddy_language_font_24,&buddy_language_font_24);
-    channel_layout(&ui.gpu,0,view,W,card,100,&buddy_language_font_24,&buddy_language_font_24);
+    int art=BUDDY_MONITOR_SCENE_CELLS*2,cards_x=art+12,half=(card-8)/2;
+    buddy_monitor_scene_place(0,(card-art)/2,2);
+    channel_layout(&ui.cpu,cards_x,0,W-cards_x,half,&buddy_language_font_24);
+    channel_layout(&ui.gpu,cards_x,half+8,W-cards_x,half,&buddy_language_font_24);
     int tile=(card-8)/2;
-    tile_layout(0,0,2*view,W,tile);tile_layout(1,0,2*view+tile+8,W,tile);
+    tile_layout(0,0,view,W,tile);tile_layout(1,0,view+tile+8,W,tile);
     for(int i=0;i<2;++i){lv_obj_t *value=i?ui.vram:ui.memory,*bar=i?ui.vram_bar:ui.memory_bar;
         lv_obj_set_y(value,30);lv_obj_set_height(value,26);lv_obj_set_style_text_font(value,&buddy_language_font_20,0);lv_obj_set_y(bar,tile-12);}
-    tile_layout(2,0,3*view,W,card);chart_layout(0,4*view,W,card);
-    lv_obj_t *stops[]={ui.cpu.button,ui.gpu.button,ui.tiles[0],ui.tiles[2],ui.chart_card,ui.game_panel};
+    tile_layout(2,0,2*view,W,card);chart_layout(0,3*view,W,card);
+    lv_obj_t *stops[]={ui.cpu.button,ui.tiles[0],ui.tiles[2],ui.chart_card,ui.game_panel};
     snap_views(ui.overview,stops,sizeof(stops)/sizeof(stops[0]));
 }
 /* Clock: one centred column with large numerals. There is no room for the crab here. */
@@ -142,10 +144,11 @@ static void compact_layout(void){
     if(tiny)tiny_monitor();
     else{
         place(ui.overview,12,56,w-24,body-56);scrollable(ui.overview);
-        // Monitor cards stack full width and scroll; memory tiles pair up.
-        int W=w-24,ch=120,tile=96;
-        channel_layout(&ui.cpu,0,0,W,ch,96,&buddy_language_font_24,&buddy_language_font_24);
-        channel_layout(&ui.gpu,0,ch+10,W,ch,96,&buddy_language_font_24,&buddy_language_font_24);
+        // The pixel PC stands beside the stacked CPU and GPU cards; memory tiles pair up below.
+        int W=w-24,ch=120,tile=96,art=BUDDY_MONITOR_SCENE_CELLS*3,cards_x=art+12;
+        buddy_monitor_scene_place(0,(2*ch+10-art)/2,3);
+        channel_layout(&ui.cpu,cards_x,0,W-cards_x,ch,&buddy_language_font_24);
+        channel_layout(&ui.gpu,cards_x,ch+10,W-cards_x,ch,&buddy_language_font_24);
         int ty=2*ch+20;
         tile_layout(0,0,ty,(W-10)/2,tile);tile_layout(1,(W-10)/2+10,ty,(W-10)/2,tile);tile_layout(2,0,ty+tile+10,W,tile);ty+=2*(tile+10);
         chart_layout(0,ty,W,110);

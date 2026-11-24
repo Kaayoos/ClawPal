@@ -27,6 +27,7 @@
 #include "buddy_audio_page.h"
 #include "buddy_printer_page.h"
 #include "buddy_printer_watch.h"
+#include "buddy_monitor_scene.h"
 #include "buddy_weather_icon.h"
 
 /* Broadcast meter bridge: real channels, shared time, restrained state ink. */
@@ -57,11 +58,12 @@ enum {
     MUSIC_BUTTON_COUNT, MUSIC_SEEK_CONTROL = MUSIC_BUTTON_COUNT, MUSIC_VOLUME_CONTROL, MUSIC_CONTROL_COUNT
 };
 
-/* A tappable CPU or GPU card: load gauge, temperature and model name. */
+/* A tappable CPU or GPU card: load, temperature and model name. The pixel PC beside the cards
+ * shows them at work; a compact card writes the load as a percentage and leaves out the rest. */
 typedef struct {
     lv_obj_t *button;
     lv_obj_t *name;
-    lv_obj_t *gauge;
+    bool compact;
     lv_obj_t *usage;
     lv_obj_t *usage_caption;
     lv_obj_t *temperature;
@@ -1276,6 +1278,7 @@ static void refresh_connection(void)
         ui.gpu.temperature, ui.memory, ui.vram, ui.rx, ui.tx};
     for (unsigned i = 0; i < sizeof(values) / sizeof(values[0]); ++i)
         lv_obj_set_style_text_color(values[i], color(value_ink), 0);
+    buddy_monitor_scene_update(NULL, connected);
     refresh_music();
     refresh_codex(); refresh_claude();
     refresh_footer();
@@ -1327,46 +1330,38 @@ static void create_channel(channel_t *channel, const char *name, bool gpu)
     /* Square looks mark the chosen card with an orange bar along its foot instead of an outline. */
     if (buddy_theme.square) lv_obj_set_style_border_side(channel->button, LV_BORDER_SIDE_BOTTOM, 0);
     lv_obj_add_event_cb(channel->button, channel_clicked, LV_EVENT_CLICKED, gpu ? (void *)1 : NULL);
-    channel->gauge = usage_gauge(channel->button);
-    lv_arc_set_range(channel->gauge, 0, 1000);
-    channel->usage = lv_label_create(channel->gauge);
-    lv_label_set_text(channel->usage, "--");
-    channel->usage_caption = lv_label_create(channel->gauge);
-    lv_label_set_text(channel->usage_caption, BT(BT_LOAD));
-    lv_obj_set_style_text_font(channel->usage_caption, &buddy_language_font_14, 0);
-    lv_obj_set_style_text_color(channel->usage_caption, color(C_MUTED), 0);
     channel->name = text(channel->button, name, 0, 0, 100, &buddy_language_font_20, C_TEXT);
+    channel->usage = text(channel->button, "--", 0, 0, 100, &buddy_language_font_32, C_TEXT);
+    channel->usage_caption = text(channel->button, BT(BT_LOAD), 0, 0, 100, &buddy_language_font_14, C_MUTED);
     channel->temperature = text(channel->button, "--", 0, 0, 100, &buddy_language_font_32, C_TEXT);
     channel->temperature_caption = text(channel->button, BT(BT_TEMPERATURE), 0, 0, 100, &buddy_language_font_14, C_MUTED);
     channel->model = text(channel->button, BT(BT_WAITING_FOR_SENSORS), 0, 0, 100, &buddy_language_font_14, C_MUTED);
 }
 
-/* Card interior: the load gauge on the left, name, temperature and model beside it. */
-static void channel_layout(channel_t *channel, int x, int y, int width, int height, int gauge,
-                           const lv_font_t *usage_font, const lv_font_t *temperature_font)
+/* Card interior: the name, then load and temperature side by side with their captions, and the
+ * model along the foot when the card is tall enough (Details always names it). A card under
+ * 110 pixels keeps the name and the two numbers only. */
+static void channel_layout(channel_t *channel, int x, int y, int width, int height, const lv_font_t *font)
 {
     lv_obj_set_pos(channel->button, x, y);
     lv_obj_set_size(channel->button, width, height);
-    int pad = (height - gauge) / 2, text_x = pad + gauge + 18, text_w = width - text_x - 14;
-    lv_obj_set_pos(channel->gauge, pad, pad);
-    lv_obj_set_size(channel->gauge, gauge, gauge);
-    lv_obj_set_style_arc_width(channel->gauge, gauge / buddy_theme.gauge_div, LV_PART_MAIN);
-    lv_obj_set_style_arc_width(channel->gauge, gauge / buddy_theme.gauge_div, LV_PART_INDICATOR);
-    lv_obj_set_style_text_font(channel->usage, usage_font, 0);
-    lv_obj_align(channel->usage, LV_ALIGN_CENTER, 0, -8);
-    lv_obj_align(channel->usage_caption, LV_ALIGN_CENTER, 0, lv_font_get_line_height(usage_font) / 2 + 2);
-    int temperature_h = lv_font_get_line_height(temperature_font), y_text = pad + 2;
-    lv_obj_set_pos(channel->name, text_x, y_text);
-    lv_obj_set_size(channel->name, text_w, 26);
-    lv_obj_set_pos(channel->temperature, text_x, y_text + 28);
-    lv_obj_set_size(channel->temperature, text_w, temperature_h);
-    lv_obj_set_style_text_font(channel->temperature, temperature_font, 0);
-    lv_obj_set_pos(channel->temperature_caption, text_x, y_text + 28 + temperature_h);
-    lv_obj_set_size(channel->temperature_caption, text_w, 20);
-    /* Shorter compact cards keep the model line and drop the caption. */
-    visible(channel->temperature_caption, height >= 130);
-    lv_obj_set_pos(channel->model, text_x, height - pad - 20);
-    lv_obj_set_size(channel->model, text_w, 20);
+    channel->compact = height < 110;
+    int pad = channel->compact ? 12 : 16, column = (width - 2 * pad) / 2, number_h = lv_font_get_line_height(font);
+    int number_y = channel->compact ? 32 : 44;
+    lv_obj_set_pos(channel->name, pad, channel->compact ? 6 : 12);
+    lv_obj_set_size(channel->name, width - 2 * pad, 26);
+    lv_obj_t *numbers[] = { channel->usage, channel->temperature }, *captions[] = { channel->usage_caption, channel->temperature_caption };
+    for (unsigned i = 0; i < 2; ++i) {
+        lv_obj_set_style_text_font(numbers[i], font, 0);
+        lv_obj_set_pos(numbers[i], pad + (int)i * column, number_y);
+        lv_obj_set_size(numbers[i], column - 8, number_h);
+        lv_obj_set_pos(captions[i], pad + (int)i * column, number_y + number_h);
+        lv_obj_set_size(captions[i], column - 8, 20);
+        visible(captions[i], !channel->compact);
+    }
+    visible(channel->model, height >= 140);
+    lv_obj_set_pos(channel->model, pad, height - pad - 20);
+    lv_obj_set_size(channel->model, width - 2 * pad, 20);
 }
 
 static lv_obj_t *meter_bar(lv_obj_t *parent)
@@ -2887,10 +2882,13 @@ void buddy_ui_init(void)
     rule(ui.monitor_header, 28, 84, 744, 1);
 
     ui.overview = box(ui.screen, 28, 96, 744, 340);
+    /* The pixel PC stands on the page in the top row's first slot, the CPU and GPU cards after it. */
+    buddy_monitor_scene_create(ui.overview);
+    buddy_monitor_scene_place(2, 2, 4);
     create_channel(&ui.cpu, BT(BT_CPU), false);
     create_channel(&ui.gpu, BT(BT_GPU), true);
-    channel_layout(&ui.cpu, 0, 0, 366, 148, 116, &buddy_language_font_32, &buddy_language_font_32);
-    channel_layout(&ui.gpu, 378, 0, 366, 148, 116, &buddy_language_font_32, &buddy_language_font_32);
+    channel_layout(&ui.cpu, 160, 0, 286, 148, &buddy_language_font_32);
+    channel_layout(&ui.gpu, 458, 0, 286, 148, &buddy_language_font_32);
     const char *tile_names[] = { BT(BT_MEMORY), BT(BT_GPU_MEMORY), BT(BT_NETWORK) };
     for (unsigned i = 0; i < 3; ++i) {
         ui.tiles[i] = surface_card(ui.overview, 14);
@@ -3085,12 +3083,11 @@ void buddy_ui_set_connection(buddy_connection_state_t state, const char *ssid,
 static void channel_reading(channel_t *channel, float usage, float temperature, const char *name)
 {
     char buf[32];
-    if (isfinite(usage) && usage >= 0) snprintf(buf, sizeof(buf), "%.0f", fminf(usage, 100));
+    if (isfinite(usage) && usage >= 0) snprintf(buf, sizeof(buf), channel->compact ? "%.0f%%" : "%.0f", fminf(usage, 100));
     else snprintf(buf, sizeof(buf), "--");
     lv_label_set_text(channel->usage, buf);
-    lv_arc_set_value(channel->gauge, isfinite(usage) ? (int16_t)lroundf(fminf(fmaxf(usage, 0), 100) * 10.f) : 0);
-    lv_obj_set_style_arc_color(channel->gauge, color(ui.connection != BUDDY_PC_CONNECTED ? C_MUTED :
-        isfinite(usage) && usage >= 90 ? C_WARNING : C_ACCENT), LV_PART_INDICATOR);
+    lv_obj_set_style_text_color(channel->usage,
+        color(ui.connection != BUDDY_PC_CONNECTED ? C_MUTED : isfinite(usage) && usage >= 90 ? C_WARNING : C_TEXT), 0);
     if (isfinite(temperature)) snprintf(buf, sizeof(buf), "%.0f\xC2\xB0" "C", temperature);
     else snprintf(buf, sizeof(buf), "--");
     lv_label_set_text(channel->temperature, buf);
@@ -3189,6 +3186,7 @@ void buddy_ui_update_stats(const buddy_stats_t *stats)
     lv_label_set_text(ui.host, stats->hostname[0] ? stats->hostname : BT(BT_PAIRED_PC));
     channel_reading(&ui.cpu, stats->cpu_usage, stats->cpu_temperature, stats->cpu_name);
     channel_reading(&ui.gpu, stats->gpu_usage, stats->gpu_temperature, stats->gpu_name);
+    buddy_monitor_scene_update(stats, ui.connection == BUDDY_PC_CONNECTED);
     memory_reading(ui.memory, stats->memory_used_mb, stats->memory_total_mb);
     memory_reading(ui.vram, stats->vram_used_mb, stats->vram_total_mb);
     char buf[64];
