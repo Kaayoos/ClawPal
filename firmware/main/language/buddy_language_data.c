@@ -291,6 +291,7 @@ static const char text_0_print_finished[] = "Finished";
 static const char text_0_print_finished_body[] = "It is ready to come off the plate.";
 static const char text_0_print_finished_title[] = "Print finished";
 static const char text_0_print_layer[] = "Layer";
+static const char text_0_print_left_s[] = "%s left";
 static const char text_0_print_needs_attention[] = "Needs attention";
 static const char text_0_print_no_printers[] = "No printers";
 static const char text_0_print_no_printers_body[] = "Add a printer in ClawPal on your PC. It only reads progress and never controls the printer.";
@@ -768,6 +769,7 @@ static const char text_1_print_finished[] = "Gotowe";
 static const char text_1_print_finished_body[] = "Można go zdjąć z płyty.";
 static const char text_1_print_finished_title[] = "Wydruk gotowy";
 static const char text_1_print_layer[] = "Warstwa";
+static const char text_1_print_left_s[] = "Zostało %s";
 static const char text_1_print_needs_attention[] = "Wymaga uwagi";
 static const char text_1_print_no_printers[] = "Brak drukarek";
 static const char text_1_print_no_printers_body[] = "Dodaj drukarkę w ClawPal na komputerze. Aplikacja tylko odczytuje postęp i nigdy nie steruje drukarką.";
@@ -1247,6 +1249,7 @@ const char *const buddy_language_texts[][BT_COUNT] = {
         text_0_print_finished_body,
         text_0_print_finished_title,
         text_0_print_layer,
+        text_0_print_left_s,
         text_0_print_needs_attention,
         text_0_print_no_printers,
         text_0_print_no_printers_body,
@@ -1726,6 +1729,7 @@ const char *const buddy_language_texts[][BT_COUNT] = {
         text_1_print_finished_body,
         text_1_print_finished_title,
         text_1_print_layer,
+        text_1_print_left_s,
         text_1_print_needs_attention,
         text_1_print_no_printers,
         text_1_print_no_printers_body,

@@ -1,7 +1,9 @@
 # 3D printers
 
-The Printer app shows how your 3D prints are going: the file, a progress ring, the layer, the
-time left, when the print will be done and the nozzle and bed temperatures. When a print the
+The Printer app shows how your 3D prints are going: how far along it is, the file, the time
+left, when the print will be done, the layer and the nozzle and bed temperatures, next to a
+pixel-art printer that builds the part slice by slice. With more than one printer, a switch at
+the top picks which one is shown (on the smallest screen, tap the heading). When a print the
 display has been watching finishes, fails or pauses for filament or an error, a full-screen
 alert covers whatever app is open, like the needs-you alert for Claude Code and Codex. While a
 print runs, the app opens by itself if **automatically open apps** is on.

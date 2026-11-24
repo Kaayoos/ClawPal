@@ -1217,6 +1217,7 @@
     "print_layer": "Warstwa",
     "print_nozzle": "Dysza",
     "print_bed": "Stół",
+    "print_left_s": "Zostało %s",
     "print_done_at_s": "Koniec o %s",
     "print_printing_lu": "Drukuje %lu%%",
     "print_no_printers": "Brak drukarek",

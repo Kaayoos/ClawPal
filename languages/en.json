@@ -1217,6 +1217,7 @@
     "print_layer": "Layer",
     "print_nozzle": "Nozzle",
     "print_bed": "Bed",
+    "print_left_s": "%s left",
     "print_done_at_s": "Done at %s",
     "print_printing_lu": "Printing %lu%%",
     "print_no_printers": "No printers",
@@ -1290,6 +1291,7 @@
       "high_low_units_precipitation_chance",
       "u_of_u_pages",
       "volume_u",
+      "print_left_s",
       "print_done_at_s",
       "print_printing_lu"
     ],

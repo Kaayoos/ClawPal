@@ -597,8 +597,7 @@ static void bambu(buddy_print_state_t state, buddy_print_reason_t reason, unsign
                 state == BUDDY_PRINT_PRINTING || state == BUDDY_PRINT_PREPARING ? 219.6f : 152.0f, state == BUDDY_PRINT_PRINTING || state == BUDDY_PRINT_PREPARING ? 220 : 0,
                 state == BUDDY_PRINT_FINISHED || state == BUDDY_PRINT_FAILED ? 41.0f : 55.0f, state == BUDDY_PRINT_FINISHED || state == BUDDY_PRINT_FAILED ? 0 : 55, error);
 }
-static char chip_text[32];
-static const char *chip(unsigned index, unsigned count){snprintf(chip_text,sizeof(chip_text),"%u / %u  " LV_SYMBOL_RIGHT,index,count);return chip_text;}
+
 static int printer_scenes(void)
 {
     static const uint8_t order[]={0,2,4,7,10};
@@ -611,9 +610,9 @@ static int printer_scenes(void)
     bambu(BUDDY_PRINT_PREPARING,0,0,0,0,"");send_stats();live(1400);
     if(buddy_ui_get_state().active_app!=BUDDY_APP_PRINTER||!buddy_ui_get_state().printer_automatic)return 71;save_frame("printer-preparing");
     bambu(BUDDY_PRINT_PRINTING,0,42,6180,118,"");send_stats();live(600);
-    {char layer[48];snprintf(layer,sizeof(layer),"%s 118 / 284",BT(BT_PRINT_LAYER));if(!find_label(lv_scr_act(),"42")||!find_label(lv_scr_act(),"%")||!find_label(lv_scr_act(),layer))return 72;}save_frame("printer");
-    // The chip steps to the next printer and back.
-    tap_label(chip(1,2));if(!find_label(lv_scr_act(),"Voron 2.4"))return 73;save_frame("printer-second");tap_label(chip(2,2));
+    if(!find_label(lv_scr_act(),"42")||!find_label(lv_scr_act(),"%")||!find_label(lv_scr_act(),"118")||!find_label(lv_scr_act(),"/ 284"))return 72;save_frame("printer");
+    // The switch steps to the next printer and back; the small screen taps the heading instead.
+    tap_label(H<400?"Bambu P1S":"Voron 2.4");if(!find_label(lv_scr_act(),"Voron 2.4"))return 73;save_frame("printer-second");tap_label(H<400?"Voron 2.4":"Bambu P1S");
     if(!find_label(lv_scr_act(),"Bambu P1S"))return 74;
     // The Apps menu gains the Printer tile once the PC reports a printer; Home can carry it too.
     tap(46,H-22,90);live(500);if(!buddy_ui_get_state().menu_open)return 75;save_frame("printer-apps");
