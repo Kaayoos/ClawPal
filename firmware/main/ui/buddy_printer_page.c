@@ -272,8 +272,12 @@ static void draw_printer(lv_event_t *event)
 {
     lv_area_t a;
     lv_obj_get_coords(lv_event_get_target(event), &a);
-    const canvas_t c = { lv_event_get_draw_ctx(event), a.x1, a.y1, SCALE };
-    const buddy_printer_t *p = shown();
+    buddy_printer_draw(lv_event_get_draw_ctx(event), a.x1, a.y1, SCALE, shown());
+}
+
+void buddy_printer_draw(lv_draw_ctx_t *ctx, int x, int y, int scale, const buddy_printer_t *p)
+{
+    const canvas_t c = { ctx, x, y, scale };
     const uint8_t state = p ? p->state : BUDDY_PRINT_OFFLINE;
     const bool live = p && state != BUDDY_PRINT_OFFLINE;
     const uint32_t step = lv_tick_get() / STEP_MS;
