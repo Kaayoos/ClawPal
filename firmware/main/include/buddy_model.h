@@ -30,6 +30,48 @@ typedef enum {
     BUDDY_INSTALL_FAILED,
 } buddy_install_stage_t;
 
+/* What the PC says about the current song's synced lyrics (telemetry music.lyrics). */
+typedef enum {
+    BUDDY_LYRICS_LOADING,      /* still looking, or waiting to measure this display's clock */
+    BUDDY_LYRICS_SYNCED,       /* timed lines in the document named by id */
+    BUDDY_LYRICS_PLAIN,        /* untimed lines in the document named by id */
+    BUDDY_LYRICS_NONE,         /* LRCLIB has nothing for this song */
+    BUDDY_LYRICS_INSTRUMENTAL,
+    BUDDY_LYRICS_UNSUPPORTED,  /* written in letters this display's fonts don't have */
+    BUDDY_LYRICS_UNAVAILABLE,  /* the PC couldn't reach LRCLIB just now */
+} buddy_lyrics_status_t;
+
+/* A reference point: the song was at position_ms when this display's clock (lv_tick_get(), the
+ * same clock GET /clock reports) read at_ms. Between points the display counts on by itself
+ * while playing. anchor rises with each new point and is 0 while there is none. */
+typedef struct {
+    bool present; /* false while lyrics are off in the PC app, or from an older PC app */
+    bool playing;
+    bool auto_open; /* open the Lyrics view by itself when a new song has lyrics */
+    uint8_t status; /* buddy_lyrics_status_t */
+    uint32_t id, anchor, position_ms, at_ms;
+} buddy_lyrics_sync_t;
+
+/* One song's lyrics from POST /lyrics. Lines point into text; a missing line holds letters the
+ * fonts can't draw and shows as a music note. Plain lyrics have every time_ms at 0. */
+#define BUDDY_LYRICS_MAX_LINES 400
+#define BUDDY_LYRICS_LINE_BYTES 256
+#define BUDDY_LYRICS_BODY_MAX 49152
+#define BUDDY_LYRICS_MAX_MS 604800000U
+typedef struct {
+    uint32_t time_ms;
+    uint32_t offset; /* into text, NUL-terminated */
+    bool missing;
+} buddy_lyric_line_t;
+typedef struct {
+    uint32_t id;
+    bool synced;
+    uint16_t count;
+    uint32_t used;
+    buddy_lyric_line_t lines[BUDDY_LYRICS_MAX_LINES];
+    char text[BUDDY_LYRICS_BODY_MAX];
+} buddy_lyrics_t;
+
 typedef struct {
     bool running;
     bool available;
@@ -59,6 +101,7 @@ typedef struct {
     char source[32];
     /* Cover image the companion uploaded to POST /art; 0 when there is none. */
     uint32_t art_id;
+    buddy_lyrics_sync_t lyrics;
 } buddy_music_t;
 
 typedef struct {

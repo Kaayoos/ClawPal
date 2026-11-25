@@ -96,6 +96,18 @@ public static class Protocol
         }
         catch (Exception error) when (error is JsonException or InvalidOperationException or KeyNotFoundException or FormatException or OverflowException) { return null; }
     }
+    // GET /clock answers {"ms":<the display's milliseconds since start, 0..2^32-1>}.
+    public static uint? ParseClock(ReadOnlySpan<byte> payload)
+    {
+        if (payload.Length > 256) return null;
+        try
+        {
+            using var document = JsonDocument.Parse(payload.ToArray());
+            return document.RootElement.ValueKind == JsonValueKind.Object && document.RootElement.TryGetProperty("ms", out var ms) &&
+                ms.TryGetUInt32(out var value) ? value : null;
+        }
+        catch (JsonException) { return null; }
+    }
     public static bool IsLanAddress(IPAddress address)
     {
         var b = address.GetAddressBytes();
@@ -173,7 +185,16 @@ public sealed record ShortcutStats(int Rev, int On);
 public sealed record MusicStats(bool Running, bool Available, string Title, string Artist, string Album, bool Playing,
     long PositionS, long DurationS, bool CanPlayPause, bool CanNext, bool CanPrevious, int ControlId = 0, bool ControlOk = false, string ControlError = "",
     bool CanShuffle = false, bool Shuffle = false, bool CanRepeat = false, int Repeat = 0, bool CanSeek = false,
-    bool CanVolume = false, int Volume = 0, bool Muted = false, int ArtColor = 0, string Source = "", int ArtId = 0);
+    bool CanVolume = false, int Volume = 0, bool Muted = false, int ArtColor = 0, string Source = "", int ArtId = 0,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] LyricsStats? Lyrics = null);
+// Synced lyrics, present only while they are switched on in the PC app. Id names the document
+// uploaded to POST /lyrics (0 while there is none). State is a LyricsContract.Wire name. The
+// reference point says the track was at PosMs when the display's own clock (GET /clock) read
+// AtMs; the display counts on from there while Playing. Anchor rises with each new point, and
+// is 0 until the PC has measured the display's clock. AutoOpen asks the display to open its
+// Lyrics view by itself when a new song has lyrics; it is left out while off.
+public sealed record LyricsStats(int Id, string State, int Anchor, long PosMs, uint AtMs, bool Playing,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)] bool AutoOpen = false);
 public sealed record DeviceControl(int Id, string Action, int Value = 0);
 public sealed record MusicControlResult(int Id, bool Ok, string Error);
 

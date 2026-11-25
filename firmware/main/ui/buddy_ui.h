@@ -90,6 +90,9 @@ void buddy_ui_set_install(buddy_install_stage_t stage, uint32_t received, uint32
 /* Takes ownership of a heap buffer of size x size RGB565 little-endian pixels; the music
  * page shows it while telemetry's music art_id equals `id`. */
 void buddy_ui_set_album_art(uint32_t id, uint16_t size, uint8_t *pixels);
+/* Takes ownership of one song's lyrics from POST /lyrics (heap_caps_malloc); the Media page's
+ * Lyrics view shows them while telemetry's music.lyrics id equals theirs. */
+void buddy_ui_set_lyrics(buddy_lyrics_t *lyrics);
 
 /* A new look is applied by restarting: true when no approval or install is on screen. */
 bool buddy_ui_restart_safe(void);

@@ -6,6 +6,8 @@ buttons, the Apps footer and offline Clock fallback at 800x480, 480x480 and 320x
 `clawpal_sim <dir> <theme> - printer` runs the Printer app on its own: automatic opening, switching printers, the
 Apps tile, the paused, finished and failed alerts and the offline and empty states, with fictional printers.
 It does not emulate the LCD, touch controller, power circuit or PSRAM hardware.
+`clawpal_sim <dir> <theme> - lyrics` runs the Media app's Lyrics view on its own (timing,
+seeks, pauses, plain and missing lyrics); `test-ui.ps1` writes its frames to `frames-lyrics`.
 
 Install Python 3.12 and `python -m pip install --require-hashes -r tests/simulator/requirements.txt`, then run
 `./scripts/test-ui.ps1`. Pass `-Python <path>` when needed. Outputs and PPM snapshots

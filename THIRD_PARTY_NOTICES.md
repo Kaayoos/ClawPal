@@ -70,6 +70,17 @@ Commercial deployments need an appropriate provider arrangement.
 Time zone rules in `companion/Assets/timezones.json` are derived from the
 [IANA tz database](https://www.iana.org/time-zones), which is in the public domain.
 
+## Synced lyrics
+
+Lyrics come from **[LRCLIB](https://lrclib.net/)**, a free, open lyrics database written by
+its community, through its public API. ClawPal asks it only while **Show synced lyrics** is
+switched on in the PC app (off by default), sending the playing song's title, artist,
+album and length, and a User-Agent naming ClawPal and this repository. Lyrics are cached
+on the PC under `%USERPROFILE%\.clawpal\lyrics`. ClawPal doesn't bundle, host or
+redistribute any lyrics. LRCLIB's pages state no license for the lyrics themselves; they
+remain their writers' and publishers' work. The credit "Lyrics: LRCLIB" appears in the
+display's Lyrics view, the Media settings and the companion About page.
+
 ## Windows runtime and flashing
 
 - **.NET 8.0.31**, Microsoft and contributors: [license](LICENSES/dotnet-LICENSE.txt)

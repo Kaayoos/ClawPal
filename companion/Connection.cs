@@ -58,6 +58,15 @@ public sealed class Connection : IDisposable
         _ = gameWorker.ContinueWith(task => Log.Write("Game activity worker stopped: " + task.Exception?.GetBaseException().GetType().Name), TaskContinuationOptions.OnlyOnFaulted);
         var media = new MediaSessions { Enabled=()=>config.DisplaySettings?.Enabled(2)??true };
         var mediaWorker = Task.Run(() => media.RunAsync(shutdown.Token));
+        // Synced lyrics: looked up on LRCLIB only while switched on, and sent to the display once per song.
+        bool LyricsWanted() => config.SyncedLyrics && (config.DisplaySettings?.Enabled(2) ?? true);
+        var lyrics = new LyricsService { Enabled = LyricsWanted };
+        var lyricsWorker = Task.Run(() => lyrics.RunAsync(media, shutdown.Token));
+        _ = lyricsWorker.ContinueWith(task => Log.Write("Lyrics worker stopped: " + task.Exception?.GetBaseException().GetType().Name), TaskContinuationOptions.OnlyOnFaulted);
+        // A play, pause, seek or new song reaches the display at once rather than within a second.
+        void Nudge() { try { if (nudge.CurrentCount == 0) nudge.Release(); } catch (SemaphoreFullException) { } }
+        media.PlaybackChanged += () => { if (LyricsWanted()) Nudge(); };
+        lyrics.Changed += Nudge;
         // Channel IDs outlive a reconnect, so the display's faders keep their places.
         var mixer = new AudioMixer();
         var claude = new ClaudeUsage { Enabled = () => config.DisplaySettings?.Enabled(7) ?? true, LiveUsageEnabled = () => config.ClaudeLiveUsage };
@@ -115,7 +124,16 @@ public sealed class Connection : IDisposable
                 bool artSupported = true;
                 long artRetryAt = 0;
                 Task<bool?>? artTask = null;
-                var receiver = ReceiveAsync(socket, acknowledgements, controls, () => Interlocked.Exchange(ref lastResponse, Stopwatch.GetTimestamp()), attempt.Token);
+                // Lyrics live in the display's memory too. Its clock is measured at connect and
+                // every two minutes after; firmware without /clock or /lyrics stops both.
+                bool lyricsSupported = true;
+                long? clockOffset = null; long clockSyncAt = 0; int sentOffset = config.LyricsOffsetMs;
+                Task<ClockResult>? clockTask = null;
+                var anchors = new LyricsAnchors();
+                int uploadedLyrics = 0;
+                long lyricsRetryAt = 0;
+                Task<bool?>? lyricsTask = null;
+                var receiver =ReceiveAsync(socket, acknowledgements, controls, () => Interlocked.Exchange(ref lastResponse, Stopwatch.GetTimestamp()), attempt.Token);
                 try
                 {
                     while (!attempt.IsCancellationRequested)
@@ -130,9 +148,51 @@ public sealed class Connection : IDisposable
                             if (!shortcutStateLogged) Log.Write("Shortcut state unavailable: " + error);
                             shortcutStateLogged = true;
                         }
+                        if (clockTask is { IsCompleted: true })
+                        {
+                            var clock = await clockTask;
+                            clockTask = null;
+                            if (!clock.Supported) lyricsSupported = false;
+                            else if (clock.OffsetMs is { } measured)
+                            {
+                                // A clock that moved more than a few milliseconds needs a fresh reference point.
+                                if (clockOffset is not { } known || Math.Abs(known - measured) > 15) anchors.Invalidate();
+                                clockOffset = measured;
+                                clockSyncAt = MonotonicClock.NowMs + 120_000;
+                            }
+                            else clockSyncAt = MonotonicClock.NowMs + 10_000;
+                        }
+                        bool lyricsOn = lyricsSupported && LyricsWanted();
+                        // Lyrics' requests wait until the cover, Shortcuts and icons are through: a display
+                        // allows only a few connections, and too many at once can push out the telemetry socket.
+                        bool uploadsIdle = artTask is null && deckTask is null && iconTask is null;
+                        if (lyricsOn && uploadsIdle && clockTask is null && lyricsTask is null && MonotonicClock.NowMs >= clockSyncAt)
+                            clockTask = SyncClockAsync(attempt.Token);
+                        var music = media.Snapshot;
+                        LyricsStats? lyricsStats = null;
+                        LyricsDocument? lyricsDocument = null;
+                        if (lyricsOn && music.Available && media.Playback is { } playback)
+                        {
+                            var found = lyrics.For(playback.TrackKey);
+                            lyricsDocument = found.Document;
+                            int offsetMs = Math.Clamp(config.LyricsOffsetMs, -LyricsContract.MaxOffsetMs, LyricsContract.MaxOffsetMs);
+                            if (offsetMs != sentOffset) { sentOffset = offsetMs; anchors.Invalidate(); }
+                            var state = found.State;
+                            if (clockOffset is { } offset)
+                            {
+                                long pcNow = MonotonicClock.NowMs;
+                                anchors.Update(playback.TrackKey, playback.Playing, playback.PositionAt(DateTimeOffset.UtcNow), pcNow);
+                                lyricsStats = new LyricsStats(lyricsDocument?.Id ?? 0, LyricsContract.Wire(state), anchors.Counter,
+                                    Math.Clamp(anchors.PositionMs + offsetMs, 0, LyricsContract.MaxPositionMs), LyricsContract.DisplayTime(anchors.AtMs, offset), anchors.Playing,
+                                    config.LyricsAutoOpen);
+                            }
+                            // Until the display's clock is known, synced lines can't be placed yet.
+                            else lyricsStats = new LyricsStats(lyricsDocument?.Id ?? 0, LyricsContract.Wire(state == LyricsState.Synced ? LyricsState.Loading : state), 0, 0, 0, playback.Playing,
+                                config.LyricsAutoOpen);
+                        }
                         var sample = metrics.Sample(Interlocked.Increment(ref sequence)) with
                         {
-                            Music = media.Snapshot with { ControlId = controlResult.Id, ControlOk = controlResult.Ok, ControlError = controlResult.Error },
+                            Music = music with { ControlId = controlResult.Id, ControlOk = controlResult.Ok, ControlError = controlResult.Error, Lyrics = lyricsStats },
                             Codex = codex.Snapshot with { Activity = activity.Snapshot },
                             Claude = config.DisplaySettings?.Enabled(7)!=false && Settings.FirmwareVersion.Length>0 && Version.TryParse(Settings.FirmwareVersion,out var firmwareVersion) && firmwareVersion>=new Version(0,7,0) ? claude.Snapshot : null,
                             AutoOpenApps = autoOpenApps,
@@ -175,6 +235,20 @@ public sealed class Connection : IDisposable
                         {
                             uploadedArt = cover.Id;
                             artTask = UploadArtAsync(cover, attempt.Token);
+                        }
+                        if (lyricsTask is { IsCompleted: true })
+                        {
+                            var uploaded = await lyricsTask;
+                            if (uploaded is null) lyricsSupported = false;
+                            else if (uploaded == false) { uploadedLyrics = 0; lyricsRetryAt = Environment.TickCount64 + 30000; }
+                            lyricsTask = null;
+                        }
+                        if (lyricsTask is null && clockTask is null && artTask is null && deckTask is null && iconTask is null &&
+                            lyricsSupported && lyricsStats is not null && lyricsDocument is { } document &&
+                            document.Id != uploadedLyrics && Environment.TickCount64 >= lyricsRetryAt)
+                        {
+                            uploadedLyrics = document.Id;
+                            lyricsTask = UploadLyricsAsync(document, attempt.Token);
                         }
                         if (deckTask is { IsCompleted: true })
                         {
@@ -222,6 +296,8 @@ public sealed class Connection : IDisposable
                     if (artTask is not null) try { await artTask; } catch (OperationCanceledException) { }
                     if (deckTask is not null) try { await deckTask; } catch (OperationCanceledException) { }
                     if (iconTask is not null) try { await iconTask; } catch (OperationCanceledException) { }
+                    if (lyricsTask is not null) try { await lyricsTask; } catch (OperationCanceledException) { }
+                    if (clockTask is not null) try { await clockTask; } catch (OperationCanceledException) { }
                 }
             }
             catch (OperationCanceledException) when (shutdown.IsCancellationRequested) { break; }
@@ -237,6 +313,7 @@ public sealed class Connection : IDisposable
             retrySeconds = Math.Min(10, retrySeconds * 2);
         }
         try { await mediaWorker; } catch (OperationCanceledException) { }
+        try { await lyricsWorker; } catch (OperationCanceledException) { }
         try { await codexWorker; } catch (OperationCanceledException) { }
         try { await claudeWorker; } catch (OperationCanceledException) { }
         try { await activityWorker; } catch (OperationCanceledException) { }
@@ -272,6 +349,62 @@ public sealed class Connection : IDisposable
             return false;
         }
     }
+    // One song's lyrics, sent once; telemetry then only carries reference points. Returns null
+    // when the firmware predates lyrics, so this connection stops trying.
+    private async Task<bool?> UploadLyricsAsync(LyricsDocument document, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var endpoint = await DiscoverAsync(config, cancellationToken);
+            if (endpoint is null) return false;
+            using var http = DeviceAuth.For(endpoint, config.Token).CreateClient(TimeSpan.FromSeconds(10));
+            using var content = new ByteArrayContent(LyricsContract.DisplayJson(document));
+            content.Headers.ContentType = new MediaTypeHeaderValue("application/json");
+            using var response = await http.PostAsync($"http://{endpoint.Address}:{Protocol.MonitorPort}/lyrics", content, cancellationToken);
+            if (response.StatusCode is HttpStatusCode.NotFound or HttpStatusCode.MethodNotAllowed) return null;
+            return response.IsSuccessStatusCode;
+        }
+        catch (Exception error) when (error is IOException or HttpRequestException or SocketException || (error is TaskCanceledException && !cancellationToken.IsCancellationRequested))
+        {
+            Log.Write("Lyrics upload failed: " + error.GetType().Name);
+            return false;
+        }
+    }
+
+    // Measures the display's clock the way NTP does: several signed GET /clock requests on one
+    // kept-alive connection, timed on the PC; the quickest round trip gives the offset. The first
+    // request opens the connection and isn't counted, so its handshake can't skew the midpoint.
+    private async Task<ClockResult> SyncClockAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            var endpoint = await DiscoverAsync(config, cancellationToken);
+            if (endpoint is null) return new(true, null);
+            using var http = DeviceAuth.For(endpoint, config.Token).CreateClient(TimeSpan.FromSeconds(4));
+            var samples = new List<LyricsContract.ClockSample>();
+            for (int i = 0; i < 6; ++i)
+            {
+                long sent = MonotonicClock.NowMs;
+                using var response = await http.GetAsync($"http://{endpoint.Address}:{Protocol.MonitorPort}/clock", cancellationToken);
+                long received = MonotonicClock.NowMs;
+                if (response.StatusCode is HttpStatusCode.NotFound or HttpStatusCode.MethodNotAllowed) return new(false, null);
+                if (!response.IsSuccessStatusCode) break;
+                var display = Protocol.ParseClock(await response.Content.ReadAsByteArrayAsync(cancellationToken));
+                if (display is null) break;
+                if (i > 0) samples.Add(new(sent, display.Value, received));
+            }
+            if (LyricsContract.BestSample(samples) is not { } best) return new(true, null);
+            Log.Write($"Display clock measured: round trip {best.RoundTripMs} ms over {samples.Count} samples.");
+            return new(true, best.OffsetMs);
+        }
+        catch (Exception error) when (error is IOException or HttpRequestException or SocketException || (error is TaskCanceledException && !cancellationToken.IsCancellationRequested))
+        {
+            Log.Write("Display clock measurement failed: " + error.GetType().Name);
+            return new(true, null);
+        }
+    }
+    private readonly record struct ClockResult(bool Supported, long? OffsetMs);
+
     // The deck's looks, then each app tile's own icon. Returns null when the firmware has no
     // Shortcuts, so this connection stops trying, and false when it should try again later.
     private async Task<bool?> UploadShortcutsAsync(ShortcutDeck deck, string displayLanguage, CancellationToken cancellationToken)

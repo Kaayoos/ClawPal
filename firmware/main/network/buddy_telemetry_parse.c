@@ -117,6 +117,30 @@ static bool get_optional_uint32(const cJSON *object, const char *key, uint32_t m
     return true;
 }
 
+/* music.lyrics: absent while lyrics are off. A state this firmware doesn't know reads as
+ * "unavailable" rather than refusing the frame, so a newer PC app can add states. */
+static bool parse_lyrics(const cJSON *music, buddy_lyrics_sync_t *lyrics)
+{
+    memset(lyrics, 0, sizeof(*lyrics));
+    const cJSON *value = cJSON_GetObjectItemCaseSensitive(music, "lyrics");
+    if (!value || cJSON_IsNull(value)) return true;
+    static const char *const states[] = { "loading", "synced", "plain", "none", "instrumental", "unsupported", "unavailable" };
+    char state[32];
+    if (!cJSON_IsObject(value) || !cJSON_IsString(cJSON_GetObjectItemCaseSensitive(value, "state")) ||
+        !copy_json_string(value, "state", state, sizeof(state)) ||
+        !get_optional_uint32(value, "id", INT_MAX, &lyrics->id) ||
+        !get_optional_uint32(value, "anchor", INT_MAX, &lyrics->anchor) ||
+        !get_optional_uint32(value, "pos_ms", BUDDY_LYRICS_MAX_MS, &lyrics->position_ms) ||
+        !get_optional_uint32(value, "at_ms", UINT32_MAX, &lyrics->at_ms) ||
+        !get_optional_boolean(value, "playing", &lyrics->playing) ||
+        !get_optional_boolean(value, "auto_open", &lyrics->auto_open)) return false;
+    lyrics->status = BUDDY_LYRICS_UNAVAILABLE;
+    for (unsigned i = 0; i < sizeof(states) / sizeof(states[0]); ++i)
+        if (strcmp(state, states[i]) == 0) lyrics->status = (uint8_t)i;
+    lyrics->present = true;
+    return true;
+}
+
 static bool parse_music(const cJSON *root, buddy_music_t *music)
 {
     memset(music, 0, sizeof(*music));
@@ -147,7 +171,8 @@ static bool parse_music(const cJSON *root, buddy_music_t *music)
            get_optional_boolean(value, "muted", &music->muted) &&
            get_optional_uint32(value, "art_color", 0xFFFFFF, &music->art_color) &&
            copy_json_string(value, "source", music->source, sizeof(music->source)) &&
-           get_optional_uint32(value, "art_id", INT_MAX, &music->art_id);
+           get_optional_uint32(value, "art_id", INT_MAX, &music->art_id) &&
+           parse_lyrics(value, &music->lyrics);
 }
 
 static bool parse_codex_window(const cJSON *codex, const char *key, buddy_codex_window_t *window)

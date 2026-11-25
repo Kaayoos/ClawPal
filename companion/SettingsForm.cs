@@ -15,7 +15,8 @@ internal sealed partial class SettingsForm : ClawWindow
     private readonly DeviceSettingsClient wireless;
     private DeviceSettings draft;
     private string pcLanguage;
-    private bool fps, auto, startup, paused, claudeLive, deviceDirty, pcDirty, saving, shortcutsDirty;
+    private bool fps, auto, startup, paused, claudeLive, lyricsOn, lyricsAuto, deviceDirty, pcDirty, saving, shortcutsDirty;
+    private int lyricsOffset;
     private ShortcutDeck shortcutDeck;
     private readonly bool preview;
     private readonly ClawScrollPanel pages = new() { Dock = DockStyle.Fill, Padding = new Padding(36, 6, 24, 32) };
@@ -42,7 +43,7 @@ internal sealed partial class SettingsForm : ClawWindow
     internal SettingsForm(Configuration config, Connection connection, bool preview = false)
     {
         this.config = config; this.connection = connection; pcLanguage = L.Normalize(config.CompanionLanguage); this.preview = preview; wireless = connection.Settings;
-        draft = config.DisplaySettings ?? DeviceSettings.FromConfiguration(config); shortcutDeck = config.Shortcuts ?? ShortcutDeck.Starter(draft.Language); fps = config.TrackFps; auto = config.AutoOpenApps; paused = config.Paused; claudeLive = config.ClaudeLiveUsage; startup = !preview && Startup.Enabled;
+        draft = config.DisplaySettings ?? DeviceSettings.FromConfiguration(config); shortcutDeck = config.Shortcuts ?? ShortcutDeck.Starter(draft.Language); fps = config.TrackFps; auto = config.AutoOpenApps; paused = config.Paused; claudeLive = config.ClaudeLiveUsage; lyricsOn = config.SyncedLyrics; lyricsAuto = config.LyricsAutoOpen; lyricsOffset = config.LyricsOffsetMs; startup = !preview && Startup.Enabled;
         L.SetVariant(draft.Theme);
         Text = L.Text("clawpal_your_desk_companion"); ClientSize = new(1140, 800); AutoScaleMode = AutoScaleMode.Dpi;
         using (var stream = typeof(SettingsForm).Assembly.GetManifestResourceStream("ClawPal.Companion.CrabIcon")) if (stream is not null) Icon = new Icon(stream);
@@ -198,7 +199,7 @@ internal sealed partial class SettingsForm : ClawWindow
         about.Add(Row(520, (Link("minimalpulse.com", "https://minimalpulse.com/"), 0), (Link("github.com/Kaayoos/clawpal", "https://github.com/Kaayoos/clawpal"), 0)), 16);
         about.Add(ClawTheme.Label(L.Text("about_license"), 400, ClawTheme.Body, false, 22));
         var credits = p.Add(new ClawSection(L.Text("about_credits_title")));
-        credits.Add(ClawTheme.Label(L.Text("about_weather"), 400, ClawTheme.Body, false, 20)); credits.Add(ClawTheme.Label(L.Text("about_tools"), 400, ClawTheme.Body, false, 20)); credits.Add(Note(L.Text("about_marks")), 16);
+        credits.Add(ClawTheme.Label(L.Text("about_weather"), 400, ClawTheme.Body, false, 20)); credits.Add(ClawTheme.Label(L.Text("about_tools"), 400, ClawTheme.Body, false, 20)); credits.Add(ClawTheme.Label(L.Text("about_lyrics"), 400, ClawTheme.Body, false, 20)); credits.Add(Note(L.Text("about_marks")), 16);
         var licenses = new ClawButton { Text = L.Text("open_licenses") };
         licenses.Click += (_, _) => { if (preview) return; Installer.PreparePayload(); Process.Start(new ProcessStartInfo(Path.Combine(Installer.PayloadPath, "licenses", "THIRD_PARTY_NOTICES.txt")) { UseShellExecute = true }); };
         credits.Add(Row(0, (licenses, 230)));
@@ -292,6 +293,7 @@ internal sealed partial class SettingsForm : ClawWindow
                 options.Add(Switch(L.Text("track_game_fps_in_pc_monitor"), fps, value => { fps = value; Dirty(false); }), 2);
                 options.Add(Note(L.Text("uses_windows_frame_events_through_presentmon_game_files_stay")));
             }
+            else if (app.Id == 2) LyricsOptions(options);
             else if (app.Id == 7) ClaudeOptions(options);
             else if (app.Id == 9) options.Add(Note(L.Text("audio_app_note")));
             else if (app.Id == 10) { var edit = new ClawButton { Text = L.Text("manage_printers") }; edit.Click += (_, _) => ShowPage(SettingsPage.Printers); options.Add(Row(0, (edit, 230))); }
@@ -301,6 +303,25 @@ internal sealed partial class SettingsForm : ClawWindow
             else options.Dispose();
         }
         p.Add(Note(L.Text("turning_an_app_off_also_removes_its_home_shortcut")));
+    }
+    /* Synced lyrics: off until asked for, with what it sends and to whom said beside the switch. */
+    private void LyricsOptions(ClawStack card)
+    {
+        var timing = new ClawSlider
+        {
+            Minimum = -LyricsContract.MaxOffsetMs / 10, Maximum = LyricsContract.MaxOffsetMs / 10,
+            Format = value => (value / 100.0).ToString("+0.00;-0.00;0.00", System.Globalization.CultureInfo.CurrentCulture) + " s",
+            AccessibleName = L.Text("lyrics_timing_value"), Enabled = lyricsOn,
+        };
+        timing.Value = Math.Clamp(lyricsOffset, -LyricsContract.MaxOffsetMs, LyricsContract.MaxOffsetMs) / 10;
+        timing.ValueChanged += (_, _) => { lyricsOffset = timing.Value * 10; Dirty(false); };
+        var automatic = Switch(L.Text("lyrics_auto_open"), lyricsAuto, value => { lyricsAuto = value; Dirty(false); });
+        automatic.Enabled = lyricsOn;
+        card.Add(Switch(L.Text("synced_lyrics"), lyricsOn, value => { lyricsOn = value; timing.Enabled = automatic.Enabled = value; Dirty(false); }), 2);
+        card.Add(Note(L.Text("synced_lyrics_description")), 14);
+        card.Add(automatic, 2);
+        card.Add(Note(L.Text("lyrics_auto_open_note")), 14);
+        card.Add(Column(Caption(L.Text("lyrics_timing")), timing, Note(L.Text("lyrics_timing_note"))));
     }
     private void ClaudeOptions(ClawStack card)
     {
@@ -578,7 +599,7 @@ internal sealed partial class SettingsForm : ClawWindow
         {
             draft.Validate(); shortcutDeck.Validate();
             if (preview) { deviceDirty = pcDirty = shortcutsDirty = false; status.Text = L.Text("preview_only_no_settings_changed"); SetMoment("happy"); return; }
-            if (pcDirty) { Startup.Set(startup); config.TrackFps = fps; config.AutoOpenApps = auto; config.Paused = paused; config.ClaudeLiveUsage = claudeLive; config.CompanionLanguage = pcLanguage; config.Save(); L.SetLanguage(pcLanguage); connection.SetAutoOpenApps(auto); connection.SetPaused(paused); pcDirty = false; }
+            if (pcDirty) { Startup.Set(startup); config.TrackFps = fps; config.AutoOpenApps = auto; config.Paused = paused; config.ClaudeLiveUsage = claudeLive; config.SyncedLyrics = lyricsOn; config.LyricsAutoOpen = lyricsAuto; config.LyricsOffsetMs = lyricsOffset; config.CompanionLanguage = pcLanguage; config.Save(); L.SetLanguage(pcLanguage); connection.SetAutoOpenApps(auto); connection.SetPaused(paused); pcDirty = false; }
             if (shortcutsDirty) { config.SetShortcuts(shortcutDeck); connection.ShortcutsChanged(); shortcutsDirty = false; }
             if (deviceDirty) { config.SetDisplaySettings(draft); deviceDirty = false; }
             if (config.SettingsPending) { using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(16)); await wireless.SyncAsync(timeout.Token); }
@@ -594,6 +615,14 @@ internal sealed partial class SettingsForm : ClawWindow
         ClawTheme.Still = true; Directory.CreateDirectory(directory); Show(); Application.DoEvents();
         void Capture(string name) { Application.DoEvents(); using var bitmap = new Bitmap(Width, Height); DrawToBitmap(bitmap, new Rectangle(Point.Empty, Size)); bitmap.Save(Path.Combine(directory, name + ".png"), ImageFormat.Png); }
         for (int i = 0; i <= (int)SettingsPage.About; i++) { ShowPage((SettingsPage)i); Capture($"settings-{i}"); if (pages.MaximumOffset > 0) { pages.ScrollTo(pages.MaximumOffset); Capture($"settings-{i}-end"); } }
+        // Media's synced lyrics, which sit midway down Apps.
+        ShowPage(SettingsPage.Apps);
+        Control? Find(Control root, string text) { if (root.Text == text) return root; foreach (Control child in root.Controls) if (Find(child, text) is { } found) return found; return null; }
+        if (Find(pages.Content, L.Text("synced_lyrics")) is { } lyricsSwitch)
+        {
+            int top = pages.Content.PointToClient(lyricsSwitch.PointToScreen(Point.Empty)).Y;
+            pages.ScrollTo(Math.Clamp(top - 160, 0, pages.MaximumOffset)); Capture("apps-lyrics");
+        }
         foreach (var size in new[] { new Size(960, 680), new Size(1600, 900) }) { ClientSize = size; ShowPage(SettingsPage.Home); Capture($"home-{size.Width}"); }
         WindowState = FormWindowState.Maximized; ShowPage(SettingsPage.Home); Capture("home-maximized"); WindowState = FormWindowState.Normal; ClientSize = new(1140, 800);
         foreach (var size in new[] { new Size(960, 680), new Size(1140, 800) }) { ClientSize = size; ShowPage(SettingsPage.Apps); Application.DoEvents(); pages.ScrollTo(pages.MaximumOffset); Capture($"claude-{size.Width}"); }

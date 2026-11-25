@@ -9,6 +9,14 @@ namespace ClawPal.Companion;
 // A small square cover for the display: RGB565 little-endian, Size x Size pixels.
 public sealed record AlbumCover(int Id, int Size, byte[] Pixels);
 
+// The player's own report of where it is, to the millisecond, and when that was true. Synced
+// lyrics carry it forward with LyricsContract.PositionAt instead of trusting a once-a-second poll.
+public sealed record PlaybackReport(string Title, string Artist, string Album, long DurationMs, long PositionMs, DateTimeOffset ReportedAt, bool Playing, double Rate)
+{
+    public string TrackKey => LyricsContract.TrackKey(Title, Artist, Album);
+    public long PositionAt(DateTimeOffset now) => LyricsContract.PositionAt(PositionMs, ReportedAt, Playing, Rate, now, DurationMs);
+}
+
 // Windows SMTC is local and needs no player account or cloud API. Any player that
 // publishes a Windows media session works: Spotify, Apple Music, TIDAL, browsers and more.
 public sealed class MediaSessions
@@ -23,8 +31,17 @@ public sealed class MediaSessions
     private int artColor, artAttempts;
     private AlbumCover? cover;
     private string? audioProcess;
+    private PlaybackReport? playback;
+    // Set by the current session's change events, so play, pause, seek and skip are seen at once.
+    private readonly SemaphoreSlim changed = new(0, 1);
+    private GlobalSystemMediaTransportControlsSession? watched;
+    private string watchedId = "";
     public MusicStats Snapshot => Volatile.Read(ref snapshot);
     public AlbumCover? Cover => Volatile.Read(ref cover);
+    // Null while nothing is playing or paused in a Windows media session.
+    public PlaybackReport? Playback => Volatile.Read(ref playback);
+    // Raised after a refresh that found a new track, a play or pause, or a jump in position.
+    public event Action? PlaybackChanged;
     public string ProviderStatus => providerStatus;
     private static MusicStats Empty(bool running) => new(running, false, "", "", "", false, 0, 0, false, false, false);
 
@@ -42,9 +59,50 @@ public sealed class MediaSessions
                 providerStatus = failure;
                 manager = null;
                 Volatile.Write(ref snapshot, Empty(false));
+                SetPlayback(null);
             }
-            await Task.Delay(1000, cancellationToken);
+            // Once a second, or sooner when the player says something changed; never more than
+            // about six times a second, whatever a player's events do.
+            await changed.WaitAsync(1000, cancellationToken);
+            await Task.Delay(150, cancellationToken);
         }
+    }
+
+    private void Signal() { try { if (changed.CurrentCount == 0) changed.Release(); } catch (SemaphoreFullException) { } }
+    private void OnSessionChanged<T>(GlobalSystemMediaTransportControlsSession sender, T args) => Signal();
+    private void Watch(GlobalSystemMediaTransportControlsSession? session)
+    {
+        string id = session?.SourceAppUserModelId ?? "";
+        if (id == watchedId && session is not null) return;
+        try
+        {
+            if (watched is not null)
+            {
+                watched.PlaybackInfoChanged -= OnSessionChanged;
+                watched.TimelinePropertiesChanged -= OnSessionChanged;
+                watched.MediaPropertiesChanged -= OnSessionChanged;
+            }
+        }
+        catch (Exception error) when (error is COMException or InvalidOperationException) { }
+        watched = session; watchedId = id;
+        if (session is null) return;
+        try
+        {
+            session.PlaybackInfoChanged += OnSessionChanged;
+            session.TimelinePropertiesChanged += OnSessionChanged;
+            session.MediaPropertiesChanged += OnSessionChanged;
+        }
+        catch (Exception error) when (error is COMException or InvalidOperationException) { watched = null; watchedId = ""; }
+    }
+
+    private void SetPlayback(PlaybackReport? next)
+    {
+        var previous = Volatile.Read(ref playback);
+        Volatile.Write(ref playback, next);
+        var now = DateTimeOffset.UtcNow;
+        bool moved = previous is null != next is null || (previous is not null && next is not null &&
+            (previous.TrackKey != next.TrackKey || previous.Playing != next.Playing || Math.Abs(previous.PositionAt(now) - next.PositionAt(now)) > LyricsAnchors.JumpMs));
+        if (moved) PlaybackChanged?.Invoke();
     }
 
     public async Task<MusicStats> RefreshAsync(CancellationToken cancellationToken)
@@ -53,6 +111,8 @@ public sealed class MediaSessions
         {
             providerStatus = "Music is turned off.";
             Volatile.Write(ref snapshot, Empty(false));
+            Watch(null);
+            SetPlayback(null);
             return Snapshot;
         }
         try
@@ -68,8 +128,11 @@ public sealed class MediaSessions
                     providerStatus = "No player has a Windows media session.";
                     audioProcess = null;
                     Volatile.Write(ref snapshot, Empty(false));
+                    Watch(null);
+                    SetPlayback(null);
                     return Snapshot;
                 }
+                Watch(session);
                 var appId = session.SourceAppUserModelId;
                 var media = await session.TryGetMediaPropertiesAsync().AsTask(timeout.Token);
                 var playback = session.GetPlaybackInfo();
@@ -77,12 +140,12 @@ public sealed class MediaSessions
                 var playing = playback.PlaybackStatus == GlobalSystemMediaTransportControlsSessionPlaybackStatus.Playing;
                 double position = (timeline.Position - timeline.StartTime).TotalSeconds;
                 var duration = MusicContract.Seconds((timeline.EndTime - timeline.StartTime).TotalSeconds);
-                if (playing && timeline.LastUpdatedTime >= DateTimeOffset.UnixEpoch)
-                {
-                    var elapsed = Math.Max(0, (DateTimeOffset.UtcNow - timeline.LastUpdatedTime).TotalSeconds);
-                    var rate = playback.PlaybackRate ?? 1;
-                    if (double.IsFinite(rate) && rate > 0) position += elapsed * rate;
-                }
+                var sampledAt = DateTimeOffset.UtcNow;
+                // A player that leaves LastUpdatedTime unset (or in the future) reports "now".
+                var reportedAt = timeline.LastUpdatedTime >= DateTimeOffset.UnixEpoch && timeline.LastUpdatedTime <= sampledAt ? timeline.LastUpdatedTime : sampledAt;
+                var rate = playback.PlaybackRate ?? 1;
+                if (!double.IsFinite(rate) || rate <= 0) rate = 1;
+                if (playing) position += Math.Max(0, (sampledAt - reportedAt).TotalSeconds) * rate;
                 var controls = playback.Controls;
                 var canPlayPause = controls.IsPlayPauseToggleEnabled || (playing ? controls.IsPauseEnabled : controls.IsPlayEnabled);
                 var shuffle = playback.IsShuffleActive;
@@ -100,6 +163,9 @@ public sealed class MediaSessions
                     ArtColor: artColor, Source: MusicContract.SourceName(appId), ArtId: Cover?.Id ?? 0);
                 providerStatus = "Windows media session available: " + sampled.Source;
                 Volatile.Write(ref snapshot, sampled);
+                long durationMs = (long)Math.Clamp((timeline.EndTime - timeline.StartTime).TotalMilliseconds, 0, LyricsContract.MaxPositionMs);
+                long reportedMs = (long)Math.Clamp((timeline.Position - timeline.StartTime).TotalMilliseconds, 0, LyricsContract.MaxPositionMs);
+                SetPlayback(new PlaybackReport(sampled.Title, sampled.Artist, sampled.Album, durationMs, reportedMs, reportedAt, playing, rate));
                 return sampled;
             }
             finally { mediaGate.Release(); }
@@ -110,6 +176,7 @@ public sealed class MediaSessions
             manager = null;
             providerStatus = "Windows media data unavailable: " + error.GetType().Name;
             Volatile.Write(ref snapshot, Empty(false));
+            SetPlayback(null);
             return Snapshot;
         }
     }

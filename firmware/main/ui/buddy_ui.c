@@ -28,6 +28,7 @@
 #include "buddy_printer_page.h"
 #include "buddy_printer_watch.h"
 #include "buddy_monitor_scene.h"
+#include "buddy_lyrics_view.h"
 #include "buddy_weather_icon.h"
 
 /* Broadcast meter bridge: real channels, shared time, restrained state ink. */
@@ -123,6 +124,11 @@ static struct {
     lv_obj_t *apps_button, *apps_text, *nav_button;
     lv_obj_t *chooser_title, *app_rows[BUDDY_APP_COUNT], *app_names[BUDDY_APP_COUNT], *app_description[BUDDY_APP_COUNT];
     lv_obj_t *music_link, *music_link_title, *music_link_bars[3];
+    /* The Lyrics button, offered while the PC has synced lyrics switched on. */
+    lv_obj_t *music_lyrics_button, *music_lyrics_caption;
+    lv_coord_t music_status_x, music_heading_w;
+    bool music_lyrics_offered, music_focus, music_lyrics_auto_opened;
+    uint32_t music_lyrics_song; /* the song whose lyrics auto-open last decided for, or a tap did */
     lv_obj_t *timer_link, *timer_link_title, *timer_link_progress;
     lv_obj_t *app_transition, *transition_image;
     lv_obj_t *host, *clock, *date, *status, *dot;
@@ -211,6 +217,8 @@ static void refresh_footer(void);
 static void chooser_layout(void);
 static void maybe_auto_app(void);
 static void refresh_music(void);
+static void music_lyrics_style(void);
+static void music_focus_layout(bool focus);
 static lv_obj_t *usage_gauge(lv_obj_t *parent);
 static lv_obj_t *surface_card(lv_obj_t *parent, int radius);
 static lv_obj_t *progress_bar(lv_obj_t *parent, int x, int y, int width);
@@ -1011,6 +1019,8 @@ static void refresh_footer(void)
         if (view_settings.show_version) snprintf(buf, sizeof(buf), BT(BT_CLAWPAL_VERSION), esp_app_get_description()->version);
     } else if (ui.active_app == BUDDY_APP_WEATHER) {
         snprintf(buf, sizeof(buf), "%s", BT(BT_WEATHER_BY_OPEN_METEO));
+    } else if (ui.active_app == BUDDY_APP_MUSIC && buddy_lyrics_view_is_open()) {
+        snprintf(buf, sizeof(buf), "%s", BT(BT_LYRICS_CREDIT));
     } else if (shortcut) {
     } else if (ui.active_app == BUDDY_APP_CODEX) {
         if (!ui.codex.tasks_selected && codex_stale()) snprintf(buf, sizeof(buf), "%s", BT(BT_SAVED_LIMITS_WAITING_FOR_AN_UPDATE));
@@ -1027,7 +1037,8 @@ static void refresh_footer(void)
     if(BOARD_DISPLAY_WIDTH<800){
         lv_obj_set_pos(ui.footer,104,BOARD_DISPLAY_HEIGHT-30);lv_obj_set_width(ui.footer,BOARD_DISPLAY_WIDTH-208);
         /* The smallest footer has room only for the short hints: the menu's and Home's version. */
-        bool hint=BOARD_DISPLAY_HEIGHT>=400||ui.menu_open||ui.active_app==BUDDY_APP_HOME;
+        bool hint=BOARD_DISPLAY_HEIGHT>=400||ui.menu_open||ui.active_app==BUDDY_APP_HOME||
+            (ui.active_app==BUDDY_APP_MUSIC&&buddy_lyrics_view_is_open());
         visible(ui.footer,!monitor&&!shortcut&&hint);visible(ui.timer_link,shortcut&&!monitor);
     }
     /* On the case's rail the footer speaks in the case's own dark ink. */
@@ -1581,6 +1592,7 @@ static void apply_music_accent(uint32_t accent)
     for (unsigned i = 0; i < 3; ++i) lv_obj_set_style_bg_color(ui.music_eq_bars[i], ink, 0);
     for (unsigned i = 0; i < 2; ++i) lv_obj_set_style_bg_color(ui.music_toggle_dots[i], ink, 0);
     lv_obj_set_style_bg_color(ui.music_repeat_one, ink, 0);
+    music_lyrics_style();
 }
 
 /* Titles wrap up to the layout's line limit; artist and album follow directly.
@@ -1624,6 +1636,95 @@ static void music_volume_text(uint32_t volume)
     set_label_if_changed(ui.music_volume_label, buffer);
 }
 
+/* The Lyrics button: quiet on the page, filled with the track's colour while lyrics are open. */
+static void music_lyrics_style(void)
+{
+    if (!ui.music_lyrics_button) return;
+    bool open = buddy_lyrics_view_is_open();
+    lv_obj_set_style_bg_color(ui.music_lyrics_button, color(open ? ui.music_accent : BUDDY_COLOR_SURFACE), 0);
+    lv_obj_set_style_text_color(ui.music_lyrics_caption, color(open ? C_BG : C_TEXT), 0);
+}
+
+/* Lyrics take the place of the cover and the track's details. The wide screen keeps every
+ * control; the smaller ones keep only the transport, so the lines have the page. */
+static void music_lyrics_open(bool open)
+{
+    buddy_lyrics_view_set_open(open);
+    visible(ui.music_meta, !open);
+    /* The smallest screen has no cover to bring back. */
+    if (BOARD_DISPLAY_HEIGHT >= 400) visible(ui.music_cover, !open);
+    bool focus = open && BOARD_DISPLAY_WIDTH < 800;
+    if (focus != ui.music_focus) {
+        ui.music_focus = focus;
+        music_focus_layout(focus);
+    }
+    music_lyrics_style();
+    /* The footer carries the lyrics' credit while they are open. */
+    refresh_footer();
+}
+
+/* A song is known by its title and artist; lyrics found later for the same song keep its choice. */
+static uint32_t music_song_key(const buddy_music_t *music)
+{
+    uint32_t hash = 2166136261U;
+    for (const char *p = music->title; *p; ++p) hash = (hash ^ (uint8_t)*p) * 16777619U;
+    hash = (hash ^ 0x1FU) * 16777619U;
+    for (const char *p = music->artist; *p; ++p) hash = (hash ^ (uint8_t)*p) * 16777619U;
+    return hash ? hash : 1U;
+}
+
+/* With auto-open on in the PC app, a new song's lyrics open by themselves once they arrive, and
+ * close again whenever the song turns out to have none, if they opened that way: auto-open
+ * never leaves "No lyrics found" on screen. A tap decides for the rest of the song, and a song
+ * opens by itself at most once, so lyrics that come and go can't make the view flap. */
+static void music_lyrics_auto(const buddy_music_t *music)
+{
+    uint32_t song = music_song_key(music);
+    bool open = buddy_lyrics_view_is_open();
+    const uint8_t status = music->lyrics.status;
+    bool none = status == BUDDY_LYRICS_NONE || status == BUDDY_LYRICS_INSTRUMENTAL || status == BUDDY_LYRICS_UNSUPPORTED;
+    if (buddy_lyrics_view_ready() && song != ui.music_lyrics_song) {
+        ui.music_lyrics_song = song;
+        if (!open) { music_lyrics_open(true); ui.music_lyrics_auto_opened = true; }
+    } else if (none && open && ui.music_lyrics_auto_opened) {
+        ui.music_lyrics_song = song;
+        ui.music_lyrics_auto_opened = false;
+        music_lyrics_open(false);
+    }
+}
+
+/* Offering lyrics makes room for the button: the status moves to its left and the heading
+ * gives way. Without lyrics nothing on the page moves at all. */
+static void music_lyrics_offer(bool offered)
+{
+    ui.music_lyrics_offered = offered;
+    visible(ui.music_lyrics_button, offered);
+    lv_obj_update_layout(ui.music_page);
+    if (offered) {
+        ui.music_status_x = lv_obj_get_x(ui.music_status);
+        ui.music_heading_w = lv_obj_get_width(ui.music_heading);
+        lv_coord_t x = lv_obj_get_x(ui.music_lyrics_button) - 8 - lv_obj_get_width(ui.music_status);
+        lv_obj_set_x(ui.music_status, x);
+        /* The wide heading moves right when the Spotify logo appears; leave room for that. */
+        lv_coord_t room = x - lv_obj_get_x(ui.music_heading) - 8 - (BOARD_DISPLAY_WIDTH >= 800 ? 56 : 0);
+        lv_obj_set_width(ui.music_heading, LV_MIN(ui.music_heading_w, LV_MAX(40, room)));
+    } else {
+        lv_obj_set_x(ui.music_status, ui.music_status_x);
+        lv_obj_set_width(ui.music_heading, ui.music_heading_w);
+        if (buddy_lyrics_view_is_open()) music_lyrics_open(false);
+    }
+}
+
+static void music_lyrics_clicked(lv_event_t *event)
+{
+    (void)event;
+    if (!ui.music_lyrics_offered) return;
+    ui.music_lyrics_song = music_song_key(&ui.stats.music);
+    ui.music_lyrics_auto_opened = false;
+    music_lyrics_open(!buddy_lyrics_view_is_open());
+    refresh_music();
+}
+
 static void refresh_music(void)
 {
     if (!ui.music_page) return;
@@ -1631,6 +1732,11 @@ static void refresh_music(void)
     bool connected = music_connected(), live = connected && music->running && music->available;
     uint32_t accent = live && music->art_color ? music->art_color : C_ACCENT;
     if (accent != ui.music_accent) apply_music_accent(accent);
+    /* Lyrics are offered only while the PC has them switched on and a track is live. */
+    bool offered = live && music->lyrics.present && ui.music_lyrics_button;
+    if (offered != ui.music_lyrics_offered) music_lyrics_offer(offered);
+    if (offered) buddy_lyrics_view_update(&music->lyrics, music->title, music->artist);
+    if (offered && music->lyrics.auto_open) music_lyrics_auto(music);
     /* Any Windows player can fill this page; only Spotify gets its logo. */
     bool spotify = strcmp(music->source, "Spotify") == 0;
     buddy_app_icons_set_spotify(live && spotify);
@@ -1693,8 +1799,9 @@ static void refresh_music(void)
 
     set_label_if_changed(ui.music_button_labels[MUSIC_PLAY_BUTTON], live && music->playing ? LV_SYMBOL_PAUSE : LV_SYMBOL_PLAY);
     for (unsigned i = 0; i < MUSIC_BUTTON_COUNT; ++i) button_enabled(ui.music_buttons[i], music_control_available(i));
-    visible(ui.music_buttons[MUSIC_SHUFFLE_BUTTON], live && music->can_shuffle);
-    visible(ui.music_buttons[MUSIC_REPEAT_BUTTON], live && music->can_repeat);
+    /* With lyrics open on a smaller screen only the transport stays beside them. */
+    visible(ui.music_buttons[MUSIC_SHUFFLE_BUTTON], live && music->can_shuffle && !ui.music_focus);
+    visible(ui.music_buttons[MUSIC_REPEAT_BUTTON], live && music->can_repeat && !ui.music_focus);
     lv_obj_set_style_text_color(ui.music_button_labels[MUSIC_SHUFFLE_BUTTON], color(music->shuffle ? accent : C_MUTED), 0);
     lv_obj_set_style_text_color(ui.music_button_labels[MUSIC_REPEAT_BUTTON], color(music->repeat ? accent : C_MUTED), 0);
     visible(ui.music_toggle_dots[0], music->shuffle);
@@ -1702,9 +1809,9 @@ static void refresh_music(void)
     visible(ui.music_repeat_one, music->repeat == 1);
 
     bool mixer = live && music->can_volume;
-    visible(ui.music_buttons[MUSIC_MUTE_BUTTON], mixer);
-    visible(ui.music_volume, mixer);
-    visible(ui.music_volume_label, mixer);
+    visible(ui.music_buttons[MUSIC_MUTE_BUTTON], mixer && !ui.music_focus);
+    visible(ui.music_volume, mixer && !ui.music_focus);
+    visible(ui.music_volume_label, mixer && !ui.music_focus);
     uint32_t volume = music->volume > 100 ? 100 : music->volume;
     if (ui.music_volume_hold) {
         if (!mixer || volume == ui.music_volume_target || lv_tick_elaps(ui.music_volume_tick) >= MUSIC_HOLD_MS) ui.music_volume_hold = false;
@@ -2454,6 +2561,36 @@ static void music_volume_layout(int x, int cy, int width, const lv_font_t *font)
     lv_obj_set_size(ui.music_volume_label, 44, 20);
 }
 
+/* The Lyrics button sits at the header's right end; the status moves aside for it when shown. */
+static void music_lyrics_layout(int x, int y, int width, int height, const lv_font_t *font)
+{
+    lv_obj_set_pos(ui.music_lyrics_button, x, y);
+    lv_obj_set_size(ui.music_lyrics_button, width, height);
+    lv_obj_set_style_text_font(ui.music_lyrics_caption, font, 0);
+    lv_obj_set_width(ui.music_lyrics_caption, width - 8);
+    lv_obj_align(ui.music_lyrics_caption, LV_ALIGN_CENTER, 0, 0);
+}
+
+static void create_music_lyrics(void)
+{
+    ui.music_lyrics_button = box(ui.music_page, 0, 0, 10, 10);
+    lv_obj_add_flag(ui.music_lyrics_button, LV_OBJ_FLAG_CLICKABLE | LV_OBJ_FLAG_HIDDEN);
+    lv_obj_set_ext_click_area(ui.music_lyrics_button, 6);
+    lv_obj_set_style_radius(ui.music_lyrics_button, buddy_theme_round(LV_RADIUS_CIRCLE), 0);
+    lv_obj_set_style_bg_opa(ui.music_lyrics_button, LV_OPA_COVER, 0);
+    lv_obj_set_style_bg_color(ui.music_lyrics_button, color(C_PRESSED), LV_STATE_PRESSED);
+    ui.music_lyrics_caption = text(ui.music_lyrics_button, BT(BT_LYRICS), 0, 0, 10, &buddy_language_font_16, C_TEXT);
+    lv_obj_set_style_text_align(ui.music_lyrics_caption, LV_TEXT_ALIGN_CENTER, 0);
+    lv_label_set_long_mode(ui.music_lyrics_caption, LV_LABEL_LONG_DOT);
+    lv_obj_clear_flag(ui.music_lyrics_caption, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_add_event_cb(ui.music_lyrics_button, music_lyrics_clicked, LV_EVENT_CLICKED, NULL);
+    buddy_lyrics_view_create(ui.music_page);
+    music_lyrics_layout(668, 22, 104, 40, &buddy_language_font_16);
+    /* Lyrics span the width above the timeline; the credit sits between its two times. */
+    buddy_lyrics_view_place(28, 96, 744, 190, &buddy_language_font_32, true);
+    music_lyrics_style();
+}
+
 static void create_music_page(void)
 {
     ui.music_page = box(ui.screen, 0, 0, 800, 440);
@@ -2538,6 +2675,7 @@ static void create_music_page(void)
 
     /* Command feedback appears in the quiet band between the track and its timeline. */
     ui.music_feedback = text(ui.music_page, "", 284, 256, 488, &buddy_language_font_14, C_WARNING);
+    create_music_lyrics();
     apply_music_accent(C_ACCENT);
     refresh_music();
 }
@@ -3655,6 +3793,14 @@ void buddy_ui_set_album_art(uint32_t id, uint16_t size, uint8_t *pixels)
     };
     lv_img_set_src(ui.music_art, &ui.art_frame);
     lv_img_set_antialias(ui.music_art, true);
+    refresh_music();
+}
+
+void buddy_ui_set_lyrics(buddy_lyrics_t *lyrics)
+{
+    if (!lyrics) return;
+    if (!ui.music_page) { free(lyrics); return; }
+    buddy_lyrics_view_set_document(lyrics);
     refresh_music();
 }
 

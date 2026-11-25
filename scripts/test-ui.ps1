@@ -16,6 +16,11 @@ foreach($profile in @(0,4,6)){
         New-Item -ItemType Directory -Force -Path $printer | Out-Null
         & (Join-Path $repo ".sim-output/$profile/clawpal_sim.exe") $printer $theme - printer
         if($LASTEXITCODE -ne 0){throw "Printer app check failed: $profile $theme"}
+        # The Lyrics view runs on its own, so the main run's frames keep their timing.
+        $lyrics=Join-Path $repo ".sim-output/$profile/frames-lyrics/$theme"
+        New-Item -ItemType Directory -Force -Path $lyrics | Out-Null
+        & (Join-Path $repo ".sim-output/$profile/clawpal_sim.exe") $lyrics $theme - lyrics
+        if($LASTEXITCODE -ne 0){throw "Lyrics check failed: $profile $theme"}
     }
 }
 & $Python (Join-Path $repo 'tests/simulator/contact_sheet.py')
