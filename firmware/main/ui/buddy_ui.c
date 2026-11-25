@@ -28,6 +28,7 @@
 #include "buddy_printer_page.h"
 #include "buddy_printer_watch.h"
 #include "buddy_monitor_scene.h"
+#include "buddy_alert_scene.h"
 #include "buddy_weather_icon.h"
 
 /* Broadcast meter bridge: real channels, shared time, restrained state ink. */
@@ -95,7 +96,7 @@ typedef struct {
 /* A full-screen prompt: the approval request and the needs-you alert share this shape. */
 #define PROMPT_ROWS 3
 typedef struct {
-    lv_obj_t *page, *tile, *mascot, *logo, *eyebrow, *title, *body, *details;
+    lv_obj_t *page, *scene, *logo, *eyebrow, *title, *body, *details;
     lv_obj_t *names[PROMPT_ROWS], *values[PROMPT_ROWS];
     lv_obj_t *track, *countdown, *secondary, *secondary_label, *primary, *primary_label;
     unsigned rows;
@@ -659,9 +660,7 @@ static const char *connection_name(void)
 static lv_obj_t *overlay_mascot(void)
 {
     if (ui.install_stage != BUDDY_INSTALL_NONE) return ui.install_crab == 96 ? ui.install_mascot : NULL;
-    if (ui.confirm_action != BUDDY_CONFIRM_NONE) return ui.confirm.mascot;
-    if (ui.alert_key[0]) return ui.alert.mascot;
-    if (ui.printer_alert_id) return ui.printer_alert.mascot;
+    /* Prompts show a pixel picture instead of a crab. */
     return NULL;
 }
 
@@ -801,10 +800,6 @@ static void mascot_tick(lv_timer_t *timer)
         uint32_t elapsed = lv_tick_elaps(ui.confirm_started), left = elapsed >= CONFIRM_TIMEOUT_MS ? 0 : CONFIRM_TIMEOUT_MS - elapsed;
         lv_obj_set_width(ui.confirm.countdown, (lv_coord_t)((int64_t)lv_obj_get_width(ui.confirm.track) * left / CONFIRM_TIMEOUT_MS));
     }
-    if (ui.alert_key[0] && ui.alert.tile)
-        lv_obj_set_style_border_opa(ui.alert.tile, (lv_tick_get() / 600U) % 2U ? LV_OPA_COVER : LV_OPA_20, 0);
-    if (ui.printer_alert_id && ui.printer_alert.tile)
-        lv_obj_set_style_border_opa(ui.printer_alert.tile, (lv_tick_get() / 600U) % 2U ? LV_OPA_COVER : LV_OPA_20, 0);
     if (buddy_theme_has_mascot()) feed_mascot();
 }
 
@@ -3334,25 +3329,29 @@ void buddy_ui_begin_restart(void)
 
 /* ---- Full-screen overlays: the approval prompt, the needs-you alert and the install screen ---- */
 
-/* Sizes for the three screen classes: 800 x 480, 480 x 480 and 320 x 240. The smallest
- * has no room for the crab tile and lets the body give way to the details. */
+/* Sizes for the three screen classes: 800 x 480, 480 x 480 and 320 x 240. `tile` is the side of
+ * the pixel picture beside the text: 48 cells of five pixels on the wide screen. The square one
+ * runs the text across the page and sets the picture on a `stage` in the space left under it;
+ * the smallest screen has no room for it and lets the body give way to the details. */
 typedef struct {
-    int margin, tile, gap, button_h, row_h, name_w;
+    int margin, tile, scale, gap, button_h, row_h, name_w;
     const lv_font_t *eyebrow, *title, *body, *detail, *button;
+    bool stage;
 } prompt_metrics_t;
 
 static prompt_metrics_t prompt_metrics(void)
 {
     prompt_metrics_t m;
     if (BOARD_DISPLAY_WIDTH >= 800)
-        m = (prompt_metrics_t){ 32, 136, 28, 64, 34, 220, &buddy_language_font_16, &buddy_language_font_32,
+        m = (prompt_metrics_t){ 32, 0, 5, 28, 64, 34, 160, &buddy_language_font_16, &buddy_language_font_32,
             &buddy_language_font_20, &buddy_language_font_20, &buddy_language_font_20 };
     else if (BOARD_DISPLAY_HEIGHT >= 400)
-        m = (prompt_metrics_t){ 24, 112, 20, 60, 30, 150, &buddy_language_font_16, &buddy_language_font_24,
+        m = (prompt_metrics_t){ 24, 0, 3, 20, 60, 30, 150, &buddy_language_font_16, &buddy_language_font_24,
             &buddy_language_font_16, &buddy_language_font_16, &buddy_language_font_20 };
-    else m = (prompt_metrics_t){ 12, 0, 10, 40, 22, 96, &buddy_language_font_14, &buddy_language_font_20,
+    else m = (prompt_metrics_t){ 12, 0, 0, 10, 40, 22, 96, &buddy_language_font_14, &buddy_language_font_20,
         &buddy_language_font_14, &buddy_language_font_14, &buddy_language_font_16 };
-    if (!buddy_theme.prompt_tile) m.tile = 0;
+    m.stage = BOARD_DISPLAY_WIDTH < 800 && BOARD_DISPLAY_HEIGHT >= 400;
+    m.tile = m.stage ? 0 : BUDDY_ALERT_SCENE_CELLS * m.scale;
     return m;
 }
 
@@ -3396,21 +3395,17 @@ static void create_prompt(prompt_view_t *view, lv_event_cb_t clicked)
     lv_obj_add_flag(view->page, LV_OBJ_FLAG_CLICKABLE);
     lv_obj_set_style_bg_color(view->page, color(C_BG), 0);
     lv_obj_set_style_bg_opa(view->page, LV_OPA_COVER, 0);
-    if (m.tile) {
-        view->tile = surface_card(view->page, 20);
-        lv_obj_set_pos(view->tile, m.margin, m.margin);
-        lv_obj_set_size(view->tile, m.tile, m.tile);
-        lv_obj_set_style_border_width(view->tile, buddy_theme.border_w, 0);
-        lv_obj_set_style_border_color(view->tile, color(C_RULE), 0);
-        /* Square looks: a bar under the crab's tile instead of a frame around it. */
-        if (buddy_theme.square) lv_obj_set_style_border_side(view->tile, LV_BORDER_SIDE_BOTTOM, 0);
-        view->mascot = lv_img_create(view->tile);
-        lv_img_set_antialias(view->mascot, false);
-        lv_obj_set_size(view->mascot, 96, 96);
-        lv_obj_center(view->mascot);
-        lv_obj_clear_flag(view->mascot, LV_OBJ_FLAG_CLICKABLE);
+    /* The pixel picture stands on the page itself. The wide screen gives it a column of its own,
+     * centred above the buttons, with the details under the text beside it; the square one sets
+     * it at the top left and runs the details across the page. */
+    const int button_y = height - m.margin - m.button_h;
+    const bool side = width >= 800 && m.tile;
+    if (m.tile || m.stage) {
+        view->scene = buddy_alert_scene_create(view->page, m.scale);
+        lv_obj_set_pos(view->scene, m.margin, side ? m.margin + (button_y - 14 - m.margin - m.tile) / 2 : m.margin);
     }
     int x = m.tile ? m.margin + m.tile + m.gap : m.margin, column = width - x - m.margin;
+    const int card_x = side ? x : m.margin, card_w = side ? column : width - m.margin * 2;
     view->logo = lv_img_create(view->page);
     lv_img_set_zoom(view->logo, 256 * PROMPT_LOGO / 56);
     lv_obj_clear_flag(view->logo, LV_OBJ_FLAG_CLICKABLE);
@@ -3420,23 +3415,24 @@ static void create_prompt(prompt_view_t *view, lv_event_cb_t clicked)
     lv_label_set_long_mode(view->title, LV_LABEL_LONG_WRAP);
     view->body = text(view->page, "", x, m.margin, column, m.body, C_MUTED);
     view->details = surface_card(view->page, 14);
-    lv_obj_set_width(view->details, width - m.margin * 2);
+    lv_obj_set_pos(view->details, card_x, 0);
+    lv_obj_set_width(view->details, card_w);
     for (unsigned i = 0; i < PROMPT_ROWS; ++i) {
         view->names[i] = text(view->details, "", 16, 0, m.name_w - 16, m.detail, C_MUTED);
-        view->values[i] = text(view->details, "", m.name_w, 0, width - m.margin * 2 - m.name_w - 16, m.detail, C_TEXT);
+        view->values[i] = text(view->details, "", m.name_w, 0, card_w - m.name_w - 16, m.detail, C_TEXT);
         lv_obj_set_style_text_align(view->values[i], LV_TEXT_ALIGN_RIGHT, 0);
     }
     /* Time left to answer, shrinking towards the automatic denial. */
-    view->track = box(view->page, m.margin, 0, width - m.margin * 2, 4);
+    view->track = box(view->page, card_x, 0, card_w, 4);
     lv_obj_set_style_bg_color(view->track, color(C_RULE), 0);
     lv_obj_set_style_bg_opa(view->track, LV_OPA_COVER, 0);
     lv_obj_set_style_radius(view->track, buddy_theme_round(2), 0);
-    view->countdown = box(view->track, 0, 0, width - m.margin * 2, 4);
+    view->countdown = box(view->track, 0, 0, card_w, 4);
     lv_obj_set_style_bg_color(view->countdown, color(C_ACCENT), 0);
     lv_obj_set_style_bg_opa(view->countdown, LV_OPA_COVER, 0);
     lv_obj_set_style_radius(view->countdown, buddy_theme_round(2), 0);
     /* The quiet choice sits where a stray tap is most likely; the primary one needs a deliberate press. */
-    const int button_w = (width - m.margin * 2 - 16) / 2, button_y = height - m.margin - m.button_h;
+    const int button_w = (width - m.margin * 2 - 16) / 2;
     view->secondary = action_button(view->page, "", m.margin, button_y, button_w, m.button_h, &view->secondary_label);
     view->primary = action_button(view->page, "", m.margin + button_w + 16, button_y, button_w, m.button_h, &view->primary_label);
     lv_obj_set_style_radius(view->secondary, buddy_theme_round(12), 0);
@@ -3466,6 +3462,11 @@ static void prompt_layout(prompt_view_t *view, bool countdown)
     const int x = m.tile ? m.margin + m.tile + m.gap : m.margin;
     const int button_y = height - m.margin - m.button_h;
     const bool logo = !lv_obj_has_flag(view->logo, LV_OBJ_FLAG_HIDDEN);
+    /* The body's full height, measured as the label wraps it before it may shorten it with dots. */
+    lv_label_set_long_mode(view->body, LV_LABEL_LONG_WRAP);
+    lv_obj_set_height(view->body, LV_SIZE_CONTENT);
+    lv_obj_update_layout(view->page);
+    const int body_natural = lv_obj_get_height(view->body);
     const int eyebrow_line = lv_font_get_line_height(m.eyebrow), head = logo ? LV_MAX(PROMPT_LOGO, eyebrow_line) : eyebrow_line;
     lv_obj_set_pos(view->logo, x + PROMPT_LOGO / 2 - 28, m.margin + head / 2 - 28);
     lv_obj_set_pos(view->eyebrow, x + (logo ? PROMPT_LOGO + 10 : 0), m.margin + (head - eyebrow_line) / 2);
@@ -3483,7 +3484,7 @@ static void prompt_layout(prompt_view_t *view, bool countdown)
     const int track_y = button_y - 14;
     const int details_y = (countdown ? track_y - 12 : button_y - 14) - details_h;
     visible(view->details, view->rows > 0);
-    lv_obj_set_pos(view->details, m.margin, details_y);
+    lv_obj_set_y(view->details, details_y);
     lv_obj_set_height(view->details, details_h);
     visible(view->track, countdown);
     lv_obj_set_y(view->track, track_y);
@@ -3494,6 +3495,23 @@ static void prompt_layout(prompt_view_t *view, bool countdown)
     lv_obj_set_y(view->body, body_y);
     lv_label_set_long_mode(view->body, LV_LABEL_LONG_DOT);
     lv_obj_set_height(view->body, body ? (body_bottom - body_y) / (line + 5) * (line + 5) : 0);
+    if (!m.stage || !view->scene) return;
+    /* The stage is what the text leaves free above the details: the picture takes three-pixel
+     * cells when they fit, two when they don't, and steps aside when neither does. */
+    int text_bottom = body_y - 8;
+    if (body) {
+        int natural = body_natural + 5, room = (body_bottom - body_y) / (line + 5) * (line + 5);
+        if (natural > room) natural = room;
+        lv_obj_set_height(view->body, natural);
+        text_bottom = body_y + natural;
+    }
+    const int stage_top = text_bottom + 12, stage_h = body_bottom - stage_top;
+    const int scale = stage_h >= BUDDY_ALERT_SCENE_CELLS * 3 ? 3 : stage_h >= BUDDY_ALERT_SCENE_CELLS * 2 ? 2 : 0;
+    visible(view->scene, scale > 0);
+    if (!scale) return;
+    const int side = BUDDY_ALERT_SCENE_CELLS * scale;
+    buddy_alert_scene_set_scale(view->scene, scale);
+    lv_obj_set_pos(view->scene, (BOARD_DISPLAY_WIDTH - side) / 2, stage_top + (stage_h - side) / 2);
 }
 
 static void close_alert(void)
@@ -3568,7 +3586,7 @@ static void refresh_alert(void)
     lv_label_set_text(ui.alert.secondary_label, BT(BT_NOT_NOW));
     lv_label_set_text(ui.alert.primary_label, BT(BT_SHOW_ON_PC));
     prompt_button_primary(ui.alert.primary, ui.alert.primary_label, copy->accent);
-    if (ui.alert.tile) lv_obj_set_style_border_color(ui.alert.tile, color(C_WARNING), 0);
+    buddy_alert_scene_set(ui.alert.scene, BUDDY_ALERT_SCENE_ASK, copy->accent, NULL);
     prompt_layout(&ui.alert, false);
     show_overlay(ui.alert.page);
 }
@@ -3632,7 +3650,7 @@ static void refresh_printer_alert(buddy_print_alert_t alert, unsigned index)
     lv_label_set_text(ui.printer_alert.secondary_label, BT(BT_CLOSE));
     lv_label_set_text(ui.printer_alert.primary_label, BT(BT_PRINT_SHOW_PRINTER));
     prompt_button_primary(ui.printer_alert.primary, ui.printer_alert.primary_label, C_ACCENT);
-    if (ui.printer_alert.tile) lv_obj_set_style_border_color(ui.printer_alert.tile, color(ink), 0);
+    buddy_alert_scene_set(ui.printer_alert.scene, BUDDY_ALERT_SCENE_PRINTER, ink, p);
     prompt_layout(&ui.printer_alert, false);
     show_overlay(ui.printer_alert.page);
 }
@@ -3712,6 +3730,7 @@ void buddy_ui_request_confirmation(buddy_confirm_action_t action, const char *de
     lv_label_set_text(ui.confirm.secondary_label, BT(BT_CONFIRM_DENY));
     lv_label_set_text(ui.confirm.primary_label, BT(BT_CONFIRM_ALLOW));
     prompt_button_primary(ui.confirm.primary, ui.confirm.primary_label, C_ACCENT);
+    buddy_alert_scene_set(ui.confirm.scene, firmware ? BUDDY_ALERT_SCENE_FIRMWARE : BUDDY_ALERT_SCENE_WIFI, BUDDY_COLOR_ACCENT, NULL);
     lv_obj_set_width(ui.confirm.countdown, lv_obj_get_width(ui.confirm.track));
     prompt_layout(&ui.confirm, true);
     show_overlay(ui.confirm.page);

@@ -10,6 +10,10 @@ lv_obj_t *buddy_printer_page_create(lv_obj_t *parent);
 void buddy_printer_page_update(const buddy_printers_t *printers, bool connected);
 /* Shows the printer with this id, such as the one an alert named. */
 void buddy_printer_page_show(uint8_t id);
+/* The page's pixel printer, 48 x 48 cells of `scale` pixels from (x, y), in `printer`'s state;
+ * NULL draws it offline. For a draw event of another object, such as the print alert. */
+#define BUDDY_PRINTER_ART_CELLS 48
+void buddy_printer_draw(lv_draw_ctx_t *ctx, int x, int y, int scale, const buddy_printer_t *printer);
 /* A short line for Home and the Apps menu. */
 const char *buddy_printer_page_status(void);
 /* Name of a state as the page writes it, with the reason when it explains a pause or a stop. */
