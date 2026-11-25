@@ -1,7 +1,7 @@
 #pragma once
 #define CLAWPAL_BOARD_ID "waveshare-esp32-s3-touch-lcd-7-16mb"
 #define CLAWPAL_BOARD_NAME "Waveshare ESP32-S3-Touch-LCD-7 (16 MB)"
-#define CLAWPAL_EXPERIMENTAL 1
+#define CLAWPAL_EXPERIMENTAL 0
 #define BOARD_DISPLAY_WIDTH 800
 #define BOARD_DISPLAY_HEIGHT 480
 #define CLAWPAL_OTA_LAYOUT "ota-v1"

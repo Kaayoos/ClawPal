@@ -40,7 +40,7 @@
       "Height": 480,
       "FlashBytes": 16777216,
       "Psram": "octal",
-      "Experimental": true,
+      "Experimental": false,
       "Driver": "waveshare-rgb",
       "Layout": "ota-v1",
       "MaxBytes": 4128768,

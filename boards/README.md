@@ -7,8 +7,9 @@ that generated files match. Hardware adapters live in `firmware/components/board
 
 ## Tested and experimental boards
 
-Three boards run on real hardware: the 4.3B, the Waveshare 4.3 without the B
-(it uses the 4.3B profile) and the ES3C28P. Every other profile is experimental
+Four boards run on real hardware: the 4.3B, the Waveshare 4.3 without the B
+(it uses the 4.3B profile), the ES3C28P and the Waveshare 7-inch with 16 MB flash.
+Every other profile, including the 7-inch with 8 MB flash, is experimental
 and has not been flashed onto that hardware by this project.
 Published pin maps and initialization sequences are the basis of these ports,
 not evidence of successful hardware operation. CoreS3 display revisions are

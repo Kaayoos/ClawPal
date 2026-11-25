@@ -109,7 +109,7 @@ The display comes in four looks. Pick one in the PC app and switch whenever you 
 
 ### <img src="assets/readme/pixel.png" width="12" height="12" alt=""> A board
 
-Nine boards, three of them tested on real hardware. Pick the exact model printed on your board, not one with the same chip or screen size.
+Nine boards, four of them tested on real hardware. Pick the exact model printed on your board, not one with the same chip or screen size.
 
 | | Board | Screen | Status |
 | :---: | --- | --- | --- |
@@ -117,7 +117,7 @@ Nine boards, three of them tested on real hardware. Pick the exact model printed
 | <img src="assets/readme/board-wide.png" width="64" alt=""> | **[Waveshare ESP32-S3-Touch-LCD-4.3](https://www.waveshare.com/esp32-s3-touch-lcd-4.3.htm)**<br>The 4.3 without the B. Choose the 4.3B in the installer. | 800 × 480 | **Tested** |
 | <img src="assets/readme/board-small.png" width="58" alt=""> | **LCDWIKI 2.8-inch ESP32-S3 Display (ES3C28P)**<br>Capacitive touch. Apps scroll above a fixed Apps and Home footer. | 320 × 240 | **Tested** |
 | <img src="assets/readme/board-wide.png" width="64" alt=""> | **Waveshare ESP32-S3-Touch-LCD-5**<br>The standard 800 × 480 model. The 5B is different hardware. | 800 × 480 | Experimental |
-| <img src="assets/readme/board-wide.png" width="64" alt=""> | **Waveshare ESP32-S3-Touch-LCD-7, 16 MB flash**<br>Choose the flash size the installer's USB check reports. | 800 × 480 | Experimental |
+| <img src="assets/readme/board-wide.png" width="64" alt=""> | **Waveshare ESP32-S3-Touch-LCD-7, 16 MB flash**<br>Choose the flash size the installer's USB check reports. | 800 × 480 | **Tested** |
 | <img src="assets/readme/board-wide.png" width="64" alt=""> | **Waveshare ESP32-S3-Touch-LCD-7, 8 MB flash**<br>The same screen with half the flash. | 800 × 480 | Experimental |
 | <img src="assets/readme/board-square.png" width="52" alt=""> | **Waveshare ESP32-S3-Touch-LCD-2.8C**<br>A square screen: content scrolls above the footer. | 480 × 480 | Experimental |
 | <img src="assets/readme/board-square.png" width="52" alt=""> | **Guition ESP32-4848S040C_I**<br>The capacitive-touch version only. | 480 × 480 | Experimental |
@@ -222,7 +222,7 @@ Don't publish your pairing token, network passwords, local logs or device backup
 <summary><b>Which board should I get?</b></summary>
 <br>
 
-The Waveshare ESP32-S3-Touch-LCD-4.3B. ClawPal is made on it, and it's the only board the MakerWorld cases fit. The 4.3 without the B and the LCDWIKI ES3C28P also work on real hardware; the rest are experimental.
+The Waveshare ESP32-S3-Touch-LCD-4.3B. ClawPal is made on it, and it's the only board the MakerWorld cases fit. The 4.3 without the B, the LCDWIKI ES3C28P and the 16 MB Waveshare 7-inch also work on real hardware; the rest are experimental.
 
 </details>
 
