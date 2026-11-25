@@ -97,7 +97,9 @@ release tags (`gh attestation verify <file> --repo Kaayoos/clawpal`).
 ## Preparing a new version
 
 Update the firmware and companion version, versioned user agent/log strings,
-and `docs/releases/X.Y.Z.md`. Review and commit the intended source changes.
+and `docs/releases/X.Y.Z.md`. Rewrite `whats_new_items` in every `languages/*.json`:
+the short list, one line per change, that the PC app shows once after updating
+and again from About → What's new. Review and commit the intended source changes.
 The release command requires a clean main branch and runs the publication audit;
 it never uses `git add .`, creates commits or force-pushes. The release workflow
 also refuses a tag that does not match the companion version or is not on main.

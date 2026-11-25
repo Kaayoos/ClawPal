@@ -329,11 +329,12 @@ static class PrinterChecks
                   kind + ": requests go to the printer's own address with its key");
         }
         // A printer that is off: the worker keeps trying, with growing waits, and reports it unreachable.
-        int attempts = 0;
+        int attempts = 0; var offLog = new List<string>();
         var off = new PrinterWorker(new PrinterSettings(2, PrinterKind.Moonraker, "Off", "printer.local"), () => new StaticHandler(_ => { Interlocked.Increment(ref attempts); throw new HttpRequestException("refused"); }))
-            { Retry = TimeSpan.FromMilliseconds(20), MaxRetry = TimeSpan.FromMilliseconds(80) };
+            { Retry = TimeSpan.FromMilliseconds(20), MaxRetry = TimeSpan.FromMilliseconds(80), Log = line => { lock (offLog) offLog.Add(line); } };
         using (var stop = new CancellationTokenSource(TimeSpan.FromMilliseconds(500))) await off.RunAsync(stop.Token);
         Check(off.Link == PrinterLink.Unreachable && off.Status.State == PrintStates.Offline && attempts is >= 3 and <= 25, "worker: a printer that is off keeps being retried with backoff (" + attempts + " tries)");
+        Check(offLog.Count == 1 && offLog[0].Contains("unreachable"), "worker: a printer that stays off is logged once, not on every retry (" + offLog.Count + " lines)");
         var denied = new PrinterWorker(new PrinterSettings(3, PrinterKind.OctoPrint, "Octo", "octopi.local", "", "wrong"), () => new StaticHandler(_ => new HttpResponseMessage(HttpStatusCode.Forbidden)));
         using (var stop = new CancellationTokenSource(TimeSpan.FromMilliseconds(200))) await denied.RunAsync(stop.Token);
         Check(denied.Link == PrinterLink.Denied, "worker: a refused API key is reported as such");

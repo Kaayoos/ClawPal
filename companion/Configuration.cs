@@ -34,6 +34,8 @@ public sealed class Configuration
     [JsonIgnore] public AutoOpenChoice AutoOpening => AutoOpen ?? AutoOpenChoice.All(AutoOpenApps);
     public void SetAutoOpen(AutoOpenChoice choice) { AutoOpen = choice; AutoOpenApps = choice.Any; }
     public string UpdateNotificationKey { get; set; } = "";
+    // The PC app version whose What's new list has been shown (WhatsNew.cs); empty before any was.
+    public string SeenChangesVersion { get; set; } = "";
     public bool AutoCheckUpdates { get; set; } = true;
     public DateTimeOffset? LastUpdateCheckUtc { get; set; }
     public string CompanionLanguage { get; set; } = "en";

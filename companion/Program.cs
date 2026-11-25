@@ -262,6 +262,8 @@ internal sealed class TrayContext : ApplicationContext
         SystemEvents.PowerModeChanged += PowerModeChanged;
         if (Configuration.Recovered) icon.ShowBalloonTip(8000, L.Text("settings_damaged_title"), L.Text("settings_damaged_body"), ToolTipIcon.Warning);
         if (show) ShowSetup();
+        // The first start of an updated PC app shows, once, what the update added.
+        if (WhatsNew.Due(config) && StartupContract.ShouldShowSettings(config.SetupComplete, config.Token.Length == 64)) { ShowSetup(); settings?.ShowWhatsNew(); }
         worker = Task.Run(connection.RunAsync);
         _ = worker.ContinueWith(task => Log.Write($"Monitor stopped unexpectedly: {task.Exception?.GetBaseException().Message}"), TaskContinuationOptions.OnlyOnFaulted);
     }

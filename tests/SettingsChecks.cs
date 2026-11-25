@@ -99,6 +99,13 @@ internal static class SettingsChecks
         legacyConfig.SetAutoOpen(AutoOpenChoice.All(false));Check(!legacyConfig.AutoOpenApps,"no app chosen turns the single switch off");
         var savedChoice=JsonSerializer.Deserialize<Configuration>("{\"AutoOpenApps\":true,\"AutoOpen\":{\"Music\":false,\"Codex\":true,\"Claude\":false}}")!;
         Check(savedChoice.AutoOpening==new AutoOpenChoice(false,true,false,true),"a choice saved before the Printer app lets it open itself");
+        // What's new: once after an update, never on a fresh install or before setup.
+        Check(WhatsNew.Due(true,"","0.15.0")&&WhatsNew.Due(true,"0.14.0","0.15.0"),"What's new opens after an update, including from versions before the list existed");
+        Check(!WhatsNew.Due(true,"0.15.0","0.15.0")&&!WhatsNew.Due(false,"","0.15.0"),"What's new opens only once, and not before setup is done");
+        Check(new Configuration().SeenChangesVersion=="","a new configuration has seen no list yet");
+        foreach(var language in new[]{"en","pl"}){L.SetLanguage(language);var items=WhatsNew.Items();
+            Check(items.Count is >=1 and <=8&&items.All(i=>i.Length is >0 and <=100)&&L.Text("whats_new_subtitle","1.2.3").Contains("1.2.3"),language+": What's new is a short list of short lines");}
+        L.SetLanguage("en");
         // Looks: the display and companion share themes/themes.json; older displays keep the crab.
         Check(Themes.Ids.SequenceEqual(new[]{"crab","studio","crabv2","crastudio"})&&Themes.AccentIds.Contains("champagne"),"the companion reads the same theme catalog as the firmware");
         // The cased looks wear this app's case: its orange, the crab only in Crab v2, and no accent to choose.

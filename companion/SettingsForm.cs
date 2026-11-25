@@ -7,7 +7,7 @@ namespace ClawPal.Companion;
 internal sealed partial class SettingsForm : ClawWindow
 {
     /* Rail order: what the display shows, then this PC. About opens from the version line. */
-    private enum SettingsPage { Home, Apps, Shortcuts, Printers, Clock, Screen, Look, Pc, Connection, Updates, About }
+    private enum SettingsPage { Home, Apps, Shortcuts, Printers, Clock, Screen, Look, Pc, Connection, Updates, About, WhatsNew }
     /* Printers opens from Apps (the Printer app's Manage printers); the rail is full at the smallest window. */
     private static readonly SettingsPage[][] Groups = [[SettingsPage.Home, SettingsPage.Apps, SettingsPage.Shortcuts, SettingsPage.Clock, SettingsPage.Screen, SettingsPage.Look], [SettingsPage.Pc, SettingsPage.Connection, SettingsPage.Updates]];
     private readonly Configuration config;
@@ -79,13 +79,13 @@ internal sealed partial class SettingsForm : ClawWindow
     {
         SettingsPage.Home => L.Text("home"), SettingsPage.Apps => L.Text("apps"), SettingsPage.Shortcuts => L.Text("shortcuts"), SettingsPage.Printers => L.Text("printers"), SettingsPage.Clock => L.Text("clock_weather"),
         SettingsPage.Screen => L.Text("screen"), SettingsPage.Look => L.Text("look_language"), SettingsPage.Pc => L.Text("pc_app_nav"), SettingsPage.Connection => L.Text("connection_nav"),
-        SettingsPage.Updates => L.Text("updates"), _ => L.Text("about_clawpal")
+        SettingsPage.Updates => L.Text("updates"), SettingsPage.WhatsNew => L.Text("whats_new_title"), _ => L.Text("about_clawpal")
     };
     /* Each page has a crab doing its thing; saving and problems take over for a moment. */
     private static string Mood(SettingsPage page) => page switch
     {
         SettingsPage.Apps => "music", SettingsPage.Shortcuts => "typing", SettingsPage.Printers => "working", SettingsPage.Clock => "sunny", SettingsPage.Screen => "night", SettingsPage.Look => "happy",
-        SettingsPage.Pc => "working", SettingsPage.Connection => "thinking", SettingsPage.Updates => "carrying", _ => "idle"
+        SettingsPage.Pc => "working", SettingsPage.Connection => "thinking", SettingsPage.Updates => "carrying", SettingsPage.WhatsNew => "happy", _ => "idle"
     };
     private void SetMoment(string? state)
     {
@@ -183,7 +183,7 @@ internal sealed partial class SettingsForm : ClawWindow
         {
             case SettingsPage.Home: HomePage(); break; case SettingsPage.Apps: AppsPage(); break; case SettingsPage.Shortcuts: ShortcutsPage(); break; case SettingsPage.Printers: PrintersPage(); break;
             case SettingsPage.Clock: ClockPage(); break; case SettingsPage.Screen: ScreenPage(); break; case SettingsPage.Look: LookPage(); break;
-            case SettingsPage.Pc: PcPage(); break; case SettingsPage.Connection: ConnectionPage(); break; case SettingsPage.Updates: UpdatesPage(); break; default: AboutPage(); break;
+            case SettingsPage.Pc: PcPage(); break; case SettingsPage.Connection: ConnectionPage(); break; case SettingsPage.Updates: UpdatesPage(); break; case SettingsPage.WhatsNew: WhatsNewPage(); break; default: AboutPage(); break;
         }
         LayoutHeader(); pages.Arrive();
     }
@@ -198,6 +198,8 @@ internal sealed partial class SettingsForm : ClawWindow
         var about = p.Add(new ClawSection());
         about.Add(mark, 18);
         about.Add(Row(520, (Link("minimalpulse.com", "https://minimalpulse.com/"), 0), (Link("github.com/Kaayoos/clawpal", "https://github.com/Kaayoos/clawpal"), 0)), 16);
+        var news = new ClawButton { Text = L.Text("whats_new_title"), Primary = true }; news.Click += (_, _) => ShowPage(SettingsPage.WhatsNew);
+        about.Add(Row(0, (news, 230)), 16);
         about.Add(ClawTheme.Label(L.Text("about_license"), 400, ClawTheme.Body, false, 22));
         var credits = p.Add(new ClawSection(L.Text("about_credits_title")));
         credits.Add(ClawTheme.Label(L.Text("about_weather"), 400, ClawTheme.Body, false, 20)); credits.Add(ClawTheme.Label(L.Text("about_tools"), 400, ClawTheme.Body, false, 20)); credits.Add(ClawTheme.Label(L.Text("about_lyrics"), 400, ClawTheme.Body, false, 20)); credits.Add(Note(L.Text("about_marks")), 16);
@@ -206,6 +208,19 @@ internal sealed partial class SettingsForm : ClawWindow
         credits.Add(Row(0, (licenses, 230)));
         p.Add(Note(L.Text("about_device_hint")));
     }
+
+    /* What this version added, one short line each. Opens by itself once after an update, or from About. */
+    private void WhatsNewPage()
+    {
+        string version = WhatsNew.Version;
+        title.Text = L.Text("whats_new_title"); subtitle.Text = L.Text("whats_new_subtitle", version); var p = Stack();
+        var list = p.Add(new ClawSection()); list.Gap = 10;
+        foreach (var item in WhatsNew.Items()) list.Add(ClawTheme.Label("•  " + item, 560, ClawTheme.Body, true, 24));
+        var back = new ClawButton { Text = L.Text("about_clawpal") }; back.Click += (_, _) => ShowPage(SettingsPage.About);
+        p.Add(Row(0, (back, 230)));
+        if (!preview) WhatsNew.MarkSeen(config);
+    }
+    internal void ShowWhatsNew() { ShowPage(SettingsPage.WhatsNew); Show(); WindowState = FormWindowState.Normal; Activate(); }
 
     /* The display's look and language. This app keeps its own look whatever the display wears. */
     private void LookPage()
@@ -620,7 +635,7 @@ internal sealed partial class SettingsForm : ClawWindow
     {
         ClawTheme.Still = true; Directory.CreateDirectory(directory); Show(); Application.DoEvents();
         void Capture(string name) { Application.DoEvents(); using var bitmap = new Bitmap(Width, Height); DrawToBitmap(bitmap, new Rectangle(Point.Empty, Size)); bitmap.Save(Path.Combine(directory, name + ".png"), ImageFormat.Png); }
-        for (int i = 0; i <= (int)SettingsPage.About; i++) { ShowPage((SettingsPage)i); Capture($"settings-{i}"); if (pages.MaximumOffset > 0) { pages.ScrollTo(pages.MaximumOffset); Capture($"settings-{i}-end"); } }
+        for (int i = 0; i <= (int)SettingsPage.WhatsNew; i++) { ShowPage((SettingsPage)i); Capture($"settings-{i}"); if (pages.MaximumOffset > 0) { pages.ScrollTo(pages.MaximumOffset); Capture($"settings-{i}-end"); } }
         // Media's synced lyrics, which sit midway down Apps.
         ShowPage(SettingsPage.Apps);
         Control? Find(Control root, string text) { if (root.Text == text) return root; foreach (Control child in root.Controls) if (Find(child, text) is { } found) return found; return null; }

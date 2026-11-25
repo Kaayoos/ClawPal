@@ -223,7 +223,8 @@ public sealed class Installer
             foreach (var part in board.Parts) { verify.Add(part.Offset); verify.Add(Path.Combine(PayloadPath, part.File)); }
             // NVS is excluded here: first boot can legitimately change its contents.
             await Tool(board, options.Port, verify.ToArray());
-            config.SetupComplete=true; config.DisplaySettings=DeviceSettings.FromConfiguration(config) with {Language=options.DisplayLanguage,Theme=options.Theme,Accent=options.Accent}; config.SettingsPending=false; config.Save();
+            // A fresh install has nothing new to report; the list waits for the next update.
+            config.SetupComplete=true; config.SeenChangesVersion=WhatsNew.Version; config.DisplaySettings=DeviceSettings.FromConfiguration(config) with {Language=options.DisplayLanguage,Theme=options.Theme,Accent=options.Accent}; config.SettingsPending=false; config.Save();
             pairingReady();
             progress.Report(L.Text("firmware_installed_waiting_for_clawpal_on_wi_fi"));
             return folder;

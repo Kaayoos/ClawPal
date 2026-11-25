@@ -89,7 +89,20 @@ public sealed class PrinterWorker
         Pin = new CertificatePin(settings.Pin);
     }
 
-    void Set(PrintStatus? next, PrinterLink state) { lock (gate) { if (next is not null) status = next; link = state; } }
+    // The last problem written to the log. Printers are often switched off, so each problem is logged once,
+    // and once more when the printer answers again, rather than on every retry.
+    PrinterLink? logged;
+    void Set(PrintStatus? next, PrinterLink state)
+    {
+        lock (gate) { if (next is not null) status = next; link = state; }
+        if (state == PrinterLink.Online && logged is not null) { logged = null; Log?.Invoke($"Printer {settings.Id} reachable again"); }
+    }
+    // Logs a problem only when it differs from the one already logged.
+    void Report(PrinterLink state, string message)
+    {
+        if (logged == state) return;
+        logged = state; Log?.Invoke(message);
+    }
 
     public async Task RunAsync(CancellationToken token)
     {
@@ -104,15 +117,15 @@ public sealed class PrinterWorker
                 delay = Retry;
             }
             catch (OperationCanceledException) when (token.IsCancellationRequested) { break; }
-            catch (UnauthorizedAccessException) { Set(PrintStatus.Offline, PrinterLink.Denied); delay = Refused; Log?.Invoke($"Printer {settings.Id}: credentials refused"); }
-            catch (AuthenticationException) when (Pin.Changed) { Set(PrintStatus.Offline, PrinterLink.Certificate); delay = Refused; Log?.Invoke($"Printer {settings.Id}: certificate changed; not connecting"); }
+            catch (UnauthorizedAccessException) { Set(PrintStatus.Offline, PrinterLink.Denied); delay = Refused; Report(PrinterLink.Denied, $"Printer {settings.Id}: credentials refused"); }
+            catch (AuthenticationException) when (Pin.Changed) { Set(PrintStatus.Offline, PrinterLink.Certificate); delay = Refused; Report(PrinterLink.Certificate, $"Printer {settings.Id}: certificate changed; not connecting"); }
             catch (PrinterBusyException) { Set(PrintStatus.Offline, PrinterLink.Busy); delay = TimeSpan.FromSeconds(30); }
             catch (Exception error) when (error is IOException or SocketException or HttpRequestException or AuthenticationException or JsonException or InvalidOperationException or KeyNotFoundException or OperationCanceledException or ObjectDisposedException)
             {
                 if (error is ReadOnlyViolationException) throw;
                 Set(PrintStatus.Offline, PrinterLink.Unreachable);
                 delay = wait; wait = TimeSpan.FromTicks(Math.Min(MaxRetry.Ticks, wait.Ticks * 2));
-                Log?.Invoke($"Printer {settings.Id} unreachable: {error.GetType().Name}");
+                Report(PrinterLink.Unreachable, $"Printer {settings.Id} unreachable: {error.GetType().Name}; logged again only when it answers");
             }
             try { await Task.Delay(delay, token); } catch (OperationCanceledException) { break; }
         }
