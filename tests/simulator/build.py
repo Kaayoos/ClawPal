@@ -56,7 +56,10 @@ def main():
         print("\n".join(errors[:5]))
         sys.exit(1)
     exe = OUT / "clawpal_sim.exe"
-    link = [sys.executable, "-m", "ziglang", "cc", "-target", "x86_64-windows-gnu", "-O2", "-o", str(exe), *map(str, objs)]
+    # A response file keeps the command line under Windows' limit in deep checkouts such as worktrees.
+    rsp = OUT / "link.rsp"
+    rsp.write_text("\n".join('"' + str(o).replace("\\", "/") + '"' for o in objs), encoding="utf-8")
+    link = [sys.executable, "-m", "ziglang", "cc", "-target", "x86_64-windows-gnu", "-O2", "-o", str(exe), "@" + str(rsp)]
     result = subprocess.run(link, capture_output=True, text=True)
     if result.returncode:
         print(result.stderr)

@@ -4,8 +4,9 @@
 #include "esp_err.h"
 #include "cJSON.h"
 
-/* 10 adds the cased looks, Crab v2 and Crastudio; older settings, including those saved by earlier firmware, still parse. */
-#define BUDDY_SETTINGS_SCHEMA 10
+/* 10 adds the cased looks, Crab v2 and Crastudio; 11 adds the Printer app (bit 10), which older
+ * settings gain as they load. Older settings, including those saved by earlier firmware, still parse. */
+#define BUDDY_SETTINGS_SCHEMA 11
 #define BUDDY_HOME_SLOTS 5
 typedef struct {
     uint32_t revision;

@@ -348,6 +348,7 @@ if (args.Length == 2 && args[0] == "--presentmon-sample") {
     var realFps = recorded.Fps(1000);
     Check(realFps is > 0 and <= 2000, "real PresentMon capture parses into a measured frame rate (" + realFps + ")");
 }
+passed += await PrinterChecks.RunAsync();
 Console.WriteLine($"{passed} checks passed.");
 
 sealed class RecordingHandler(List<HttpRequestMessage> seen) : HttpMessageHandler

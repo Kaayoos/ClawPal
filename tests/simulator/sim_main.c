@@ -571,20 +571,121 @@ static void scroll_page(void){
     touch_x=W/2;touch_y=H-62;touch_state=LV_INDEV_STATE_PRESSED;step(60);
     for(int y=H-62;y>30;y-=6){touch_y=y;step(12);}touch_state=LV_INDEV_STATE_RELEASED;step(600);
 }
+/* ---------- The Printer app (run with `clawpal_sim <dir> <theme> - printer`) ---------- */
+/* Two fictional printers as the companion reports them, busiest first. */
+static void printer_set(unsigned slot, uint8_t id, const char *name, buddy_print_state_t state, buddy_print_reason_t reason,
+                        unsigned progress, uint32_t remaining, uint32_t layer, uint32_t layers, const char *file,
+                        float nozzle, float nozzle_target, float bed, float bed_target, const char *error)
+{
+    buddy_printer_t *p = &stats.printers.items[slot];
+    *p = (buddy_printer_t){ .id = id, .state = (uint8_t)state, .reason = (uint8_t)reason, .progress = (uint8_t)progress,
+        .remaining_s = remaining, .layer = layer, .layers = layers, .nozzle = nozzle, .nozzle_target = nozzle_target, .bed = bed, .bed_target = bed_target };
+    snprintf(p->name, sizeof(p->name), "%s", name);
+    snprintf(p->file, sizeof(p->file), "%s", file);
+    snprintf(p->error, sizeof(p->error), "%s", error);
+    if (stats.printers.count <= slot) stats.printers.count = (uint8_t)(slot + 1);
+}
+static void printers_idle(void)
+{
+    stats.printers = (buddy_printers_t){ .present = true, .alerts = true };
+    printer_set(0, 1, "Bambu P1S", BUDDY_PRINT_IDLE, 0, 0, 0, 0, 0, "", 26, 0, 24, 0, "");
+    printer_set(1, 2, "Voron 2.4", BUDDY_PRINT_IDLE, 0, 0, 0, 0, 0, "", 24, 0, 23, 0, "");
+}
+static void bambu(buddy_print_state_t state, buddy_print_reason_t reason, unsigned progress, uint32_t remaining, uint32_t layer, const char *error)
+{
+    printer_set(0, 1, "Bambu P1S", state, reason, progress, remaining, layer, 284, "Desk organizer - PLA Basic",
+                state == BUDDY_PRINT_PRINTING || state == BUDDY_PRINT_PREPARING ? 219.6f : 152.0f, state == BUDDY_PRINT_PRINTING || state == BUDDY_PRINT_PREPARING ? 220 : 0,
+                state == BUDDY_PRINT_FINISHED || state == BUDDY_PRINT_FAILED ? 41.0f : 55.0f, state == BUDDY_PRINT_FINISHED || state == BUDDY_PRINT_FAILED ? 0 : 55, error);
+}
+
+static int printer_scenes(void)
+{
+    static const uint8_t order[]={0,2,4,7,10};
+    settings.enabled_apps=2047;settings.home_count=5;memcpy(settings.home_order,order,5);buddy_ui_apply_settings(&settings);
+    // Agents idle and nobody waiting, so only the printer can open an app by itself.
+    stats.codex.running=stats.claude.running=false;stats.claude.activity.items[1].state[0]=0;snprintf(stats.claude.activity.items[1].state,16,"completed");
+    stats.auto_open_apps=true;printers_idle();send_stats();live(1500);
+    if(buddy_ui_get_state().active_app==BUDDY_APP_PRINTER)return 70;
+    // A print starts: the Printer app opens by itself, with the ring, the file and when it will be done.
+    bambu(BUDDY_PRINT_PREPARING,0,0,0,0,"");send_stats();live(1400);
+    if(buddy_ui_get_state().active_app!=BUDDY_APP_PRINTER||!buddy_ui_get_state().printer_automatic)return 71;save_frame("printer-preparing");
+    bambu(BUDDY_PRINT_PRINTING,0,42,6180,118,"");send_stats();live(600);
+    if(!find_label(lv_scr_act(),"42")||!find_label(lv_scr_act(),"%")||!find_label(lv_scr_act(),"118")||!find_label(lv_scr_act(),"/ 284"))return 72;save_frame("printer");
+    // The switch steps to the next printer and back; the small screen taps the heading instead.
+    tap_label(H<400?"Bambu P1S":"Voron 2.4");if(!find_label(lv_scr_act(),"Voron 2.4"))return 73;save_frame("printer-second");tap_label(H<400?"Voron 2.4":"Bambu P1S");
+    if(!find_label(lv_scr_act(),"Bambu P1S"))return 74;
+    // The Apps menu gains the Printer tile once the PC reports a printer; Home can carry it too.
+    tap(46,H-22,90);live(500);if(!buddy_ui_get_state().menu_open)return 75;save_frame("printer-apps");
+    lv_obj_t *tile=find_label(lv_scr_act(),BT(BT_PRINTER));if(!tile)return 76;lv_obj_scroll_to_view_recursive(lv_obj_get_parent(tile),LV_ANIM_OFF);live(200);save_frame("printer-apps-scrolled");
+    tap_label(BT(BT_PRINTER));live(300);if(buddy_ui_get_state().active_app!=BUDDY_APP_PRINTER||buddy_ui_get_state().menu_open)return 77;
+    buddy_ui_select_app(BUDDY_APP_HOME);live(600);save_frame("printer-home");
+    // Filament runs out: the alert covers Home. Close leaves it alone and sends nothing.
+    music_last_action[0]=0;
+    bambu(BUDDY_PRINT_PAUSED,BUDDY_PRINT_REASON_FILAMENT,57,4400,162,"0700_2000_0002_0001");send_stats();live(400);
+    if(buddy_ui_get_state().printer_alert!=3||!find_label(lv_scr_act(),BT(BT_PRINT_PAUSED_TITLE)))return 78;save_frame("printer-alert-paused");
+    tap_overlay_label(BT(BT_CLOSE));if(buddy_ui_get_state().printer_alert||music_last_action[0])return 79;
+    // It carries on and finishes: Show printer opens the app on that printer.
+    bambu(BUDDY_PRINT_PRINTING,0,58,4300,163,"");send_stats();live(1200);
+    bambu(BUDDY_PRINT_FINISHED,0,100,0,284,"");send_stats();live(400);
+    if(buddy_ui_get_state().printer_alert!=1||!find_label(lv_scr_act(),BT(BT_PRINT_FINISHED_TITLE)))return 80;save_frame("printer-alert-finished");
+    tap_overlay_label(BT(BT_PRINT_SHOW_PRINTER));if(buddy_ui_get_state().printer_alert||buddy_ui_get_state().active_app!=BUDDY_APP_PRINTER||music_last_action[0])return 81;
+    live(400);save_frame("printer-finished");
+    // The next print fails with an error code.
+    bambu(BUDDY_PRINT_PRINTING,0,12,9000,30,"");send_stats();live(1200);
+    bambu(BUDDY_PRINT_FAILED,BUDDY_PRINT_REASON_ERROR,13,0,31,"0300_4000_0002_0001");send_stats();live(400);
+    if(buddy_ui_get_state().printer_alert!=2||!find_label(lv_scr_act(),"0300_4000_0002_0001"))return 82;save_frame("printer-alert-failed");
+    tap_overlay_label(BT(BT_CLOSE));if(buddy_ui_get_state().printer_alert)return 83;live(300);save_frame("printer-failed");
+    // A print someone cancels at the printer stays quiet.
+    bambu(BUDDY_PRINT_PRINTING,0,20,8000,50,"");send_stats();live(1200);
+    bambu(BUDDY_PRINT_FAILED,BUDDY_PRINT_REASON_USER,20,0,50,"");send_stats();live(400);if(buddy_ui_get_state().printer_alert)return 84;
+    // Unreachable, then none set up on the PC.
+    bambu(BUDDY_PRINT_OFFLINE,0,0,0,0,"");stats.printers.items[0].nozzle=stats.printers.items[0].bed=NAN;send_stats();live(400);save_frame("printer-offline");
+    stats.printers.count=0;send_stats();live(400);if(!find_label(lv_scr_act(),BT(BT_PRINT_NO_PRINTERS_TITLE)))return 85;save_frame("printer-empty");
+    buddy_ui_set_connection(BUDDY_PC_OFFLINE,"Home Wi-Fi","192.168.1.40","");live(400);save_frame("printer-pc-offline");
+    printf("PASS %dx%d: printer app, automatic opening, printer switching, apps tile, paused, finished and failed alerts, offline and empty states\n",W,H);
+    return 0;
+}
+
+/* PC Monitor's pixel PC with fixed readings: flat out, a step later, idle, and the PC offline. */
+static void monitor_reading(float cpu,float cpu_t,float gpu,float gpu_t,float memory,float vram,double rx){
+    send_stats();buddy_stats_t fixed=stats;
+    fixed.cpu_usage=cpu;fixed.cpu_temperature=cpu_t;fixed.gpu_usage=gpu;fixed.gpu_temperature=gpu_t;
+    fixed.memory_usage=memory;fixed.memory_used_mb=memory/100.f*fixed.memory_total_mb;
+    fixed.vram_used_mb=vram/100.f*fixed.vram_total_mb;fixed.network_rx_bps=rx;fixed.network_tx_bps=rx/10;
+    buddy_ui_update_stats(&fixed);
+}
+static int monitor_scenes(void)
+{
+    // Nobody waiting, so no overlay covers the page; wait_ms keeps the simulated feed from replacing the readings.
+    stats.codex.running=stats.claude.running=false;snprintf(stats.claude.activity.items[1].state,16,"completed");send_stats();live(1000);
+    if(!buddy_ui_select_app(BUDDY_APP_MONITOR)||buddy_ui_get_state().needs_you)return 90;
+    monitor_reading(100,93,99,88,91,97,3e7);wait_ms(3000);
+    if(!find_label(lv_scr_act(),"93\xC2\xB0" "C")||!find_label(lv_scr_act(),"88\xC2\xB0" "C"))return 91;save_frame("monitor-busy");
+    wait_ms(140);save_frame("monitor-busy-next");
+    monitor_reading(2,38,1,33,18,4,300);wait_ms(700);save_frame("monitor-idle");
+    buddy_ui_set_connection(BUDDY_PC_OFFLINE,"Home Wi-Fi","192.168.1.40","");wait_ms(400);save_frame("monitor-offline");
+    printf("PASS %dx%d: monitor pixel PC busy, idle and offline\n",W,H);
+    return 0;
+}
+
 int main(int argc,char **argv){
     if(argc<2)return 2;snprintf(out_dir,sizeof(out_dir),"%s",argv[1]);
     for(unsigned i=0;argc>2&&i<BUDDY_THEME_COUNT;++i)if(!strcmp(argv[2],buddy_theme_ids[i]))sim_theme=(uint8_t)i;
     for(unsigned i=0;argc>3&&i<BUDDY_ACCENT_COUNT;++i)if(!strcmp(argv[3],buddy_accent_ids[i]))sim_accent=(uint8_t)i;
     static const uint8_t order[]={0,2,4,7,6};boot(order,5);
+    if(argc>4&&!strcmp(argv[4],"printer"))return printer_scenes();
+    if(argc>4&&!strcmp(argv[4],"monitor"))return monitor_scenes();
     music_playing("Golden Hour Drive","Neon Harbor","Coastline Sessions",71,204);send_stats();
     // A task waiting for an answer covers every app; Show on PC asks the companion to bring it forward.
     live(400);if(!buddy_ui_get_state().needs_you||!find_label(lv_scr_act(),BT(BT_CLAUDE_CODE_NEEDS_YOU)))return 40;save_frame("needs-you");
     tap_overlay_label(BT(BT_SHOW_ON_PC));if(strcmp(music_last_action,"focus")||music_last_value!=BUDDY_APP_CLAUDE||buddy_ui_get_state().needs_you)return 41;
     music_reply();live(1000);if(buddy_ui_get_state().needs_you)return 42;
     starter_deck(7,8);send_stats();
-    const char *names[]={"monitor","clock","music","timer","codex","home","weather","claude","shortcuts","audio"};
+    const char *names[]={"monitor","clock","music","timer","codex","home","weather","claude","shortcuts","audio","printer"};
     _Static_assert(sizeof(names)/sizeof(names[0])==BUDDY_APP_COUNT,"a frame name for every app");
     for(int app=0;app<BUDDY_APP_COUNT;++app){
+        // The Printer app has its own run (argument "printer"), so these frames stay comparable with older builds.
+        if(app==BUDDY_APP_PRINTER)continue;
         if(!buddy_ui_select_app((buddy_app_t)app))return 3;live(1400);if(buddy_ui_get_state().active_app!=(unsigned)app)return 4;
         save_frame(names[app]);
         if(W<800){for(int i=0;i<4;++i)scroll_page();char name[60];snprintf(name,sizeof(name),"%s-scrolled",names[app]);save_frame(name);}

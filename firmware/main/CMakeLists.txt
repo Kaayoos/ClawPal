@@ -4,7 +4,7 @@ idf_component_register(
          "assets/buddy_numeral_font_96.c" "assets/buddy_numeral_font_48.c" "assets/buddy_numeral_font_32.c" "assets/buddy_numeral_font_24.c" "assets/buddy_numeral_font_128.c"
          "assets/buddy_display_font_20.c" "assets/buddy_display_font_24.c" "assets/buddy_display_font_32.c" "assets/buddy_display_font_48.c" "assets/buddy_display_font_96.c" "assets/buddy_display_font_128.c"
          "weather/buddy_weather.c" "weather/buddy_weather_parse.c"
-         "ui/buddy_home.c" "ui/buddy_theme.c" "ui/buddy_theme_data.c" "ui/buddy_weather_page.c" "ui/buddy_weather_icon.c" "ui/buddy_app_icons.c" "ui/buddy_shortcut_data.c" "ui/buddy_shortcuts_page.c" "ui/buddy_audio_page.c" "assets/buddy_home_logos.c"
+         "ui/buddy_home.c" "ui/buddy_theme.c" "ui/buddy_theme_data.c" "ui/buddy_weather_page.c" "ui/buddy_weather_icon.c" "ui/buddy_app_icons.c" "ui/buddy_shortcut_data.c" "ui/buddy_shortcuts_page.c" "ui/buddy_audio_page.c" "ui/buddy_printer_page.c" "ui/buddy_printer_watch.c" "ui/buddy_monitor_scene.c" "assets/buddy_home_logos.c"
          "../tests/display_power_policy.c" "../tests/weather_animation_policy.c" "../tests/weather_units.cpp"
     INCLUDE_DIRS "language" "include" "ui" "network" "assets" "weather" "settings" "update"
     REQUIRES board esp_wifi esp_netif esp_event esp_http_server esp_http_client nvs_flash json mbedtls lwip esp_timer esp_hw_support

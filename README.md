@@ -303,6 +303,7 @@ You need ESP-IDF 5.5.2, .NET SDK 8.0.425 and Python 3.12. Firmware binaries and 
   <a href="https://discord.com/invite/gR5DqCdGre">Discord</a>
 </p>
 
+
 <a name="license-and-credits"></a>
 <img src="assets/readme/mark.webp" width="100%" alt="ClawPal, built from blocks in the crab's colours, with the crab standing on the w.">
 
@@ -313,3 +314,4 @@ You need ESP-IDF 5.5.2, .NET SDK 8.0.425 and Python 3.12. Firmware binaries and 
 <sub>PresentMon is MIT licensed. Weather data comes from <a href="https://open-meteo.com/">Open-Meteo</a> under <a href="https://creativecommons.org/licenses/by/4.0/">CC BY 4.0</a>, with GeoNames location data. Forecast values are summarized, rounded and optionally converted to Fahrenheit. Open-Meteo's free hosted API has its own noncommercial-use terms. Set in Archivo (SIL Open Font License).</sub>
 
 <sub>The official source and updates are at <a href="https://github.com/Kaayoos/clawpal">Kaayoos/clawpal</a>. ClawPal is independent of Spotify, OpenAI, Anthropic, Intel, Espressif and Waveshare. Spotify, OpenAI/Codex and Anthropic/Claude marks belong to their owners and keep their own brand terms.</sub>
+

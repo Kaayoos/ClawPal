@@ -11,6 +11,11 @@ foreach($profile in @(0,4,6)){
         New-Item -ItemType Directory -Force -Path $frames | Out-Null
         & (Join-Path $repo ".sim-output/$profile/clawpal_sim.exe") $frames $theme
         if($LASTEXITCODE -ne 0){throw "Display interaction check failed: $profile $theme"}
+        # The Printer app runs on its own so the frames above stay comparable with older builds.
+        $printer=Join-Path $repo ".sim-output/$profile/frames/$theme-printer"
+        New-Item -ItemType Directory -Force -Path $printer | Out-Null
+        & (Join-Path $repo ".sim-output/$profile/clawpal_sim.exe") $printer $theme - printer
+        if($LASTEXITCODE -ne 0){throw "Printer app check failed: $profile $theme"}
     }
 }
 & $Python (Join-Path $repo 'tests/simulator/contact_sheet.py')

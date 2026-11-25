@@ -154,7 +154,9 @@ public sealed record PcStats(string Type, int V, long Seq, string Hostname, long
     // Locked or about to sleep; omitted otherwise. The display then naps instead of reporting offline.
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] bool? Away = null,
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] ShortcutStats? Shortcuts = null,
-    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] MixerStats? Mixer = null);
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] MixerStats? Mixer = null,
+    // The Printer app's 3D printers (PrinterContract.cs); omitted while that app is off.
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] PrinterStats? Printer = null);
 // The Audio app's channels: output first, then apps and Windows' sounds, then the microphone.
 public sealed record MixerStats(IReadOnlyList<MixerChannel> Channels);
 // Kind follows MixerContract; the display names the output, microphone and Windows' sounds itself.

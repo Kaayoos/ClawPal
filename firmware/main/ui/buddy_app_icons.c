@@ -29,6 +29,8 @@ static void draw_icon(lv_event_t *event)
     /* Three faders at different levels, the mixer's own mark. */
     else if(app==BUDDY_APP_AUDIO){LINE(26,14,26,86);LINE(50,14,50,86);LINE(74,14,74,86);rect.bg_opa=LV_OPA_COVER;rect.bg_color=line.color;
         int r=size/16;BOX(16,54,20,14,r);BOX(40,24,20,14,r);BOX(64,64,20,14,r);}
+    /* A printer: the frame, the gantry with its nozzle and a part growing on the bed. */
+    else if(app==BUDDY_APP_PRINTER){BOX(12,10,76,80,size/12);LINE(12,30,88,30);LINE(44,30,44,44);LINE(56,30,56,44);LINE(44,44,50,52);LINE(56,44,50,52);LINE(26,78,74,78);rect.bg_opa=LV_OPA_COVER;rect.bg_color=line.color;BOX(40,64,20,14,size/24);}
     else if(app==BUDDY_APP_SHORTCUTS){int r=size/12;BOX(14,14,32,32,r);BOX(54,14,32,32,r);BOX(14,54,32,32,r);BOX(54,54,32,32,r);}
     else {BOX(17,19,66,66,LV_RADIUS_CIRCLE);LINE(50,52,50,32);LINE(50,52,67,60);if(app==BUDDY_APP_TIMER){LINE(40,8,60,8);LINE(50,8,50,16);LINE(79,17,87,25);}}
 #undef BOX

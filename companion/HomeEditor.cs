@@ -34,6 +34,14 @@ internal static class AppArtwork
                 using var cap=ClawTheme.Round(new RectangleF(x+w*(cx-.1f),y+h*ky,w*.2f,h*.14f),w*.06f);g.FillPath(knob,cap);
             }
         }
+        // A printer: the frame, the gantry with its nozzle and a part on the bed, like the display's mark.
+        else if(id==10){
+            using(var frame=ClawTheme.Round(new RectangleF(x+w*.12f,y+h*.1f,w*.76f,h*.8f),w*.08f))g.DrawPath(pen,frame);
+            g.DrawLine(pen,x+w*.12f,y+h*.3f,x+w*.88f,y+h*.3f);
+            g.DrawPolygon(pen,new[]{new PointF(x+w*.44f,y+h*.3f),new PointF(x+w*.56f,y+h*.3f),new PointF(x+w*.5f,y+h*.5f)});
+            g.DrawLine(pen,x+w*.26f,y+h*.78f,x+w*.74f,y+h*.78f);
+            using var part=new SolidBrush(ink);g.FillRectangle(part,x+w*.4f,y+h*.64f,w*.2f,h*.14f);
+        }
         else if(id==6){g.DrawEllipse(pen,x+w*.14f,y+h*.08f,w*.38f,h*.38f);g.DrawArc(pen,x+w*.18f,y+h*.4f,w*.32f,h*.34f,90,180);g.DrawArc(pen,x+w*.35f,y+h*.3f,w*.4f,h*.4f,180,180);g.DrawArc(pen,x+w*.64f,y+h*.47f,w*.25f,h*.27f,270,180);g.DrawLine(pen,x+w*.34f,y+h*.74f,x+w*.77f,y+h*.74f);}
         else {g.DrawEllipse(pen,x+w*.16f,y+h*.16f,w*.68f,h*.68f);g.DrawLine(pen,x+w*.5f,y+h*.5f,x+w*.5f,y+h*.3f);g.DrawLine(pen,x+w*.5f,y+h*.5f,x+w*.68f,y+h*.6f);if(id==3)g.DrawLine(pen,x+w*.4f,y+h*.05f,x+w*.6f,y+h*.05f);}
         g.SmoothingMode=smoothing;

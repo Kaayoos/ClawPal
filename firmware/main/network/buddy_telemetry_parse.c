@@ -328,6 +328,59 @@ static bool parse_mixer(const cJSON *root, buddy_mixer_t *mixer)
     return true;
 }
 
+static bool named_value(const cJSON *object, const char *key, const char *const *names, unsigned count, bool required, uint8_t *out)
+{
+    const cJSON *value = cJSON_GetObjectItemCaseSensitive(object, key);
+    *out = 0;
+    if (!value) return !required;
+    if (!cJSON_IsString(value)) return false;
+    for (unsigned i = 0; i < count; ++i) if (strcmp(value->valuestring, names[i]) == 0) { *out = (uint8_t)i; return true; }
+    return false;
+}
+
+/* Printers the PC watches, busiest first. Each names its state from a fixed list; the display
+ * never learns where a printer is or how the PC reaches it. */
+static bool parse_printers(const cJSON *root, buddy_printers_t *printers)
+{
+    static const char *const states[] = { "offline", "idle", "preparing", "printing", "paused", "finished", "failed" };
+    static const char *const reasons[] = { "", "filament", "error", "user" };
+    _Static_assert(sizeof(states) / sizeof(states[0]) == BUDDY_PRINT_STATE_COUNT, "a name for every print state");
+    _Static_assert(sizeof(reasons) / sizeof(reasons[0]) == BUDDY_PRINT_REASON_COUNT, "a name for every reason");
+    memset(printers, 0, sizeof(*printers));
+    const cJSON *value = cJSON_GetObjectItemCaseSensitive(root, "printer");
+    if (!value || cJSON_IsNull(value)) return true;
+    printers->present = true;
+    const cJSON *list = cJSON_GetObjectItemCaseSensitive(value, "printers");
+    if (!cJSON_IsObject(value) || !cJSON_IsArray(list) || cJSON_GetArraySize(list) > BUDDY_PRINTERS ||
+        !get_optional_boolean(value, "alerts", &printers->alerts)) return false;
+    uint32_t seen[8] = {0};
+    const cJSON *item;
+    cJSON_ArrayForEach(item, list) {
+        buddy_printer_t *p = &printers->items[printers->count];
+        uint32_t id, progress;
+        if (!cJSON_IsObject(item) || !cJSON_IsNumber(cJSON_GetObjectItemCaseSensitive(item, "id")) ||
+            !get_optional_uint32(item, "id", 255, &id) || id == 0 || (seen[id / 32] & (1U << (id % 32))) ||
+            !named_value(item, "state", states, BUDDY_PRINT_STATE_COUNT, true, &p->state) ||
+            !named_value(item, "reason", reasons, BUDDY_PRINT_REASON_COUNT, false, &p->reason) ||
+            !get_optional_uint32(item, "progress", 100, &progress) ||
+            !get_optional_uint32(item, "remaining_s", 30U * 24 * 3600, &p->remaining_s) ||
+            !get_optional_uint32(item, "layer", 1000000, &p->layer) ||
+            !get_optional_uint32(item, "layers", 1000000, &p->layers) ||
+            !get_float_metric(item, "nozzle", -50, 600, &p->nozzle) ||
+            !get_float_metric(item, "nozzle_target", -50, 600, &p->nozzle_target) ||
+            !get_float_metric(item, "bed", -50, 300, &p->bed) ||
+            !get_float_metric(item, "bed_target", -50, 300, &p->bed_target) ||
+            !copy_json_string(item, "name", p->name, sizeof(p->name)) || !p->name[0] ||
+            !copy_json_string(item, "file", p->file, sizeof(p->file)) ||
+            !copy_json_string(item, "error", p->error, sizeof(p->error))) return false;
+        seen[id / 32] |= 1U << (id % 32);
+        p->id = (uint8_t)id;
+        p->progress = (uint8_t)progress;
+        ++printers->count;
+    }
+    return true;
+}
+
 bool buddy_telemetry_parse(const char *payload, size_t length, buddy_stats_t *stats)
 {
     if (!bounded_json(payload, length)) return false;
@@ -370,7 +423,8 @@ bool buddy_telemetry_parse(const char *payload, size_t length, buddy_stats_t *st
                  get_metric(network, "tx_bps", 0, 1e15, &stats->network_tx_bps) &&
                  parse_music(root, &stats->music) &&
                  parse_codex(root, "codex", &stats->codex) && parse_codex(root, "claude", &stats->claude) && parse_game(root, &stats->game) &&
-                 parse_shortcuts(root, &stats->shortcuts) && parse_mixer(root, &stats->mixer);
+                 parse_shortcuts(root, &stats->shortcuts) && parse_mixer(root, &stats->mixer) &&
+                 parse_printers(root, &stats->printers);
     if (valid) stats->timestamp_ms = (int64_t)timestamp;
     cJSON_Delete(root);
     return valid;

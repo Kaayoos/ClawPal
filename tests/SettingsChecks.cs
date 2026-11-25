@@ -77,7 +77,7 @@ internal static class SettingsChecks
         (settings with{NightStart=22,NightEnd=7,DimBehavior=2,DimAfterSeconds=15,DimBrightness=5}).Validate();Check(true,"overnight ranges and always-idle dimming are supported");
         string legacy="{\"schema\":2,\"enabled_apps\":47,\"home_order\":[2,0,1],\"use_24h\":false,\"weather_enabled\":false,\"city\":\"Warsaw\",\"latitude\":52.2297,\"longitude\":21.0122,\"timezone\":\"CET-1CEST,M3.5.0,M10.5.0/3\"}";
         var migrated=DeviceSettingsClient.Parse(legacy);
-        Check(migrated.ProtocolSchema==2 && migrated.Settings.Schema==DeviceSettings.CurrentSchema && migrated.Settings.EnabledApps==1007 && migrated.Settings.HomeOrder.SequenceEqual(new[]{2,0,1}) && !migrated.Settings.Use24h && !migrated.Settings.WeatherEnabled,"migration preserves disabled apps, ordering, time format and forecast visibility");
+        Check(migrated.ProtocolSchema==2 && migrated.Settings.Schema==DeviceSettings.CurrentSchema && migrated.Settings.EnabledApps==(1007|1024) && migrated.Settings.HomeOrder.SequenceEqual(new[]{2,0,1}) && !migrated.Settings.Use24h && !migrated.Settings.WeatherEnabled,"migration preserves disabled apps, ordering, time format and forecast visibility");
         Check(migrated.Settings.DimBehavior==1 && migrated.Settings.DimBrightness==40 && migrated.Settings.NightEnabled && migrated.Settings.NightStart==1 && migrated.Settings.NightEnd==10 && migrated.Settings.OfflineApp==1,"legacy preferences inherit the previous screen behavior");
         var custom=settings with{DimBehavior=2,DimAfterSeconds=120,DimBrightness=20,NightEnabled=false,NightStart=23,NightEnd=8,OfflineApp=6};
         Check(DeviceSettingsClient.Equivalent(custom,DeviceSettingsClient.Parse(JsonSerializer.Serialize(custom,DeviceSettingsClient.Json)).Settings),"every new screen preference survives wireless JSON roundtrip");
@@ -98,7 +98,14 @@ internal static class SettingsChecks
         Check(crabTwo.Cased&&crastudio.Cased&&!Themes.Get("crab",null).Cased&&!Themes.Get("studio",null).Cased,"only Crab v2 and Crastudio sit in the orange case");
         Check(crabTwo.Mascot&&!crastudio.Mascot&&!crabTwo.HasAccents&&!crastudio.HasAccents&&crabTwo.Frame==ClawTheme.Case&&crastudio.Accent==ClawTheme.Case,"Crab v2 keeps the crab, Crastudio drops it, and both wear the app's orange");
         var cased=custom with{Theme="crastudio",Accent="champagne"};string casedJson=JsonSerializer.Serialize(cased,DeviceSettingsClient.Json);
-        Check(casedJson.Contains("\"schema\":10")&&casedJson.Contains("\"theme\":\"crastudio\"")&&DeviceSettingsClient.Equivalent(cased,DeviceSettingsClient.Parse(casedJson).Settings),"a cased look round-trips with schema 10 settings");
+        Check(casedJson.Contains("\"schema\":11")&&casedJson.Contains("\"theme\":\"crastudio\"")&&DeviceSettingsClient.Equivalent(cased,DeviceSettingsClient.Parse(casedJson).Settings),"a cased look round-trips with schema 11 settings");
+        // Schema 11: the Printer app. Displays on schema 10 gain it switched on and ask for a firmware update; it can sit on Home but is never the offline app.
+        var beforePrinter=DeviceSettingsClient.Parse(JsonSerializer.Serialize(custom with{EnabledApps=1023,Schema=10},DeviceSettingsClient.Json));
+        Check(beforePrinter.ProtocolSchema==10&&beforePrinter.Settings.Schema==11&&beforePrinter.Settings.Enabled(10)&&beforePrinter.Settings.Theme==custom.Theme,"schema 10 displays gain the Printer app and keep everything else");
+        var printerHome=new DeviceSettings() with{HomeOrder=[10,0]};printerHome.Validate();
+        Check(!printerHome.SetEnabled(10,false).Enabled(10)&&!printerHome.SetEnabled(10,false).HomeOrder.Contains(10)&&DisplayApps.Get(10).Name.Length>0,"the Printer app can sit on Home and turning it off removes it there");
+        bool printerOffline=false;try{(new DeviceSettings() with{OfflineApp=10}).Validate();}catch(ArgumentException){printerOffline=true;}Check(printerOffline,"the Printer app needs the PC, so it is never the offline app");
+        bool twelfth=false;try{(new DeviceSettings() with{EnabledApps=4095}).Validate();}catch(ArgumentException){twelfth=true;}Check(twelfth,"no app beyond the Printer app");
         var beforeCases=DeviceSettingsClient.Parse(JsonSerializer.Serialize(custom with{Theme="studio",Accent="sage",Schema=9},DeviceSettingsClient.Json));
         Check(beforeCases.ProtocolSchema==9&&beforeCases.Settings.Schema==DeviceSettings.CurrentSchema&&beforeCases.Settings.Theme=="studio","schema 9 displays keep their look and ask for a firmware update");
         L.SetVariant("crastudio");bool calm=L.Variant=="studio";L.SetVariant("crabv2");bool crabby=L.Variant is null;L.SetVariant("crab");

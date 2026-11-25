@@ -142,6 +142,46 @@ typedef struct {
 #define BUDDY_MIXER_VOLUME_VALUE(id, percent) (((uint32_t)(id) << 7) | (uint32_t)(percent))
 #define BUDDY_MIXER_MUTE_VALUE(id, muted) (((uint32_t)(id) << 1) | ((muted) ? 1U : 0U))
 
+/* The Printer app: 3D printers the PC watches on its network, read-only. The PC orders them
+ * with the busiest first; `id` stays with a printer while the PC app runs. */
+#define BUDDY_PRINTERS 4
+#define BUDDY_PRINTER_NAME_BYTES 32
+#define BUDDY_PRINTER_FILE_BYTES 64
+#define BUDDY_PRINTER_ERROR_BYTES 32
+typedef enum {
+    BUDDY_PRINT_OFFLINE,   /* the PC cannot reach it */
+    BUDDY_PRINT_IDLE,
+    BUDDY_PRINT_PREPARING, /* heating, levelling or loading before the first layer */
+    BUDDY_PRINT_PRINTING,
+    BUDDY_PRINT_PAUSED,
+    BUDDY_PRINT_FINISHED,
+    BUDDY_PRINT_FAILED,    /* stopped before the end: cancelled or failed */
+    BUDDY_PRINT_STATE_COUNT
+} buddy_print_state_t;
+/* Why a print paused or stopped, when the printer says. */
+typedef enum {
+    BUDDY_PRINT_REASON_NONE,
+    BUDDY_PRINT_REASON_FILAMENT, /* runout or a tangle */
+    BUDDY_PRINT_REASON_ERROR,    /* the printer reported an error */
+    BUDDY_PRINT_REASON_USER,     /* someone paused or cancelled it */
+    BUDDY_PRINT_REASON_COUNT
+} buddy_print_reason_t;
+typedef struct {
+    uint8_t id, state, reason, progress; /* progress 0..100 */
+    uint32_t remaining_s, layer, layers;
+    /* Degrees Celsius; NAN when the printer does not report one. */
+    float nozzle, nozzle_target, bed, bed_target;
+    char name[BUDDY_PRINTER_NAME_BYTES];
+    char file[BUDDY_PRINTER_FILE_BYTES];
+    char error[BUDDY_PRINTER_ERROR_BYTES]; /* a short code, such as an HMS code */
+} buddy_printer_t;
+typedef struct {
+    bool present; /* false when an older companion has no Printer app */
+    bool alerts;  /* full-screen alerts when a print ends or stops */
+    uint8_t count;
+    buddy_printer_t items[BUDDY_PRINTERS];
+} buddy_printers_t;
+
 typedef struct {
     char hostname[64];
     char cpu_name[96];
@@ -173,4 +213,5 @@ typedef struct {
     /* present is false when an older companion has no Shortcuts. */
     buddy_shortcuts_state_t shortcuts;
     buddy_mixer_t mixer;
+    buddy_printers_t printers;
 } buddy_stats_t;
