@@ -9,7 +9,8 @@ New-Item -ItemType Directory -Path $dist -Force | Out-Null
 # Signed LAN requests and signed firmware images started with 0.10.0: a display running
 # them refuses older companions, so those update first. Later releases share that floor.
 # Themes moved display settings to schema 7 in 0.11.0; older companions cannot read them.
-$minCompanion=if([version]$default.Version -ge [version]'0.14.0'){'0.14.0'}elseif([version]$default.Version -ge [version]'0.13.0'){'0.13.0'}elseif([version]$default.Version -ge [version]'0.11.0'){'0.11.0'}elseif([version]$default.Version -ge [version]'0.10.0'){'0.10.0'}else{'0.9.0'}
+# The same holds for schema 10 (cased looks) in 0.14.0 and schema 12 (hidden frame) in 0.15.0.
+$minCompanion=if([version]$default.Version -ge [version]'0.15.0'){'0.15.0'}elseif([version]$default.Version -ge [version]'0.14.0'){'0.14.0'}elseif([version]$default.Version -ge [version]'0.13.0'){'0.13.0'}elseif([version]$default.Version -ge [version]'0.11.0'){'0.11.0'}elseif([version]$default.Version -ge [version]'0.10.0'){'0.10.0'}else{'0.9.0'}
 $releases=@()
 foreach($model in $catalog.Boards){
  $board=Get-Content -LiteralPath (Join-Path $repo ('payload/boards/'+$model.Id+'.json')) -Raw | ConvertFrom-Json

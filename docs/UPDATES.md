@@ -138,7 +138,7 @@ These upload assets are deliberately selected:
 
 - `ClawPal-Setup.exe` and `ClawPal-Setup.exe.sha256`.
 - `clawpal-release.json`.
-- One `clawpal-*.bin` file for each board profile (eight as of 0.14.0).
+- One `clawpal-*.bin` file for each board profile (eight as of 0.15.0).
 - `ClawPal-Source-and-Licenses.zip` containing ClawPal source, licenses, the
   matching SDK with submodules, tool/stub source archives and their checksums.
 
