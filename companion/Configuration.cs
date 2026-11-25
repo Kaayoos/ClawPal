@@ -28,7 +28,11 @@ public sealed class Configuration
     public double Latitude { get; set; }
     public double Longitude { get; set; }
     public string Timezone { get; set; } = "UTC0";
+    // The single switch of older versions; AutoOpen replaces it and falls back to it when absent.
     public bool AutoOpenApps { get; set; }
+    public AutoOpenChoice? AutoOpen { get; set; }
+    [JsonIgnore] public AutoOpenChoice AutoOpening => AutoOpen ?? AutoOpenChoice.All(AutoOpenApps);
+    public void SetAutoOpen(AutoOpenChoice choice) { AutoOpen = choice; AutoOpenApps = choice.Any; }
     public string UpdateNotificationKey { get; set; } = "";
     public bool AutoCheckUpdates { get; set; } = true;
     public DateTimeOffset? LastUpdateCheckUtc { get; set; }

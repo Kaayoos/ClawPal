@@ -5,8 +5,9 @@
 #include "cJSON.h"
 
 /* 10 adds the cased looks, Crab v2 and Crastudio; 11 adds the Printer app (bit 10), which older
- * settings gain as they load. Older settings, including those saved by earlier firmware, still parse. */
-#define BUDDY_SETTINGS_SCHEMA 11
+ * settings gain as they load; 12 lets the cased looks leave off the case's frame. Older settings,
+ * including those saved by earlier firmware, still parse. */
+#define BUDDY_SETTINGS_SCHEMA 12
 #define BUDDY_HOME_SLOTS 5
 typedef struct {
     uint32_t revision;
@@ -18,6 +19,7 @@ typedef struct {
     uint16_t dim_after_seconds;
     bool night_enabled;
     bool show_version; /* Home's footer names the firmware version */
+    bool hide_frame; /* cased looks leave off the case: the frame around the screen and the rail along the bottom */
     char language[16];
     char city[64], timezone[128];
     double latitude, longitude;

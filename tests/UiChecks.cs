@@ -82,7 +82,7 @@ internal static class UiChecks
                     Check(Field<DeviceSettings>(form, "draft").HomeOrder.Length == 5 && Descendants(form).OfType<AppChip>().All(c => !c.Enabled), "A full Home turns the remaining choices off");
                     Page("Apps");
                     var switches = Descendants(form).OfType<ClawSwitch>().Select(s => s.Text).ToArray();
-                    Check(switches.Contains(L.Text("track_game_fps_in_pc_monitor")) && switches.Contains(L.Text("claude_live_limits")) && switches.Contains(L.Text("automatically_open_spotify_or_codex")), "App options live with their apps on the Apps page");
+                    Check(switches.Contains(L.Text("track_game_fps_in_pc_monitor")) && switches.Contains(L.Text("claude_live_limits")) && switches.Contains(DisplayApps.Get(2).Name) && switches.Contains(DisplayApps.Get(4).Name) && switches.Contains(DisplayApps.Get(7).Name), "App options live with their apps on the Apps page");
                     Check(Descendants(form).OfType<ClawButton>().Any(b => b.Text == L.Text("claude_link_button")), "The Claude Code connection is under Claude Code in Apps");
                     Page("PC app");
                     Check(Descendants(form).OfType<ClawSwitch>().Any(s => s.Text == L.Text("start_clawpal_with_windows")) && !Descendants(form).OfType<ClawSwitch>().Any(s => s.Text == L.Text("claude_live_limits")), "The PC app page keeps only settings for the PC app itself");

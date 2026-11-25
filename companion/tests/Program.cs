@@ -54,6 +54,17 @@ foreach (bool autoOpen in new[] { false, true }) {
         navigation.RootElement.GetProperty("codex").GetProperty("running").GetBoolean(),
         "navigation preference " + autoOpen + " preserves real Spotify and Codex status");
 }
+{
+    var picked = sample with { AutoOpenApps = true, AutoOpen = new(false, true, false) };
+    using var choice = JsonDocument.Parse(JsonSerializer.Serialize(picked, Protocol.Json));
+    var open = choice.RootElement.GetProperty("auto_open");
+    Check(choice.RootElement.GetProperty("auto_open_apps").GetBoolean() && !open.GetProperty("music").GetBoolean() && open.GetProperty("codex").GetBoolean() &&
+        !open.GetProperty("claude").GetBoolean() && !open.TryGetProperty("any", out _), "each app's auto-open choice travels on its own");
+    Check(open.GetProperty("printer").GetBoolean(), "the Printer app opens itself unless switched off");
+    using var noPrinter = JsonDocument.Parse(JsonSerializer.Serialize(sample with { AutoOpen = new(false, false, false, false) }, Protocol.Json));
+    Check(!noPrinter.RootElement.GetProperty("auto_open").GetProperty("printer").GetBoolean(), "the Printer app's own choice travels too");
+    Check(!serialized.RootElement.TryGetProperty("auto_open", out _), "legacy telemetry omits the per-app choice");
+}
 byte[] Ack(long sequence) => JsonSerializer.SerializeToUtf8Bytes(new { type = "buddy.ack", v = 1, seq = sequence });
 Check(Protocol.ParseAcknowledgement(Ack(1)) == 1, "valid acknowledgement identifies delivered sequence");
 Check(Protocol.ParseAcknowledgement(Encoding.UTF8.GetBytes("{\"type\":\"pc.stats\",\"v\":1,\"seq\":1}")) is null, "wrong acknowledgement type rejected");

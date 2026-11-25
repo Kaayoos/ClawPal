@@ -8,9 +8,11 @@
 
 /* Crab until settings say otherwise, so anything drawn early keeps today's look. */
 buddy_theme_t buddy_theme = BUDDY_THEME_CRAB_VALUES;
+static bool frameless;
 
-void buddy_theme_select(unsigned theme, unsigned accent)
+void buddy_theme_select(unsigned theme, unsigned accent, bool hide_frame)
 {
+    frameless = hide_frame;
     buddy_theme = buddy_themes[theme < BUDDY_THEME_COUNT ? theme : BUDDY_THEME_CRAB];
     if (buddy_theme.accents && accent < BUDDY_ACCENT_COUNT) buddy_theme.accent = buddy_theme_accents[accent];
     /* Looks without the crab use the wording that never mentions it. */
@@ -29,9 +31,11 @@ void buddy_theme_numerals(lv_obj_t *label)
         if (font == twins[i].medium) { lv_obj_set_style_text_font(label, twins[i].light, 0); return; }
 }
 
+bool buddy_theme_case(void) { return buddy_theme.cased && !frameless; }
+
 int buddy_theme_frame(void)
 {
-    if (!buddy_theme.cased) return 0;
+    if (!buddy_theme_case()) return 0;
     /* Thin enough that every layout's own margin still clears it. */
     return BOARD_DISPLAY_WIDTH >= 800 ? 8 : BOARD_DISPLAY_HEIGHT >= 400 ? 5 : 3;
 }

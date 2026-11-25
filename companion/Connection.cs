@@ -15,7 +15,7 @@ public sealed class Connection : IDisposable
     private readonly CancellationTokenSource shutdown = new();
     private CancellationTokenSource? session;
     private volatile bool paused,maintenance;
-    private volatile bool autoOpenApps;
+    private volatile AutoOpenChoice autoOpen;
     private volatile bool away;
     // Released to send the next frame now instead of after the usual second.
     private readonly SemaphoreSlim nudge = new(0, 1);
@@ -29,10 +29,10 @@ public sealed class Connection : IDisposable
     // 3D printers on the network, read-only; runs whether or not the display is connected.
     public PrinterMonitor Printers { get; }
     private void SetMaintenance(bool value){maintenance=value;IsConnected=false;CancelSession();}
-    public Connection(Configuration config) { this.config = config; Settings=new(config); Updates=new(config,Settings,SetMaintenance); paused = config.Paused; autoOpenApps = config.AutoOpenApps;
+    public Connection(Configuration config) { this.config = config; Settings=new(config); Updates=new(config,Settings,SetMaintenance); paused = config.Paused; autoOpen = config.AutoOpening;
         Printers = new() { Enabled = () => !paused && config.DisplaySettings?.Enabled(10) != false }; }
     public void SetPaused(bool value) { paused = value; if(value)IsConnected=false; CancelSession(); }
-    public void SetAutoOpenApps(bool value) { autoOpenApps = value; }
+    public void SetAutoOpen(AutoOpenChoice value) { autoOpen = value; }
     // Lock and sleep are sent at once, so the display naps instead of reporting the PC offline.
     public void SetAway(bool value)
     {
@@ -195,7 +195,8 @@ public sealed class Connection : IDisposable
                             Music = music with { ControlId = controlResult.Id, ControlOk = controlResult.Ok, ControlError = controlResult.Error, Lyrics = lyricsStats },
                             Codex = codex.Snapshot with { Activity = activity.Snapshot },
                             Claude = config.DisplaySettings?.Enabled(7)!=false && Settings.FirmwareVersion.Length>0 && Version.TryParse(Settings.FirmwareVersion,out var firmwareVersion) && firmwareVersion>=new Version(0,7,0) ? claude.Snapshot : null,
-                            AutoOpenApps = autoOpenApps,
+                            AutoOpenApps = autoOpen.Any,
+                            AutoOpen = autoOpen,
                             Away = away ? true : null,
                             Shortcuts = deckSupported ? new ShortcutStats(deckRev, lit) : null,
                             Mixer = config.DisplaySettings?.Enabled(9) != false ? MixerSnapshot(mixer) : null,

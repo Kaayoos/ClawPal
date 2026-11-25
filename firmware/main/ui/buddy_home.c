@@ -218,7 +218,7 @@ lv_obj_t *buddy_home_create(lv_obj_t *screen, lv_event_cb_t open_app, lv_event_c
     /* Square looks set the shortcuts on solid blocks, so no seam is needed between the halves. */
     if (buddy_theme.square) lv_obj_add_flag(seam, LV_OBJ_FLAG_HIDDEN);
     /* Inside a case the Wi-Fi mark steps in from the frame. */
-    home.wifi = buddy_theme.cased ? plain(home.page, 734, 14, 38, 32) : plain(home.page, 744, 9, 38, 32);
+    home.wifi = buddy_theme_case() ? plain(home.page, 734, 14, 38, 32) : plain(home.page, 744, 9, 38, 32);
     lv_obj_add_event_cb(home.wifi, draw_wifi, LV_EVENT_DRAW_MAIN, NULL);
     const char *names[] = { BT(BT_PC_MONITOR), BT(BT_CLOCK), BT(BT_MUSIC), BT(BT_TIMER), BT(BT_CODEX), BT(BT_HOME), BT(BT_WEATHER), BT(BT_CLAUDE), BT(BT_SHORTCUTS), BT(BT_AUDIO), BT(BT_PRINTER) };
     _Static_assert(sizeof(names) / sizeof(names[0]) == BUDDY_APP_COUNT, "Home needs a name for every app");

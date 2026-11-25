@@ -6,7 +6,8 @@
 #include "lvgl.h"
 
 extern buddy_theme_t buddy_theme;
-void buddy_theme_select(unsigned theme, unsigned accent);
+/* hide_frame leaves a cased look's case off: no frame and no rail, only its colours and shapes. */
+void buddy_theme_select(unsigned theme, unsigned accent, bool hide_frame);
 /* Light-numeral themes swap a numeric label's Medium font for its Montserrat Light twin,
  * which shares the same line metrics; other themes and other fonts are left alone. */
 void buddy_theme_numerals(lv_obj_t *label);
@@ -16,8 +17,11 @@ static inline bool buddy_theme_has_mascot(void) { return buddy_theme.mascot; }
  * their own shapes. Other looks keep the radius they ask for. */
 static inline lv_coord_t buddy_theme_round(lv_coord_t radius) { return buddy_theme.square ? 0 : radius; }
 /* Cased looks sit the screen inside the orange case of the PC app: a frame around every
- * view and a rail along the bottom that carries Apps and Home. 0 without a case. */
+ * view and a rail along the bottom that carries Apps and Home. 0 without a case or with
+ * the case left off. */
 int buddy_theme_frame(void);
+/* Whether the case is drawn at all: a cased look that has not left it off. */
+bool buddy_theme_case(void);
 /* Heavy-type looks set display sizes (32 px and up, and the clocks) in Archivo's heavy
  * weight across a subtree; call it once a view is built. Other looks are left alone. */
 void buddy_theme_type(lv_obj_t *root);

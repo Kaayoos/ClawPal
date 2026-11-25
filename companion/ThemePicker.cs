@@ -17,11 +17,12 @@ internal sealed class ThemeCard : ClawButton
     });
     internal string ThemeId { get; }
     internal string AccentId { get; set; } = Themes.DefaultAccent;
+    internal bool HideFrame { get; set; }
     internal ThemeCard(string theme) { ThemeId = theme; Text = Themes.Get(theme, null).Name; Size = new(292, 248); AccessibleDescription = Themes.Get(theme, null).Description; }
     protected override void OnPaint(PaintEventArgs e)
     {
         var g = e.Graphics; g.SmoothingMode = SmoothingMode.AntiAlias; g.Clear(Parent?.BackColor ?? ClawTheme.Screen);
-        var look = Themes.Get(ThemeId, AccentId);
+        var look = Themes.Get(ThemeId, AccentId, HideFrame);
         bool lit = Selected;
         ClawTheme.Fill(g, lit ? (Hot ? ClawTheme.AccentHover : ClawTheme.Accent) : Hot ? ClawTheme.Raised : ClawTheme.Surface, new Rectangle(0, 0, Width, Height));
         // The display in its slim case, wearing this look.
@@ -84,7 +85,8 @@ internal sealed class ThemeCard : ClawButton
         }
     }
     /* A cased look: square blocks for the shortcuts, then ClawPal's orange case around the screen with
-     * its rail along the bottom, Apps and Home printed in the case's dark ink. */
+     * its rail along the bottom, Apps and Home printed in the case's dark ink. With the case left off they sit on the screen
+     * below a rule, in the accent. */
     private static void PaintCase(Graphics g, Rectangle r, ThemeLook look)
     {
         float s = r.Width / 800f;
@@ -98,10 +100,11 @@ internal sealed class ThemeCard : ClawButton
             g.FillRectangle(accent, R(482, y + 20, 48, 48));
             g.FillRectangle(ink, R(552, y + 22, 150 - i * 18, 16)); g.FillRectangle(muted, R(552, y + 50, 104, 12));
         }
-        g.FillRectangle(frame, R(0, 436, 800, 44));
-        g.FillRectangle(frame, R(0, 0, 800, 8)); g.FillRectangle(frame, R(0, 0, 8, 480)); g.FillRectangle(frame, R(792, 0, 8, 480));
-        for (int i = 0; i < 4; ++i) g.FillRectangle(frameInk, R(28 + i % 2 * 9, 450 + i / 2 * 9, 6, 6));
-        g.FillRectangle(frameInk, R(52, 452, 58, 12)); g.FillRectangle(frameInk, R(704, 452, 70, 12));
+        if (look.HideFrame) { using var rule = new SolidBrush(look.Border); g.FillRectangle(rule, R(28, 440, 744, 1)); }
+        else { g.FillRectangle(frame, R(0, 436, 800, 44)); g.FillRectangle(frame, R(0, 0, 800, 8)); g.FillRectangle(frame, R(0, 0, 8, 480)); g.FillRectangle(frame, R(792, 0, 8, 480)); }
+        var printed = look.HideFrame ? accent : frameInk;
+        for (int i = 0; i < 4; ++i) g.FillRectangle(printed, R(28 + i % 2 * 9, 450 + i / 2 * 9, 6, 6));
+        g.FillRectangle(printed, R(52, 452, 58, 12)); g.FillRectangle(printed, R(704, 452, 70, 12));
     }
 }
 
@@ -124,19 +127,35 @@ internal sealed class SwatchButton : ClawButton
     }
 }
 
-/* Two looks side by side, then Studio's accents. Raises Changed with the chosen theme and accent. */
+/* Two looks side by side, then Studio's accents, or for the cased looks a switch that leaves off their frame.
+ * Raises Changed with the chosen theme and accent, and FrameChanged when the switch moves. */
 internal sealed class LookPicker : Panel
 {
     private readonly ThemeCard[] cards;
     private readonly SwatchButton[] swatches;
+    // Only where the frame choice can be saved; setup leaves it out.
+    private readonly ClawSwitch? frameSwitch;
     private readonly Label accentTitle = ClawTheme.Label(L.Text("accent_colour"), 300, ClawTheme.Body, true, 30), accentNote = ClawTheme.Label("", 400, ClawTheme.Small, false, 30);
     internal string Theme { get; private set; }
     internal string Accent { get; private set; }
+    internal bool HideFrame { get; private set; }
     internal event Action<string, string>? Changed;
-    internal LookPicker(string theme, string accent)
+    internal event Action<bool>? FrameChanged;
+    internal LookPicker(string theme, string accent, bool? hideFrame = null)
     {
-        Theme = theme; Accent = accent; Height = 360;
+        Theme = theme; Accent = accent; Height = 360; HideFrame = hideFrame ?? false;
         cards = Themes.Ids.Select(id => new ThemeCard(id)).ToArray();
+        if (hideFrame is not null)
+        {
+            var toggle = new ClawSwitch() { Text = L.Text("hide_the_orange_frame"), Checked = HideFrame };
+            toggle.CheckedChanged += (_, _) =>
+            {
+                if (toggle.Checked == HideFrame) return;
+                HideFrame = toggle.Checked; foreach (var card in cards) { card.HideFrame = HideFrame; card.Invalidate(); }
+                FrameChanged?.Invoke(HideFrame);
+            };
+            frameSwitch = toggle; Controls.Add(toggle);
+        }
         swatches = Themes.AccentIds.Select(id => new SwatchButton(id)).ToArray();
         foreach (var card in cards) card.Click += (_, _) => Choose(card.ThemeId, Accent);
         foreach (var swatch in swatches) swatch.Click += (_, _) => Choose(Theme, swatch.AccentId);
@@ -146,10 +165,11 @@ internal sealed class LookPicker : Panel
     internal void SetLook(string theme, string accent)
     {
         Theme = theme; Accent = accent; var look = Themes.Get(theme, accent);
-        foreach (var card in cards) { card.Selected = card.ThemeId == theme; card.AccentId = accent; card.Invalidate(); }
+        foreach (var card in cards) { card.Selected = card.ThemeId == theme; card.AccentId = accent; card.HideFrame = HideFrame; card.Invalidate(); }
         foreach (var swatch in swatches) { swatch.Selected = swatch.AccentId == accent; swatch.Visible = look.HasAccents; swatch.Invalidate(); }
         // The cards name each accent; looks with none to choose say why.
         accentNote.Text = L.Text(look.Cased ? "accent_case_note" : "accent_crab_note"); accentNote.Visible = !look.HasAccents;
+        if (frameSwitch is not null) frameSwitch.Visible = look.Cased;
         LayoutPicker();
     }
     private void Choose(string theme, string accent)
@@ -173,6 +193,9 @@ internal sealed class LookPicker : Panel
         for (int i = 0; i < swatches.Length; i++) swatches[i].SetBounds(i % columns * (cardWidth + cardGap), height + 62 + i / columns * (64 + cardGap), cardWidth, 64);
         accentNote.TextAlign = ContentAlignment.MiddleLeft;
         accentNote.SetBounds(0, height + 56, ClientSize.Width, 30);
-        Height = accents ? height + 62 + rows * 64 + (rows - 1) * cardGap : height + 92;
+        // Cased looks offer their frame switch under the note, where Studio's accents sit.
+        bool frame = frameSwitch is not null && Themes.Get(Theme, Accent).Cased;
+        frameSwitch?.SetBounds(0, height + 96, Math.Min(ClientSize.Width, 600), 44);
+        Height = accents ? height + 62 + rows * 64 + (rows - 1) * cardGap : frame ? height + 148 : height + 92;
     }
 }

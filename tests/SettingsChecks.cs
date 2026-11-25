@@ -91,6 +91,14 @@ internal static class SettingsChecks
         Check(upgraded.ProtocolSchema==4 && DeviceSettingsClient.Equivalent(upgraded.Settings,fahrenheitSettings with{WeatherFahrenheit=false}),"schema 4 preserves language and preferences while defaulting weather to Celsius");
         bool incompleteUnits=false;try{DeviceSettingsClient.Parse(fahrenheitJson.Replace("\"weather_fahrenheit\":true,",""));}catch(IOException){incompleteUnits=true;}Check(incompleteUnits,"new settings require a temperature unit field");
         bool invalidUnits=false;try{DeviceSettingsClient.Parse(fahrenheitJson.Replace("\"weather_fahrenheit\":true","\"weather_fahrenheit\":\"fahrenheit\""));}catch(JsonException){invalidUnits=true;}Check(invalidUnits,"untyped temperature preferences are rejected");
+        // Auto-open: the old single switch carries over to every app, and stays set for older versions.
+        var legacyConfig=new Configuration{AutoOpenApps=true};
+        Check(legacyConfig.AutoOpening==AutoOpenChoice.All(true),"a saved single auto-open switch carries over to every app");
+        legacyConfig.SetAutoOpen(new(true,false,false));
+        Check(legacyConfig.AutoOpenApps&&legacyConfig.AutoOpening==new AutoOpenChoice(true,false,false),"choosing per app keeps the single switch for older versions");
+        legacyConfig.SetAutoOpen(AutoOpenChoice.All(false));Check(!legacyConfig.AutoOpenApps,"no app chosen turns the single switch off");
+        var savedChoice=JsonSerializer.Deserialize<Configuration>("{\"AutoOpenApps\":true,\"AutoOpen\":{\"Music\":false,\"Codex\":true,\"Claude\":false}}")!;
+        Check(savedChoice.AutoOpening==new AutoOpenChoice(false,true,false,true),"a choice saved before the Printer app lets it open itself");
         // Looks: the display and companion share themes/themes.json; older displays keep the crab.
         Check(Themes.Ids.SequenceEqual(new[]{"crab","studio","crabv2","crastudio"})&&Themes.AccentIds.Contains("champagne"),"the companion reads the same theme catalog as the firmware");
         // The cased looks wear this app's case: its orange, the crab only in Crab v2, and no accent to choose.
@@ -98,14 +106,20 @@ internal static class SettingsChecks
         Check(crabTwo.Cased&&crastudio.Cased&&!Themes.Get("crab",null).Cased&&!Themes.Get("studio",null).Cased,"only Crab v2 and Crastudio sit in the orange case");
         Check(crabTwo.Mascot&&!crastudio.Mascot&&!crabTwo.HasAccents&&!crastudio.HasAccents&&crabTwo.Frame==ClawTheme.Case&&crastudio.Accent==ClawTheme.Case,"Crab v2 keeps the crab, Crastudio drops it, and both wear the app's orange");
         var cased=custom with{Theme="crastudio",Accent="champagne"};string casedJson=JsonSerializer.Serialize(cased,DeviceSettingsClient.Json);
-        Check(casedJson.Contains("\"schema\":11")&&casedJson.Contains("\"theme\":\"crastudio\"")&&DeviceSettingsClient.Equivalent(cased,DeviceSettingsClient.Parse(casedJson).Settings),"a cased look round-trips with schema 11 settings");
+        Check(casedJson.Contains("\"schema\":12")&&casedJson.Contains("\"theme\":\"crastudio\"")&&casedJson.Contains("\"hide_frame\":false")&&DeviceSettingsClient.Equivalent(cased,DeviceSettingsClient.Parse(casedJson).Settings),"a cased look round-trips with schema 12 settings and keeps its frame by default");
         // Schema 11: the Printer app. Displays on schema 10 gain it switched on and ask for a firmware update; it can sit on Home but is never the offline app.
         var beforePrinter=DeviceSettingsClient.Parse(JsonSerializer.Serialize(custom with{EnabledApps=1023,Schema=10},DeviceSettingsClient.Json));
-        Check(beforePrinter.ProtocolSchema==10&&beforePrinter.Settings.Schema==11&&beforePrinter.Settings.Enabled(10)&&beforePrinter.Settings.Theme==custom.Theme,"schema 10 displays gain the Printer app and keep everything else");
+        Check(beforePrinter.ProtocolSchema==10&&beforePrinter.Settings.Schema==DeviceSettings.CurrentSchema&&beforePrinter.Settings.Enabled(10)&&beforePrinter.Settings.Theme==custom.Theme,"schema 10 displays gain the Printer app and keep everything else");
         var printerHome=new DeviceSettings() with{HomeOrder=[10,0]};printerHome.Validate();
         Check(!printerHome.SetEnabled(10,false).Enabled(10)&&!printerHome.SetEnabled(10,false).HomeOrder.Contains(10)&&DisplayApps.Get(10).Name.Length>0,"the Printer app can sit on Home and turning it off removes it there");
         bool printerOffline=false;try{(new DeviceSettings() with{OfflineApp=10}).Validate();}catch(ArgumentException){printerOffline=true;}Check(printerOffline,"the Printer app needs the PC, so it is never the offline app");
         bool twelfth=false;try{(new DeviceSettings() with{EnabledApps=4095}).Validate();}catch(ArgumentException){twelfth=true;}Check(twelfth,"no app beyond the Printer app");
+        var frameless=cased with{HideFrame=true};string framelessJson=JsonSerializer.Serialize(frameless,DeviceSettingsClient.Json);
+        Check(framelessJson.Contains("\"hide_frame\":true")&&DeviceSettingsClient.Equivalent(frameless,DeviceSettingsClient.Parse(framelessJson).Settings)&&!DeviceSettingsClient.Equivalent(cased,frameless),"a hidden frame round-trips and cannot be falsely marked synced");
+        bool missingFrame=false;try{DeviceSettingsClient.Parse(framelessJson.Replace("\"hide_frame\":true,","").Replace(",\"hide_frame\":true",""));}catch(IOException){missingFrame=true;}Check(missingFrame,"schema 12 settings say whether the frame is hidden");
+        var beforeFrame=DeviceSettingsClient.Parse(JsonSerializer.Serialize(cased with{Schema=11},DeviceSettingsClient.Json).Replace("\"hide_frame\":false,","").Replace(",\"hide_frame\":false",""));
+        Check(beforeFrame.ProtocolSchema==11&&beforeFrame.Settings.Theme=="crastudio"&&!beforeFrame.Settings.HideFrame,"schema 11 displays keep the frame and ask for a firmware update");
+        Check(Themes.Get("crastudio",null,true).HideFrame&&!Themes.Get("studio",null,true).HideFrame,"only cased looks can leave off the frame");
         var beforeCases=DeviceSettingsClient.Parse(JsonSerializer.Serialize(custom with{Theme="studio",Accent="sage",Schema=9},DeviceSettingsClient.Json));
         Check(beforeCases.ProtocolSchema==9&&beforeCases.Settings.Schema==DeviceSettings.CurrentSchema&&beforeCases.Settings.Theme=="studio","schema 9 displays keep their look and ask for a firmware update");
         L.SetVariant("crastudio");bool calm=L.Variant=="studio";L.SetVariant("crabv2");bool crabby=L.Variant is null;L.SetVariant("crab");

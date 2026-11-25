@@ -110,8 +110,10 @@ static FILE *events;
 static int frame_index;
 static double frame_clock;           /* fractional ms accumulator for 60 fps */
 static char out_dir[512];
-/* The look under test: argv[2] names a theme and argv[3] an accent, as the settings JSON does. */
+/* The look under test: argv[2] names a theme and argv[3] an accent, as the settings JSON does;
+ * argv[4] "noframe" leaves a cased look's case (frame and rail) off. */
 static uint8_t sim_theme, sim_accent;
+static bool sim_hide_frame;
 
 static void step(uint32_t ms)
 {
@@ -202,7 +204,7 @@ static void base_settings(const uint8_t *order, unsigned count)
     settings.dim_behavior = 1; settings.dim_brightness = 40; settings.dim_after_seconds = 60;
     settings.night_enabled = true; settings.night_start = 1; settings.night_end = 10;
     settings.offline_app = 1;
-    settings.theme = sim_theme; settings.accent = sim_accent;
+    settings.theme = sim_theme; settings.accent = sim_accent; settings.hide_frame = sim_hide_frame;
     snprintf(settings.language, sizeof(settings.language), "en");
     snprintf(settings.city, sizeof(settings.city), "Warsaw");
     snprintf(settings.timezone, sizeof(settings.timezone), "UTC0");
@@ -273,6 +275,7 @@ static void base_stats(void)
     stats.network_rx_bps = 2.4e6; stats.network_tx_bps = 186e3;
     stats.uptime_s = 3 * 3600 + 12 * 60;
     stats.auto_open_apps = false;
+    stats.auto_open_music = stats.auto_open_codex = stats.auto_open_claude = stats.auto_open_printer = false;
     stats.game.fps = NAN;
     /* Codex: reported account usage windows only. */
     buddy_codex_t *codex = &stats.codex;
@@ -604,7 +607,7 @@ static int printer_scenes(void)
     settings.enabled_apps=2047;settings.home_count=5;memcpy(settings.home_order,order,5);buddy_ui_apply_settings(&settings);
     // Agents idle and nobody waiting, so only the printer can open an app by itself.
     stats.codex.running=stats.claude.running=false;stats.claude.activity.items[1].state[0]=0;snprintf(stats.claude.activity.items[1].state,16,"completed");
-    stats.auto_open_apps=true;printers_idle();send_stats();live(1500);
+    stats.auto_open_apps=stats.auto_open_printer=true;printers_idle();send_stats();live(1500);
     if(buddy_ui_get_state().active_app==BUDDY_APP_PRINTER)return 70;
     // A print starts: the Printer app opens by itself, with the ring, the file and when it will be done.
     bambu(BUDDY_PRINT_PREPARING,0,0,0,0,"");send_stats();live(1400);
@@ -779,6 +782,7 @@ int main(int argc,char **argv){
     if(argc<2)return 2;snprintf(out_dir,sizeof(out_dir),"%s",argv[1]);
     for(unsigned i=0;argc>2&&i<BUDDY_THEME_COUNT;++i)if(!strcmp(argv[2],buddy_theme_ids[i]))sim_theme=(uint8_t)i;
     for(unsigned i=0;argc>3&&i<BUDDY_ACCENT_COUNT;++i)if(!strcmp(argv[3],buddy_accent_ids[i]))sim_accent=(uint8_t)i;
+    sim_hide_frame=argc>4&&!strcmp(argv[4],"noframe");
     static const uint8_t order[]={0,2,4,7,6};boot(order,5);
     if(argc>4&&!strcmp(argv[4],"printer"))return printer_scenes();
     if(argc>4&&!strcmp(argv[4],"monitor"))return monitor_scenes();

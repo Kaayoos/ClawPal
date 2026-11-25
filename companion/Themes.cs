@@ -12,6 +12,8 @@ public sealed record ThemeLook(string Id, string AccentId, bool Mascot, bool Has
     public bool Cased { get; init; }
     public Color Frame { get; init; }
     public Color FrameInk { get; init; }
+    /* A cased look can leave off its case: the frame around the screen and the rail along the bottom. */
+    public bool HideFrame { get; init; }
     public string Name => L.Text($"theme_{Id}");
     public string Description => L.Text($"theme_{Id}_description");
 }
@@ -34,7 +36,7 @@ public static class Themes
     public static bool Supports(string? theme, string? accent) => theme is not null && accent is not null && catalog.Value.Themes.ContainsKey(theme) && catalog.Value.Accents.ContainsKey(accent);
     public static Color AccentColor(string accent) => catalog.Value.Accents[accent];
     /* Unknown names fall back to the crab, as the firmware does for older settings. */
-    public static ThemeLook Get(string? theme, string? accent)
+    public static ThemeLook Get(string? theme, string? accent, bool hideFrame = false)
     {
         var value = catalog.Value;
         string id = theme is not null && value.Themes.ContainsKey(theme) ? theme : Default;
@@ -44,7 +46,7 @@ public static class Themes
         bool hasAccents = flags.GetProperty("accents").GetBoolean();
         return new(id, accentId, flags.GetProperty("mascot").GetBoolean(), hasAccents, Role("bg"), Role("surface"), Role("pressed"), Role("rule"),
             Role("text"), Role("muted"), hasAccents ? value.Accents[accentId] : Role("accent"), Role("warning"), Role("weather_app"))
-            { Cased = flags.GetProperty("cased").GetBoolean(), Frame = Role("frame"), FrameInk = Role("frame_ink") };
+            { Cased = flags.GetProperty("cased").GetBoolean(), Frame = Role("frame"), FrameInk = Role("frame_ink"), HideFrame = hideFrame && flags.GetProperty("cased").GetBoolean() };
     }
     private static Color Parse(JsonElement value)
     {

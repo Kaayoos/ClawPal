@@ -32,8 +32,8 @@ static bool telemetry(const char *json, buddy_stats_t *out)
     return buddy_telemetry_parse(json, strlen(json), out ? out : &ignored);
 }
 
-/* Replaces the first `from` in the full message with `to`. */
-static bool telemetry_with(const char *from, const char *to)
+/* Replaces the first `from` in the full message with `to`, keeping what was parsed when asked. */
+static bool telemetry_edit(const char *from, const char *to, buddy_stats_t *out)
 {
     static char edited[sizeof(telemetry_full) + 512];
     const char *at = strstr(telemetry_full, from);
@@ -42,8 +42,9 @@ static bool telemetry_with(const char *from, const char *to)
         exit(2);
     }
     snprintf(edited, sizeof(edited), "%.*s%s%s", (int)(at - telemetry_full), telemetry_full, to, at + strlen(from));
-    return telemetry(edited, NULL);
+    return telemetry(edited, out);
 }
+static bool telemetry_with(const char *from, const char *to) { return telemetry_edit(from, to, NULL); }
 
 static bool bounded(const char *text, size_t size) { return memchr(text, '\0', size) != NULL; }
 
@@ -101,6 +102,27 @@ static void telemetry_checks(void)
     check(!telemetry_with("\"seq\":42", "\"seq\":-1"), "telemetry: negative sequence is rejected");
     check(!telemetry_with("\"seq\":42", "\"seq\":9007199254740993"), "telemetry: sequence past 2^53 is rejected");
     check(!telemetry_with("\"auto_open_apps\":false", "\"auto_open_apps\":0"), "telemetry: non-boolean preference is rejected");
+    check(telemetry(telemetry_legacy, &s) && s.auto_open_music && s.auto_open_codex && s.auto_open_claude,
+          "telemetry: older companions open every app, as before");
+    check(telemetry_edit("\"auto_open_apps\":false", "\"auto_open_apps\":false", &s) && !s.auto_open_music && !s.auto_open_codex && !s.auto_open_claude,
+          "telemetry: the single switch still turns every app off");
+    check(telemetry_edit("\"auto_open_apps\":false", "\"auto_open_apps\":true,\"auto_open\":{\"music\":false,\"codex\":true,\"claude\":false}", &s) &&
+          !s.auto_open_music && s.auto_open_codex && !s.auto_open_claude && s.auto_open_apps, "telemetry: each app can open itself or not");
+    check(telemetry_edit("\"auto_open_apps\":false", "\"auto_open_apps\":true,\"auto_open\":{\"music\":false,\"codex\":false,\"claude\":false}", &s) &&
+          !s.auto_open_apps, "telemetry: no app chosen means none opens");
+    check(telemetry_edit("\"auto_open_apps\":false", "\"auto_open_apps\":true,\"auto_open\":{\"music\":true,\"codex\":false,\"claude\":false}", &s) &&
+          s.auto_open_printer, "telemetry: without its own choice the Printer app follows the others");
+    check(telemetry_edit("\"auto_open_apps\":false", "\"auto_open_apps\":true,\"auto_open\":{\"music\":true,\"codex\":true,\"claude\":true,\"printer\":false}", &s) &&
+          !s.auto_open_printer && s.auto_open_music, "telemetry: the Printer app can stay put on its own");
+    check(telemetry_edit("\"auto_open_apps\":false", "\"auto_open_apps\":true,\"auto_open\":{\"music\":false,\"codex\":false,\"claude\":false,\"printer\":true}", &s) &&
+          s.auto_open_printer && s.auto_open_apps && !s.auto_open_music, "telemetry: only the Printer app can open itself");
+    check(!telemetry_with("\"auto_open_apps\":false", "\"auto_open_apps\":false,\"auto_open\":{\"music\":true,\"codex\":true,\"claude\":true,\"printer\":1}"),
+          "telemetry: the printer choice is a boolean");
+    check(telemetry(telemetry_legacy, &s) && s.auto_open_printer, "telemetry: older companions open the Printer app too");
+    check(!telemetry_with("\"auto_open_apps\":false", "\"auto_open_apps\":false,\"auto_open\":{\"music\":true,\"codex\":true}") &&
+          !telemetry_with("\"auto_open_apps\":false", "\"auto_open_apps\":false,\"auto_open\":{\"music\":1,\"codex\":true,\"claude\":true}") &&
+          !telemetry_with("\"auto_open_apps\":false", "\"auto_open_apps\":false,\"auto_open\":true"),
+          "telemetry: a per-app choice names all three apps with booleans");
     check(telemetry(telemetry_full, &s) && !s.away && !s.music.source[0] && s.music.art_id == 0,
           "telemetry: away, player and cover default off");
     check(telemetry_with("\"auto_open_apps\":false", "\"auto_open_apps\":false,\"away\":true") &&

@@ -86,16 +86,19 @@ internal sealed class DeckPreview : Control
     /* Cased looks: ClawPal's orange case around the screen and its rail along the bottom, with Apps and Home in its dark ink. */
     private void PaintCase(Graphics g, Rectangle screen, ThemeLook look)
     {
-        float s = Ratio, frame = (board.Width >= 800 ? 8 : board.Height >= 400 ? 5 : 3) * s, rail = 44 * s;
-        using var brush = new SolidBrush(look.Frame);
+        float s = Ratio, frame = look.HideFrame ? 0 : (board.Width >= 800 ? 8 : board.Height >= 400 ? 5 : 3) * s, rail = 44 * s;
+        // With the case left off, Apps and Home sit on the screen below a rule, in the accent.
+        using var brush = new SolidBrush(look.HideFrame ? look.Background : look.Frame);
         g.FillRectangle(brush, screen.X, screen.Bottom - rail, screen.Width, rail);
+        if (look.HideFrame) { using var rule = new Pen(look.Border); g.DrawLine(rule, screen.X + 28 * s, screen.Bottom - 40 * s, screen.Right - 28 * s, screen.Bottom - 40 * s); }
         g.FillRectangle(brush, screen.X, screen.Y, screen.Width, frame); g.FillRectangle(brush, screen.X, screen.Y, frame, screen.Height);
         g.FillRectangle(brush, screen.Right - frame, screen.Y, frame, screen.Height);
-        using var ink = new SolidBrush(look.FrameInk);
+        var printed = look.HideFrame ? look.Accent : look.FrameInk;
+        using var ink = new SolidBrush(printed);
         for (int i = 0; i < 4; ++i) g.FillRectangle(ink, screen.X + (28 + i % 2 * 7) * s, screen.Bottom - rail + (19 + i / 2 * 7) * s, 4 * s, 4 * s);
         using var font = new Font("Segoe UI Semibold", Math.Max(7, 16 * s), GraphicsUnit.Pixel);
-        ClawTheme.Text(g, L.DisplayText(language(), "apps"), font, look.FrameInk, Rectangle.Round(new RectangleF(screen.X + 46 * s, screen.Bottom - rail, 120 * s, rail - frame)), TextFormatFlags.Left | TextFormatFlags.VerticalCenter);
-        ClawTheme.Text(g, L.DisplayText(language(), "home"), font, look.FrameInk, Rectangle.Round(new RectangleF(screen.Right - 140 * s, screen.Bottom - rail, 128 * s, rail - frame)), TextFormatFlags.Right | TextFormatFlags.VerticalCenter);
+        ClawTheme.Text(g, L.DisplayText(language(), "apps"), font, printed, Rectangle.Round(new RectangleF(screen.X + 46 * s, screen.Bottom - rail, 120 * s, rail - frame)), TextFormatFlags.Left | TextFormatFlags.VerticalCenter);
+        ClawTheme.Text(g, L.DisplayText(language(), "home"), font, printed, Rectangle.Round(new RectangleF(screen.Right - 140 * s, screen.Bottom - rail, 128 * s, rail - frame)), TextFormatFlags.Right | TextFormatFlags.VerticalCenter);
     }
 
     private void PaintTile(Graphics g, int slot, RectangleF r, ShortcutTile? tile, ThemeLook look)

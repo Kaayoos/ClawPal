@@ -250,7 +250,7 @@ public sealed class Installer
     public static void ApplyPreferences(Configuration config, SetupOptions options)
     {
         config.City = options.City; config.Latitude = options.Latitude; config.Longitude = options.Longitude;
-        config.Timezone = options.Timezone; config.TrackFps = options.TrackFps; config.AutoOpenApps = options.AutoOpen;
+        config.Timezone = options.Timezone; config.TrackFps = options.TrackFps; config.SetAutoOpen(AutoOpenChoice.All(options.AutoOpen));
     }
     public async Task EnableWirelessUpdates(string port, Configuration config)
     {

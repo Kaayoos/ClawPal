@@ -29,7 +29,8 @@ public sealed record DeviceSettings
 {
     // 10 adds the cased looks, Crab v2 and Crastudio, which older displays cannot draw.
     // 11 adds the Printer app (bit 10); older displays gain it switched on.
-    public const int CurrentSchema=11;
+    // 12 lets the cased looks leave off the frame.
+    public const int CurrentSchema=12;
     // One bit per display app; 5 is Home, which always stays on.
     public const int AllApps=2047, LastApp=10;
     public int Schema { get; init; } = CurrentSchema;
@@ -54,6 +55,8 @@ public sealed record DeviceSettings
     public string Accent { get; init; } = Themes.DefaultAccent;
     // Home's footer names the firmware version only when asked to.
     public bool ShowVersion { get; init; }
+    // Crab v2 and Crastudio keep their orange case, frame and bottom rail, unless asked to leave it off.
+    public bool HideFrame { get; init; }
     public DeviceSettings Upgrade() {
         var value=Schema==2 ? this with {EnabledApps=EnabledApps|64,Language="en",WeatherFahrenheit=false} : Schema==3 ? this with {Language="en",WeatherFahrenheit=false} : Schema==4 ? this with {WeatherFahrenheit=false} : this;
         if(Schema is >=2 and <6)value=value with {EnabledApps=value.EnabledApps|128};
@@ -65,6 +68,8 @@ public sealed record DeviceSettings
         if(Schema is >=2 and <9)value=value with {EnabledApps=value.EnabledApps|512,ShowVersion=false};
         // The cased looks change nothing else; the display keeps the look it had. The Printer app arrives switched on.
         if(Schema is >=2 and <11)value=value with {EnabledApps=value.EnabledApps|1024};
+        // Before 12 a cased look always wore its frame.
+        if(Schema is >=2 and <12)value=value with {HideFrame=false};
         return Schema is >=2 and <CurrentSchema ? value with {Schema=CurrentSchema} : value;
     }
     public bool Enabled(int app) => app is >= 0 and <= LastApp && (EnabledApps & (1 << app)) != 0;
@@ -142,7 +147,7 @@ public sealed class DeviceSettingsClient(Configuration config)
         a.DimBehavior==b.DimBehavior && a.DimAfterSeconds==b.DimAfterSeconds && a.DimBrightness==b.DimBrightness &&
         a.NightEnabled==b.NightEnabled && a.NightStart==b.NightStart && a.NightEnd==b.NightEnd && a.OfflineApp==b.OfflineApp &&
         a.Use24h==b.Use24h && a.WeatherEnabled==b.WeatherEnabled && a.WeatherFahrenheit==b.WeatherFahrenheit && a.City==b.City && a.Timezone==b.Timezone &&
-        Math.Abs(a.Latitude-b.Latitude)<0.0000001 && Math.Abs(a.Longitude-b.Longitude)<0.0000001 && a.Theme==b.Theme && a.Accent==b.Accent && a.ShowVersion==b.ShowVersion;
+        Math.Abs(a.Latitude-b.Latitude)<0.0000001 && Math.Abs(a.Longitude-b.Longitude)<0.0000001 && a.Theme==b.Theme && a.Accent==b.Accent && a.ShowVersion==b.ShowVersion && a.HideFrame==b.HideFrame;
     public static string FailureMessage(Exception error) => error switch {
         NotSupportedException => error.Message,
         HttpRequestException e when e.StatusCode is HttpStatusCode.BadRequest or HttpStatusCode.LengthRequired => L.Text("the_display_rejected_the_settings_request_update_the_companion"),
@@ -168,7 +173,7 @@ public sealed class DeviceSettingsClient(Configuration config)
     {
         using var json=JsonDocument.Parse(response);
         var settings=JsonSerializer.Deserialize<DeviceSettings>(response,Json) ?? throw new IOException(L.Text("the_display_returned_empty_settings"));
-        if (!json.RootElement.TryGetProperty("schema",out var schema) || schema.GetInt32() is not (2 or 3 or 4 or 5 or 6 or 7 or 8 or 9 or 10 or 11)) throw new NotSupportedException(L.Text("update_the_display_firmware_to_use_wireless_configuration"));
+        if (!json.RootElement.TryGetProperty("schema",out var schema) || schema.GetInt32() is not (2 or 3 or 4 or 5 or 6 or 7 or 8 or 9 or 10 or 11 or 12)) throw new NotSupportedException(L.Text("update_the_display_firmware_to_use_wireless_configuration"));
         foreach(string key in new[]{"enabled_apps","home_order","use_24h","weather_enabled","city","latitude","longitude","timezone"})
             if(!json.RootElement.TryGetProperty(key,out _))throw new IOException(L.Text("the_display_returned_incomplete_settings"));
         if(schema.GetInt32()>=3)
@@ -177,6 +182,7 @@ public sealed class DeviceSettingsClient(Configuration config)
         if(schema.GetInt32()>=4 && !json.RootElement.TryGetProperty("language",out _))throw new IOException(L.Text("the_display_returned_incomplete_settings"));
         if(schema.GetInt32()>=5 && !json.RootElement.TryGetProperty("weather_fahrenheit",out _))throw new IOException(L.Text("the_display_returned_incomplete_settings"));
         if(schema.GetInt32()>=7 && (!json.RootElement.TryGetProperty("theme",out _)||!json.RootElement.TryGetProperty("accent",out _)))throw new IOException(L.Text("the_display_returned_incomplete_settings"));
+        if(schema.GetInt32()>=12 && !json.RootElement.TryGetProperty("hide_frame",out _))throw new IOException(L.Text("the_display_returned_incomplete_settings"));
         settings=settings.Upgrade();settings.Validate();
         string Value(string key)=>json.RootElement.TryGetProperty(key,out var item) && item.ValueKind==JsonValueKind.String?item.GetString()??"":"";
         return new(settings,Value("version"),Value("wifi_ssid"),Value("model"),schema.GetInt32());

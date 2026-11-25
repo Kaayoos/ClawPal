@@ -186,7 +186,7 @@ internal sealed class HomePreview : Panel
     internal Rectangle ScreenBounds {get;private set;}
     internal Rectangle CrabBounds=>crab.Bounds;
     private readonly BoardDefinition board;
-    private ThemeLook Look=>Themes.Get(settings.Theme,settings.Accent);
+    private ThemeLook Look=>Themes.Get(settings.Theme,settings.Accent,settings.HideFrame);
     internal HomePreview(DeviceSettings value, string boardId=BoardCatalog.DefaultId)
     {
         board=BoardCatalog.Get(boardId);settings=value;DoubleBuffered=true;BackColor=ClawTheme.Screen;Size=new(500,300);Controls.Add(crab);
@@ -241,17 +241,20 @@ internal sealed class HomePreview : Panel
         }
         if(look.Cased)PaintCase(g,look,R,800,480);
     }
-    /* Cased looks: the screen sits in ClawPal's orange case, its rail carrying Apps and the Clock in the case's dark ink. */
+    /* Cased looks: the screen sits in ClawPal's orange case, its rail carrying Apps and the Clock in the case's dark ink.
+       With the case left off, Apps and the Clock sit on the screen below a rule, in the accent. */
     private void PaintCase(Graphics g,ThemeLook look,Func<int,int,int,int,Rectangle> R,int width,int height)
     {
-        int frame=width>=800?8:height>=400?5:3;
-        ClawTheme.Fill(g,look.Frame,R(0,height-44,width,44));ClawTheme.Fill(g,look.Frame,R(0,0,width,frame));
-        ClawTheme.Fill(g,look.Frame,R(0,0,frame,height));ClawTheme.Fill(g,look.Frame,R(width-frame,0,frame,height));
+        int frame=look.HideFrame?0:width>=800?8:height>=400?5:3;
+        Color ink=look.HideFrame?look.Accent:look.FrameInk;
+        if(look.HideFrame){ClawTheme.Fill(g,look.Background,R(0,height-44,width,44));ClawTheme.Fill(g,look.Border,R(width>=800?28:0,height-40,width>=800?width-56:width,1));}
+        else{ClawTheme.Fill(g,look.Frame,R(0,height-44,width,44));ClawTheme.Fill(g,look.Frame,R(0,0,width,frame));
+        ClawTheme.Fill(g,look.Frame,R(0,0,frame,height));ClawTheme.Fill(g,look.Frame,R(width-frame,0,frame,height));}
         var probe=R(0,0,1000,1000);float s=probe.Width/1000f;
         using var font=new Font("Segoe UI Semibold",Math.Max(6,16*s),FontStyle.Regular,GraphicsUnit.Pixel);
-        for(int i=0;i<4;i++)ClawTheme.Fill(g,look.FrameInk,R(28+i%2*7,height-25+i/2*7,4,4));
-        ClawTheme.Text(g,L.DisplayText(settings.Language,"apps"),font,look.FrameInk,R(48,height-40,90,30));
-        ClawTheme.Text(g,L.DisplayText(settings.Language,"clock"),font,look.FrameInk,R(width-112,height-40,100,30),TextFormatFlags.Right|TextFormatFlags.VerticalCenter);
+        for(int i=0;i<4;i++)ClawTheme.Fill(g,ink,R(28+i%2*7,height-25+i/2*7,4,4));
+        ClawTheme.Text(g,L.DisplayText(settings.Language,"apps"),font,ink,R(48,height-40,90,30));
+        ClawTheme.Text(g,L.DisplayText(settings.Language,"clock"),font,ink,R(width-112,height-40,100,30),TextFormatFlags.Right|TextFormatFlags.VerticalCenter);
     }
     private void PaintCompact(Graphics g,ThemeLook look)
     {

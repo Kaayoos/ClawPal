@@ -113,7 +113,7 @@ Once a second, sooner when something changes, the PC app sends one unfragmented 
  "music":{...}, "codex":{...}, "claude":{...}, "game":{...},
  "shortcuts":{"rev":4242,"on":0},
  "mixer":{"channels":[{"id":0,"kind":0,"volume":40}, ...]},
- "auto_open_apps":true, "away":true}
+ "auto_open_apps":true, "auto_open":{"music":false,"codex":true,"claude":true,"printer":true}, "away":true}
 ```
 
 - The fields from `type` to `uptime_s` are required. `timestamp` is Unix time in milliseconds.
@@ -122,6 +122,11 @@ Once a second, sooner when something changes, the PC app sends one unfragmented 
   missing object as "this PC app doesn't offer that".
 - The frame is at most 6144 bytes, and at most 4096 bytes when it has no `claude` object
   (older firmware's limit). When a frame is too big, mixer apps drop off first.
+- `auto_open` says which apps open on the display when they start on the PC; when present it
+  names `music`, `codex` and `claude` with booleans, and may add `printer` for the Printer app
+  (without it, the Printer app opens when any of the other three does). `auto_open_apps` is
+  `true` when any of them does, so older firmware that only reads it opens them all. Without
+  `auto_open`, every app follows `auto_open_apps`, and without either they all open.
 - Invalid JSON, a wrong type, a value out of range or a too-deep object closes the connection.
 - With no valid frame for ten seconds, the display closes the connection and shows the PC as
   offline.

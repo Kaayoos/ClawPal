@@ -927,7 +927,7 @@ static void refresh_visibility(void)
     lv_label_set_text(ui.nav_text, ui.active_app == BUDDY_APP_HOME ? BT(BT_CLOCK) : BT(BT_HOME));
     lv_label_set_text(ui.details_text, ui.details_visible ? BT(BT_OVERVIEW) : BT(BT_DETAILS));
     lv_label_set_text(ui.apps_text, ui.menu_open ? BT(BT_CLOSE) : BT(BT_APPS));
-    if (buddy_theme.cased) {
+    if (buddy_theme_case()) {
         rail_button(ui.apps_button, ui.apps_text, ui.menu_open);
         rail_button(ui.details_button, ui.details_text, ui.details_visible);
     } else lv_obj_set_style_text_color(ui.apps_text, color(need_setup ? C_MUTED : C_ACCENT), 0);
@@ -1042,7 +1042,7 @@ static void refresh_footer(void)
         visible(ui.footer,!monitor&&!shortcut&&hint);visible(ui.timer_link,shortcut&&!monitor);
     }
     /* On the case's rail the footer speaks in the case's own dark ink. */
-    lv_obj_set_style_text_color(ui.footer, color(buddy_theme.cased ? BUDDY_COLOR_FRAME_INK :
+    lv_obj_set_style_text_color(ui.footer, color(buddy_theme_case() ? BUDDY_COLOR_FRAME_INK :
         ui.active_app == BUDDY_APP_MONITOR && !ui.menu_open && ui.have_stats &&
         ui.connection != BUDDY_PC_CONNECTED ? C_WARNING : C_MUTED), 0);
 }
@@ -1139,11 +1139,10 @@ static bool printer_printing(void)
 
 static buddy_app_t preferred_connected_app(void)
 {
-    if (!ui.stats.auto_open_apps) return BUDDY_APP_HOME;
-    return ui.stats.codex.running && app_enabled(BUDDY_APP_CODEX) ? BUDDY_APP_CODEX :
-        ui.stats.claude.running && app_enabled(BUDDY_APP_CLAUDE) ? BUDDY_APP_CLAUDE :
-        printer_printing() && app_enabled(BUDDY_APP_PRINTER) ? BUDDY_APP_PRINTER :
-        ui.stats.music.running && app_enabled(BUDDY_APP_MUSIC) ? BUDDY_APP_MUSIC : BUDDY_APP_HOME;
+    return ui.stats.auto_open_codex && ui.stats.codex.running && app_enabled(BUDDY_APP_CODEX) ? BUDDY_APP_CODEX :
+        ui.stats.auto_open_claude && ui.stats.claude.running && app_enabled(BUDDY_APP_CLAUDE) ? BUDDY_APP_CLAUDE :
+        ui.stats.auto_open_printer && printer_printing() && app_enabled(BUDDY_APP_PRINTER) ? BUDDY_APP_PRINTER :
+        ui.stats.auto_open_music && ui.stats.music.running && app_enabled(BUDDY_APP_MUSIC) ? BUDDY_APP_MUSIC : BUDDY_APP_HOME;
 }
 
 static void maybe_auto_app(void)
@@ -1161,11 +1160,15 @@ static void maybe_auto_app(void)
         activate_app(preferred_connected_app(), true);
         return;
     }
-    if (fresh_pc && !ui.stats.auto_open_apps) {
-        ui.music_launch_pending = ui.codex_launch_pending = ui.claude_launch_pending = ui.printer_launch_pending = false;
-        /* Disabling the tray option releases automatic app selections only.
-         * A manually opened Music/Codex view remains selected. */
-        if (ui.music_automatic || ui.codex_automatic || ui.claude_automatic || ui.printer_automatic) {
+    if (fresh_pc) {
+        if (!ui.stats.auto_open_music) ui.music_launch_pending = false;
+        if (!ui.stats.auto_open_codex) ui.codex_launch_pending = false;
+        if (!ui.stats.auto_open_claude) ui.claude_launch_pending = false;
+        if (!ui.stats.auto_open_printer) ui.printer_launch_pending = false;
+        /* Switching an app's option off releases its automatic selection only.
+         * A manually opened Music/Codex/Claude/Printer view remains selected. */
+        if ((ui.music_automatic && !ui.stats.auto_open_music) || (ui.codex_automatic && !ui.stats.auto_open_codex) ||
+            (ui.claude_automatic && !ui.stats.auto_open_claude) || (ui.printer_automatic && !ui.stats.auto_open_printer)) {
             activate_app(BUDDY_APP_HOME, false);
             return;
         }
@@ -2943,7 +2946,7 @@ static void theme_layout(void)
  * pill is a dark block on the orange, clear of the frame below it. */
 static void cased_footer(void)
 {
-    if (!buddy_theme.cased) return;
+    if (!buddy_theme_case()) return;
     lv_obj_t *buttons[] = { ui.apps_button, ui.details_button, ui.nav_button };
     for (unsigned i = 0; i < sizeof(buttons) / sizeof(buttons[0]); ++i)
         lv_obj_set_style_bg_color(buttons[i], lv_color_darken(color(BUDDY_COLOR_FRAME), LV_OPA_20), LV_STATE_PRESSED);
@@ -2971,7 +2974,7 @@ void buddy_ui_init(void)
 {
     if (ui.screen) return;
     buddy_settings_t look = buddy_settings_get();
-    buddy_theme_select(look.theme, look.accent);
+    buddy_theme_select(look.theme, look.accent, look.hide_frame);
     ui.connection = BUDDY_WIFI_CONNECTING;
     ui.active_app = BUDDY_APP_HOME;
     ui.last_stats_tick = lv_tick_get();
@@ -3089,7 +3092,7 @@ void buddy_ui_init(void)
     create_app_surfaces();
 
     /* Cased looks: the case runs along the bottom as a rail that carries Apps, the footer and Home. */
-    if (buddy_theme.cased) {
+    if (buddy_theme_case()) {
         ui.rail = box(ui.screen, 0, BOARD_DISPLAY_HEIGHT - 44, BOARD_DISPLAY_WIDTH, 44);
         lv_obj_set_style_bg_color(ui.rail, color(BUDDY_COLOR_FRAME), 0);
         lv_obj_set_style_bg_opa(ui.rail, LV_OPA_COVER, 0);
@@ -3264,35 +3267,35 @@ void buddy_ui_update_stats(const buddy_stats_t *stats)
         ui.happy_started = lv_tick_get();
     }
     if (stats->codex.running && !ui.codex_seen_running) {
-        ui.codex_launch_pending = stats->auto_open_apps && !ui.timer_running &&
+        ui.codex_launch_pending = stats->auto_open_codex && !ui.timer_running &&
             (ui.active_app == BUDDY_APP_HOME || ui.active_app == BUDDY_APP_MONITOR || ui.active_app == BUDDY_APP_MUSIC ||
              (ui.offline_automatic));
     }
-    if (!stats->codex.running || !stats->auto_open_apps) ui.codex_launch_pending = false;
+    if (!stats->codex.running || !stats->auto_open_codex) ui.codex_launch_pending = false;
     ui.codex_seen_running = stats->codex.running;
     if (stats->claude.running && !ui.claude_seen_running) {
-        ui.claude_launch_pending = stats->auto_open_apps && !ui.timer_running &&
+        ui.claude_launch_pending = stats->auto_open_claude && !ui.timer_running &&
             (ui.active_app == BUDDY_APP_HOME || ui.active_app == BUDDY_APP_MONITOR || ui.active_app == BUDDY_APP_MUSIC ||
              (ui.offline_automatic));
     }
-    if (!stats->claude.running || !stats->auto_open_apps) ui.claude_launch_pending = false;
+    if (!stats->claude.running || !stats->auto_open_claude) ui.claude_launch_pending = false;
     ui.claude_seen_running = stats->claude.running;
     bool printing = false;
     for (unsigned i = 0; stats->printers.present && i < stats->printers.count; ++i) printing |= buddy_print_active(stats->printers.items[i].state);
     if (printing && !ui.printer_seen_active) {
-        ui.printer_launch_pending = stats->auto_open_apps && !ui.timer_running &&
+        ui.printer_launch_pending = stats->auto_open_printer && !ui.timer_running &&
             (ui.active_app == BUDDY_APP_HOME || ui.active_app == BUDDY_APP_MONITOR || ui.active_app == BUDDY_APP_MUSIC ||
              (ui.offline_automatic));
     }
-    if (!printing || !stats->auto_open_apps) ui.printer_launch_pending = false;
+    if (!printing || !stats->auto_open_printer) ui.printer_launch_pending = false;
     ui.printer_seen_active = printing;
     /* Consume each launch edge once; manual Clock and active timer keep priority. */
     if (stats->music.running && !ui.music_seen_running) {
-        ui.music_launch_pending = stats->auto_open_apps && !ui.timer_running &&
+        ui.music_launch_pending = stats->auto_open_music && !ui.timer_running &&
             (ui.active_app == BUDDY_APP_HOME || ui.active_app == BUDDY_APP_MONITOR ||
              (ui.offline_automatic));
     }
-    if (!stats->music.running || !stats->auto_open_apps) ui.music_launch_pending = false;
+    if (!stats->music.running || !stats->auto_open_music) ui.music_launch_pending = false;
     ui.music_seen_running = stats->music.running;
     unsigned deferred = 0;
     if (ui.music_command_pending && stats->music.control_id != ui.music_command_control_id) {

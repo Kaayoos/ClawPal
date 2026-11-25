@@ -168,7 +168,15 @@ public sealed record PcStats(string Type, int V, long Seq, string Hostname, long
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] ShortcutStats? Shortcuts = null,
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] MixerStats? Mixer = null,
     // The Printer app's 3D printers (PrinterContract.cs); omitted while that app is off.
-    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] PrinterStats? Printer = null);
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] PrinterStats? Printer = null,
+    // Which apps open themselves on the display; auto_open_apps says whether any does, for older firmware.
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] AutoOpenChoice? AutoOpen = null);
+/* The apps that open on the display when they start on the PC, one choice each. */
+public sealed record AutoOpenChoice(bool Music, bool Codex, bool Claude, bool Printer = true)
+{
+    public static AutoOpenChoice All(bool on) => new(on, on, on, on);
+    [JsonIgnore] public bool Any => Music || Codex || Claude || Printer;
+}
 // The Audio app's channels: output first, then apps and Windows' sounds, then the microphone.
 public sealed record MixerStats(IReadOnlyList<MixerChannel> Channels);
 // Kind follows MixerContract; the display names the output, microphone and Windows' sounds itself.

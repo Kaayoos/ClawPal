@@ -47,7 +47,8 @@ static bool settings_look(const char *city, const char *timezone, int schema, in
 
 static bool settings(const char *city, const char *timezone, int schema, int apps, buddy_settings_t *out)
 {
-    return settings_look(city, timezone, schema, apps, schema >= 9 ? "\"theme\":\"crab\",\"accent\":\"champagne\",\"show_version\":false," :
+    return settings_look(city, timezone, schema, apps, schema >= 11 ? "\"theme\":\"crab\",\"accent\":\"champagne\",\"show_version\":false,\"hide_frame\":false," :
+                         schema >= 9 ? "\"theme\":\"crab\",\"accent\":\"champagne\",\"show_version\":false," :
                          schema >= 7 ? "\"theme\":\"crab\",\"accent\":\"champagne\"," : "", out);
 }
 
@@ -64,9 +65,19 @@ static void settings_checks(void)
     check(!settings("Warsaw", "UTC0;rm", 6, 255, NULL), "time zone outside the POSIX character set is rejected");
     check(!settings("", "UTC0", 6, 255, NULL), "empty city is rejected");
     check(!settings("Warsaw", "UTC0", 6, 255 & ~32, NULL), "Home app cannot be disabled");
-    check(!settings("Warsaw", "UTC0", 12, 1023, NULL), "unknown settings schema is rejected");
+    check(!settings("Warsaw", "UTC0", 13, 2047, NULL), "unknown settings schema is rejected");
+    check(settings("Warsaw", "UTC0", 12, 2047, &parsed) && !parsed.hide_frame, "schema 12 settings keep the frame by default");
+    check(!settings_look("Warsaw", "UTC0", 12, 2047, "\"theme\":\"crabv2\",\"accent\":\"champagne\",\"show_version\":false,", NULL), "schema 12 says whether the frame is hidden");
+    check(!settings_look("Warsaw", "UTC0", 12, 2047, "\"theme\":\"crabv2\",\"accent\":\"champagne\",\"show_version\":false,\"hide_frame\":1,", NULL), "the frame choice is a boolean");
+    check(settings_look("Warsaw", "UTC0", 12, 2047, "\"theme\":\"crastudio\",\"accent\":\"champagne\",\"show_version\":false,\"hide_frame\":true,", &parsed) && parsed.hide_frame,
+          "schema 12 settings can hide the frame");
+    {
+        cJSON *frameless = buddy_settings_json(&parsed); buddy_settings_t again = {0};
+        check(frameless && buddy_settings_parse(frameless, &again) && again.hide_frame && again.theme == BUDDY_THEME_CRASTUDIO, "a hidden frame round-trips");
+        cJSON_Delete(frameless);
+    }
     check(settings_look("Warsaw", "UTC0", 10, 1023, "\"theme\":\"crabv2\",\"accent\":\"champagne\",\"show_version\":false,", &parsed) &&
-          parsed.theme == BUDDY_THEME_CRABV2, "schema 10 settings carry Crab v2");
+          parsed.theme == BUDDY_THEME_CRABV2 && !parsed.hide_frame, "schema 10 settings carry Crab v2 and keep its frame");
     check(settings_look("Warsaw", "UTC0", 10, 1023, "\"theme\":\"crastudio\",\"accent\":\"champagne\",\"show_version\":false,", &parsed) &&
           parsed.theme == BUDDY_THEME_CRASTUDIO, "schema 10 settings carry Crastudio");
     cJSON *cased = buddy_settings_json(&parsed); buddy_settings_t back = {0};

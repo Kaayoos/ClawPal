@@ -138,7 +138,7 @@ static void printer_settings_checks(void)
           "schema 9 settings gain the Printer app and keep Audio off");
     check(!settings("Warsaw", "UTC0", 10, 2047, NULL), "schema 10 settings cannot name a twelfth app bit");
     check(!settings("Warsaw", "UTC0", 11, 4095, NULL), "apps beyond the Printer app are rejected");
-    check(!settings("Warsaw", "UTC0", 12, 2047, NULL), "an unknown newer schema is rejected");
+    check(!settings("Warsaw", "UTC0", 13, 2047, NULL), "an unknown newer schema is rejected");
     cJSON *json = cJSON_Parse("{\"schema\":11,\"enabled_apps\":2047,\"home_order\":[10,0],\"use_24h\":true,\"weather_enabled\":true,"
         "\"city\":\"W\",\"latitude\":1,\"longitude\":2,\"timezone\":\"UTC0\",\"language\":\"en\",\"weather_fahrenheit\":false,"
         "\"dim_behavior\":1,\"dim_after_seconds\":60,\"dim_brightness\":40,\"theme\":\"crab\",\"accent\":\"champagne\",\"show_version\":false,"

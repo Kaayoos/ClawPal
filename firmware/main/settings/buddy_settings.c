@@ -10,6 +10,7 @@
 static portMUX_TYPE settings_lock = portMUX_INITIALIZER_UNLOCKED;
 static buddy_settings_t current;
 static uint8_t boot_theme, boot_accent;
+static bool boot_hide_frame;
 static bool integer(const cJSON *json, const char *key, int low, int high, int *out)
 {
     const cJSON *v = cJSON_GetObjectItemCaseSensitive(json, key);
@@ -35,7 +36,7 @@ bool buddy_settings_parse(const cJSON *json, buddy_settings_t *out)
     const cJSON *lat = cJSON_GetObjectItemCaseSensitive(json, "latitude");
     const cJSON *lon = cJSON_GetObjectItemCaseSensitive(json, "longitude");
     const cJSON *tz = cJSON_GetObjectItemCaseSensitive(json, "timezone");
-    if (!cJSON_IsObject(json) || !cJSON_IsNumber(schema) || (schema->valuedouble != 2 && schema->valuedouble != 3 && schema->valuedouble != 4 && schema->valuedouble != 5 && schema->valuedouble != 6 && schema->valuedouble != 7 && schema->valuedouble != 8 && schema->valuedouble != 9 && schema->valuedouble != 10 && schema->valuedouble != BUDDY_SETTINGS_SCHEMA) ||
+    if (!cJSON_IsObject(json) || !cJSON_IsNumber(schema) || (schema->valuedouble != 2 && schema->valuedouble != 3 && schema->valuedouble != 4 && schema->valuedouble != 5 && schema->valuedouble != 6 && schema->valuedouble != 7 && schema->valuedouble != 8 && schema->valuedouble != 9 && schema->valuedouble != 10 && schema->valuedouble != 11 && schema->valuedouble != BUDDY_SETTINGS_SCHEMA) ||
         !cJSON_IsNumber(apps) || apps->valuedouble != apps->valueint || !(apps->valueint & 32) || apps->valueint < 0 || apps->valueint > (schema->valueint == 2 ? 63 : schema->valueint < 6 ? 127 : schema->valueint < 8 ? 255 : schema->valueint < 9 ? 511 : schema->valueint < 11 ? 1023 : 2047) ||
         !cJSON_IsArray(order) || cJSON_GetArraySize(order) > BUDDY_HOME_SLOTS ||
         !cJSON_IsBool(hours) || !cJSON_IsBool(weather) ||
@@ -78,6 +79,12 @@ bool buddy_settings_parse(const cJSON *json, buddy_settings_t *out)
         if(!cJSON_IsBool(version))return false;
         value.show_version=cJSON_IsTrue(version);
     }
+    /* Older PC apps (before schema 12) never asked either, so the frame stays on for them. */
+    if(schema->valueint>=12){
+        const cJSON *frame=cJSON_GetObjectItemCaseSensitive(json,"hide_frame");
+        if(!cJSON_IsBool(frame))return false;
+        value.hide_frame=cJSON_IsTrue(frame);
+    }
     unsigned used = 0;
     const cJSON *item;
     cJSON_ArrayForEach(item, order) {
@@ -117,6 +124,7 @@ cJSON *buddy_settings_json(const buddy_settings_t *s)
     cJSON_AddNumberToObject(json, "night_end", s->night_end);
     cJSON_AddNumberToObject(json, "offline_app", s->offline_app);
     cJSON_AddBoolToObject(json, "show_version", s->show_version);
+    cJSON_AddBoolToObject(json, "hide_frame", s->hide_frame);
     cJSON *order = cJSON_AddArrayToObject(json, "home_order");
     for (unsigned i = 0; i < s->home_count; ++i) cJSON_AddItemToArray(order, cJSON_CreateNumber(s->home_order[i]));
     return json;
@@ -132,7 +140,9 @@ buddy_settings_t buddy_settings_get(void)
 
 bool buddy_settings_restart_needed(const buddy_settings_t *s)
 {
-    return s->theme != boot_theme || (s->theme < BUDDY_THEME_COUNT && buddy_themes[s->theme].accents && s->accent != boot_accent);
+    if (s->theme != boot_theme) return true;
+    if (s->theme >= BUDDY_THEME_COUNT) return false;
+    return (buddy_themes[s->theme].accents && s->accent != boot_accent) || (buddy_themes[s->theme].cased && s->hide_frame != boot_hide_frame);
 }
 
 esp_err_t buddy_settings_save(const buddy_settings_t *settings)
@@ -162,7 +172,7 @@ static esp_err_t load_settings(void);
 esp_err_t buddy_settings_init(void)
 {
     esp_err_t result = load_settings();
-    boot_theme = current.theme; boot_accent = current.accent;
+    boot_theme = current.theme; boot_accent = current.accent; boot_hide_frame = current.hide_frame;
     return result;
 }
 

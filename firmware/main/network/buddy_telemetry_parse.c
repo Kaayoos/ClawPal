@@ -92,6 +92,24 @@ static bool get_uint64(const cJSON *object, const char *key, uint64_t *out)
     return true;
 }
 
+/* Optional per-app choice: {"music":bool,"codex":bool,"claude":bool}, all three required when present,
+ * plus an optional "printer":bool; without it the Printer app follows the other three. */
+static bool parse_auto_open(const cJSON *root, buddy_stats_t *stats)
+{
+    const cJSON *value = cJSON_GetObjectItemCaseSensitive(root, "auto_open");
+    if (!value) return true;
+    const cJSON *music = cJSON_GetObjectItemCaseSensitive(value, "music");
+    const cJSON *codex = cJSON_GetObjectItemCaseSensitive(value, "codex");
+    const cJSON *claude = cJSON_GetObjectItemCaseSensitive(value, "claude");
+    const cJSON *printer = cJSON_GetObjectItemCaseSensitive(value, "printer");
+    if (!cJSON_IsObject(value) || !cJSON_IsBool(music) || !cJSON_IsBool(codex) || !cJSON_IsBool(claude) || (printer && !cJSON_IsBool(printer))) return false;
+    stats->auto_open_music = cJSON_IsTrue(music); stats->auto_open_codex = cJSON_IsTrue(codex); stats->auto_open_claude = cJSON_IsTrue(claude);
+    stats->auto_open_apps = stats->auto_open_music || stats->auto_open_codex || stats->auto_open_claude;
+    stats->auto_open_printer = printer ? cJSON_IsTrue(printer) : stats->auto_open_apps;
+    stats->auto_open_apps |= stats->auto_open_printer;
+    return true;
+}
+
 static bool get_optional_boolean(const cJSON *object, const char *key, bool *out)
 {
     const cJSON *value = cJSON_GetObjectItemCaseSensitive(object, key);
@@ -421,13 +439,14 @@ bool buddy_telemetry_parse(const char *payload, size_t length, buddy_stats_t *st
     memset(stats, 0, sizeof(*stats));
     /* Older companions omit this setting and keep their existing behavior. */
     stats->auto_open_apps = !auto_open || cJSON_IsTrue(auto_open);
+    stats->auto_open_music = stats->auto_open_codex = stats->auto_open_claude = stats->auto_open_printer = stats->auto_open_apps;
     uint64_t timestamp;
     bool valid = cJSON_IsObject(root) && cJSON_IsString(type) &&
                  strcmp(type->valuestring, "pc.stats") == 0 &&
                  cJSON_IsNumber(version) && version->valuedouble == 1 &&
                  cJSON_IsObject(cpu) && cJSON_IsObject(gpu) &&
                  cJSON_IsObject(memory) && cJSON_IsObject(network) &&
-                 (!auto_open || cJSON_IsBool(auto_open)) &&
+                 (!auto_open || cJSON_IsBool(auto_open)) && parse_auto_open(root, stats) &&
                  get_optional_boolean(root, "away", &stats->away) &&
                  copy_json_string(root, "hostname", stats->hostname, sizeof(stats->hostname)) &&
                  copy_json_string(cpu, "name", stats->cpu_name, sizeof(stats->cpu_name)) &&

@@ -238,7 +238,7 @@ internal sealed class SetupForm : ClawWindow
         backup.CheckedChanged += (_, _) => UpdateBackupChoice();
         ports.SelectedIndexChanged += async (_, _) => { if (!refreshingDevices && !preview) { boardConfirmed.Checked = false; await CheckDevice(); } };
         fps.Text = L.Text("measure_game_fps_in_pc_monitor"); fps.Checked = config.TrackFps;
-        auto.Text = L.Text("open_spotify_codex_on_the_display_when_they_launch"); auto.Checked = config.AutoOpenApps;
+        auto.Text = L.Text("open_spotify_codex_on_the_display_when_they_launch"); auto.Checked = config.AutoOpening.Any;
         startup.Text = L.Text("start_clawpal_with_windows"); startup.Checked = config.Token.Length == 0 || Startup.Enabled;
         foreach (var language in L.Languages) { pcLanguages.Items.Add(language); displayLanguages.Items.Add(language); }
         pcLanguages.SelectedIndex = L.Languages.ToList().FindIndex(l => l.Code == L.Normalize(config.CompanionLanguage));
@@ -489,7 +489,7 @@ internal sealed class SetupForm : ClawWindow
             if (step < Step.Review) { step++; ShowStep(); return; }
             var options = Options(); step = Step.Install; ShowStep(); busy = true; connection.SetPaused(true);
             var installer = new Installer(new Progress<string>(ReportProgress));
-            backupFolder = await installer.Install(options, config, () => { connection.SetAutoOpenApps(config.AutoOpenApps); connection.SetPaused(config.Paused); });
+            backupFolder = await installer.Install(options, config, () => { connection.SetAutoOpen(config.AutoOpening); connection.SetPaused(config.Paused); });
             installed = true; busy = false; password.Clear(); progress.Style = ProgressBarStyle.Continuous; progress.Value = 100;
             Finished();
         }

@@ -243,8 +243,11 @@ typedef struct {
     uint64_t uptime_s;
     uint64_t sequence;
     int64_t timestamp_ms;
-    /* Tray preference; parser defaults true only for older companions. */
+    /* Tray preference; parser defaults true only for older companions. True when any app below opens itself. */
     bool auto_open_apps;
+    /* Which apps open themselves when they start on the PC. Companions that send only
+     * auto_open_apps get the same answer for all three. */
+    bool auto_open_music, auto_open_codex, auto_open_claude, auto_open_printer;
     /* The PC is locked or about to sleep; telemetry may stop without it being offline. */
     bool away;
     /* All zeros when an older companion does not send music metadata. */

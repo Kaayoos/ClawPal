@@ -15,7 +15,8 @@ internal sealed partial class SettingsForm : ClawWindow
     private readonly DeviceSettingsClient wireless;
     private DeviceSettings draft;
     private string pcLanguage;
-    private bool fps, auto, startup, paused, claudeLive, lyricsOn, lyricsAuto, deviceDirty, pcDirty, saving, shortcutsDirty;
+    private AutoOpenChoice auto = AutoOpenChoice.All(false);
+    private bool fps, startup, paused, claudeLive, lyricsOn, lyricsAuto, deviceDirty, pcDirty, saving, shortcutsDirty;
     private int lyricsOffset;
     private ShortcutDeck shortcutDeck;
     private readonly bool preview;
@@ -43,7 +44,7 @@ internal sealed partial class SettingsForm : ClawWindow
     internal SettingsForm(Configuration config, Connection connection, bool preview = false)
     {
         this.config = config; this.connection = connection; pcLanguage = L.Normalize(config.CompanionLanguage); this.preview = preview; wireless = connection.Settings;
-        draft = config.DisplaySettings ?? DeviceSettings.FromConfiguration(config); shortcutDeck = config.Shortcuts ?? ShortcutDeck.Starter(draft.Language); fps = config.TrackFps; auto = config.AutoOpenApps; paused = config.Paused; claudeLive = config.ClaudeLiveUsage; lyricsOn = config.SyncedLyrics; lyricsAuto = config.LyricsAutoOpen; lyricsOffset = config.LyricsOffsetMs; startup = !preview && Startup.Enabled;
+        draft = config.DisplaySettings ?? DeviceSettings.FromConfiguration(config); shortcutDeck = config.Shortcuts ?? ShortcutDeck.Starter(draft.Language); fps = config.TrackFps; auto = config.AutoOpening; paused = config.Paused; claudeLive = config.ClaudeLiveUsage; lyricsOn = config.SyncedLyrics; lyricsAuto = config.LyricsAutoOpen; lyricsOffset = config.LyricsOffsetMs; startup = !preview && Startup.Enabled;
         L.SetVariant(draft.Theme);
         Text = L.Text("clawpal_your_desk_companion"); ClientSize = new(1140, 800); AutoScaleMode = AutoScaleMode.Dpi;
         using (var stream = typeof(SettingsForm).Assembly.GetManifestResourceStream("ClawPal.Companion.CrabIcon")) if (stream is not null) Icon = new Icon(stream);
@@ -211,8 +212,9 @@ internal sealed partial class SettingsForm : ClawWindow
     {
         title.Text = L.Text("look_language_title"); subtitle.Text = L.Text("look_language_description"); var p = Stack();
         var lookCard = p.Add(new ClawSection(L.Text("look_section"), L.Text("look_app_note")));
-        var picker = new LookPicker(draft.Theme, draft.Accent); lookCard.Add(picker);
+        var picker = new LookPicker(draft.Theme, draft.Accent, draft.HideFrame); lookCard.Add(picker);
         picker.Changed += (theme, accent) => SetDraft(draft with { Theme = theme, Accent = accent });
+        picker.FrameChanged += hidden => SetDraft(draft with { HideFrame = hidden });
         lookCard.Add(Note(L.Text("appearance_restart_note")));
         var languageCard = p.Add(new ClawSection(L.Text("language"), L.Text("language_note")));
         ClawStack Picker(string caption, string code, Action<string> change)
@@ -281,7 +283,11 @@ internal sealed partial class SettingsForm : ClawWindow
         title.Text = L.Text("a_little_less_or_all_of_it"); subtitle.Text = L.Text("choose_the_apps_available_on_your_display_home_stays");
         var p = Stack(); p.Gap = 34;
         var general = p.Add(new ClawCard(L.Text("auto_open_title")));
-        general.Add(Switch(L.Text("automatically_open_spotify_or_codex"), auto, value => { auto = value; Dirty(false); }), 2);
+        // One switch per app that can open itself: Media, Codex, Claude Code and the Printer app.
+        general.Add(Switch(DisplayApps.Get(2).Name, auto.Music, value => { auto = auto with { Music = value }; Dirty(false); }), 2);
+        general.Add(Switch(DisplayApps.Get(4).Name, auto.Codex, value => { auto = auto with { Codex = value }; Dirty(false); }), 2);
+        general.Add(Switch(DisplayApps.Get(7).Name, auto.Claude, value => { auto = auto with { Claude = value }; Dirty(false); }), 2);
+        general.Add(Switch(DisplayApps.Get(10).Name, auto.Printer, value => { auto = auto with { Printer = value }; Dirty(false); }), 2);
         general.Add(Note(L.Text("when_an_enabled_app_opens_on_your_pc_show")));
         foreach (var app in DisplayApps.All)
         {
@@ -346,7 +352,7 @@ internal sealed partial class SettingsForm : ClawWindow
         var size = new ChoiceBox() { Width = 170, Height = 44 }; foreach (int n in ShortcutDeck.Sizes) size.Items.Add(new DeckSize(n));
         size.SelectedIndex = Array.IndexOf(ShortcutDeck.Sizes, shortcutDeck.Size);
         var restore = new ClawButton() { Text = L.Text("restore_starter_shortcuts"), Size = new(220, 44) };
-        var deckPreview = new DeckPreview(shortcutDeck, config.BoardId, () => draft.Language, () => Themes.Get(draft.Theme, draft.Accent));
+        var deckPreview = new DeckPreview(shortcutDeck, config.BoardId, () => draft.Language, () => Themes.Get(draft.Theme, draft.Accent, draft.HideFrame));
         var hint = ClawTheme.Label(L.Text("click_a_tile_to_edit_it_drag_to_move_it"), 400, ClawTheme.Small, false, 44);
         var state = ClawTheme.Label("", 400, ClawTheme.Small, false, 44);
         p.Controls.AddRange([sizeCaption, hint, state]);
@@ -599,7 +605,7 @@ internal sealed partial class SettingsForm : ClawWindow
         {
             draft.Validate(); shortcutDeck.Validate();
             if (preview) { deviceDirty = pcDirty = shortcutsDirty = false; status.Text = L.Text("preview_only_no_settings_changed"); SetMoment("happy"); return; }
-            if (pcDirty) { Startup.Set(startup); config.TrackFps = fps; config.AutoOpenApps = auto; config.Paused = paused; config.ClaudeLiveUsage = claudeLive; config.SyncedLyrics = lyricsOn; config.LyricsAutoOpen = lyricsAuto; config.LyricsOffsetMs = lyricsOffset; config.CompanionLanguage = pcLanguage; config.Save(); L.SetLanguage(pcLanguage); connection.SetAutoOpenApps(auto); connection.SetPaused(paused); pcDirty = false; }
+            if (pcDirty) { Startup.Set(startup); config.TrackFps = fps; config.SetAutoOpen(auto); config.Paused = paused; config.ClaudeLiveUsage = claudeLive; config.SyncedLyrics = lyricsOn; config.LyricsAutoOpen = lyricsAuto; config.LyricsOffsetMs = lyricsOffset; config.CompanionLanguage = pcLanguage; config.Save(); L.SetLanguage(pcLanguage); connection.SetAutoOpen(auto); connection.SetPaused(paused); pcDirty = false; }
             if (shortcutsDirty) { config.SetShortcuts(shortcutDeck); connection.ShortcutsChanged(); shortcutsDirty = false; }
             if (deviceDirty) { config.SetDisplaySettings(draft); deviceDirty = false; }
             if (config.SettingsPending) { using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(16)); await wireless.SyncAsync(timeout.Token); }
@@ -627,7 +633,8 @@ internal sealed partial class SettingsForm : ClawWindow
         WindowState = FormWindowState.Maximized; ShowPage(SettingsPage.Home); Capture("home-maximized"); WindowState = FormWindowState.Normal; ClientSize = new(1140, 800);
         foreach (var size in new[] { new Size(960, 680), new Size(1140, 800) }) { ClientSize = size; ShowPage(SettingsPage.Apps); Application.DoEvents(); pages.ScrollTo(pages.MaximumOffset); Capture($"claude-{size.Width}"); }
         ClientSize = new(960, 680); ShowPage(SettingsPage.Shortcuts); Capture("shortcuts-960"); ShowPage(SettingsPage.Screen); Capture("screen-960"); ShowPage(SettingsPage.Clock); Capture("clock-960"); ClientSize = new(1140, 800);
-        draft = draft with { Theme = "studio", Accent = "ice" }; ShowPage(SettingsPage.Home); Capture("home-studio"); ShowPage(SettingsPage.Look); Capture("look-studio"); draft = draft with { Theme = Themes.Default, Accent = Themes.DefaultAccent };
+        draft = draft with { Theme = "studio", Accent = "ice" }; ShowPage(SettingsPage.Home); Capture("home-studio"); ShowPage(SettingsPage.Look); Capture("look-studio");
+        draft = draft with { Theme = "crastudio", HideFrame = true }; ShowPage(SettingsPage.Look); pages.ScrollTo(Math.Min(360, pages.MaximumOffset)); Capture("look-crastudio-noframe"); pages.ScrollTo(pages.MaximumOffset); Capture("look-crastudio-noframe-end"); draft = draft with { Theme = Themes.Default, Accent = Themes.DefaultAccent, HideFrame = false };
         ShowPage(SettingsPage.Clock); Application.DoEvents(); var zones = activePage!.Controls.Cast<Control>().SelectMany(Descendants).OfType<ChoiceBox>().Last(); zones.PerformClick(); Application.DoEvents();
         var list = zones.SelectionList; using (var bitmap = new Bitmap(list.Width, list.Height)) { list.DrawToBitmap(bitmap, new Rectangle(Point.Empty, bitmap.Size)); bitmap.Save(Path.Combine(directory, "choice-popup.png"), ImageFormat.Png); }
         zones.SelectionMenu.Close();
