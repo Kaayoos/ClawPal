@@ -24,6 +24,8 @@
   <sub>Made by <a href="https://minimalpulse.com/">MinimalPulse</a> · <a href="https://github.com/Kaayoos/clawpal/releases/latest">Release notes</a> · <a href="docs/BUILDING.md">Build from source</a></sub>
 </p>
 
+<img src="assets/ClawPalDeskShoot.jpg" width="100%" alt="Good to know.">
+
 <a name="what-it-does"></a>
 <img src="assets/readme/chapter-apps.webp" width="100%" alt="Apps.">
 
